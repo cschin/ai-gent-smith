@@ -112,11 +112,7 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
 
-    TnButton::builder()
-        .init(LOGOUT_BTN.into(), "Log Out".into())
-        .update_attrs(attrs)
-        .set_action(TnActionExecutionMethod::Await, logout)
-        .add_to_context(ctx);
+
 }
 
 #[derive(Template)] // this will generate the code...
@@ -131,7 +127,7 @@ fn layout(context: TnContext) -> TnFutureString {
         let context_guard = context.read().await;
         let cards = context_guard.get_initial_rendered_string(CARDS).await;
         let mut buttons = Vec::<String>::new();
-        for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN, CREATE_AGENT_BTN, LOGOUT_BTN] {
+        for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN, CREATE_AGENT_BTN] {
             buttons.push(context_guard.get_rendered_string(btn).await);
         }
         let html = AppPageTemplate { cards, buttons };
