@@ -1,0 +1,17 @@
+<div id="workspace" class="flex flex-wrap">
+    {% for (id, name, description) in cards %}
+    <div class="card card-compact bg-primary text-primary-content w-72 m-1">
+        <div class="card-body">
+            <h2 class="card-title">{{name}}</h2>
+            <div class="card-discription max-h-32 min-h-32 overflow-auto scroll-behavior:auto">
+                <p>{{description}}</p>
+            </div>
+            <div class="card-actions justify-end">
+                <button class="btn btn-xs" hx-get="/api/agent/{{id}}/setting" hx-swap="none" hx-trigger="click">Setting</button>
+                <button class="btn btn-xs" hx-get="/api/agent/{{id}}/talk" hx-swap="none" hx-trigger="click">Talk</button>
+                <button class="btn btn-xs" hx-get="/api/agent/{{id}}/chat" hx-swap="none" hx-trigger="click">Chat</button>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>

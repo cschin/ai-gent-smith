@@ -1,0 +1,39 @@
+<sl-split-panel vertical position-in-pixels="50" style="height: 100svh; --max: 50px">
+
+    <div slot="start"
+        style="height: 100%; width:100%; background: #d4d4d4; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+
+        <p class="text-2xl">AI-gent Smith</p>
+
+    </div>
+
+    <div slot="end"
+        style="height: 100%; width:100%; background: var(--sl-color-neutral-50); display: flex; overflow: hidden;">
+        <sl-split-panel snap="0px 150px 220px" position-in-pixels="220" style="width:100%; --max: 220px;">
+
+            <div slot="start"
+                style="height: 100%; background: #6f8975; display: flex; align-items: start; justify-content:start; overflow: hidden;">
+                <div class="container mx-auto w-full p-1 flex flex-col my-1 mx-2 p-2">
+                    {% for value in buttons %}
+                    {{ value }}
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div slot="end"
+                style="height: 100%; width:100%; background: #a2a2a2; display:flex; align-items: flex-start; justify-content:stretch; overflow: auto;">
+
+                <div class="container mx-auto w-full h-svh p-1">
+                    {{cards}}
+                </div>
+
+            </div>
+        </sl-split-panel>
+    </div>
+    <!-- hacks below -->
+    <div slot="end" style="height: 50px; background: #d9d9d9;"></div>
+    <div slot="end" style="height: 50px; background: #d9d9d9;"></div>
+    <div slot="end" style="height: 50px; background: #d9d9d9;">
+        <footer style="align-items: flex-end; text-align: right;">OmicSight, Jason Chin 2024</footer><div>--</div>
+    </div>
+</sl-split-panel>
