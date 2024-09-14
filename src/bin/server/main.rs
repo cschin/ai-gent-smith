@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 //use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc::Sender, RwLock};
 
-use serde_json::Value;
+use serde_json::{json, Value};
 
 use tower_sessions::Session;
 use tracing::debug;
@@ -142,7 +142,6 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
-
 }
 
 #[derive(Template)] // this will generate the code...
@@ -262,21 +261,36 @@ async fn get_agent(
         .await
         .expect("database error! can't get user data");
 
-    let db_pool = &DB_POOL.clone();
+    let db_pool = DB_POOL.clone();
 
-    let query = format!(
-        "SELECT a.agent_id, a.name, a.description FROM agents a
+    let row = sqlx::query!(
+        "SELECT a.agent_id, a.name, a.description, a.status, a.configuration FROM agents a
 JOIN users u ON a.user_id = u.user_id
-WHERE u.username = '{}' AND a.agent_id = {};",
-        user_data.username, agent_id
-    );
-    let row = sqlx::query(&query)
-        .fetch_one(db_pool)
-        .await
-        .expect("db error");
-    let name: String = row.try_get("name").unwrap_or_default();
-    let description: String = row.try_get("description").unwrap_or_default();
-    println!("agent: {}:{} // {}", agent_id, name, description);
+WHERE u.username = $1 AND a.agent_id = $2;",
+        user_data.username,
+        agent_id
+    )
+    .fetch_one(&db_pool)
+    .await
+    .unwrap();
+
+    // let row = sqlx::query(&query)
+    //     .fetch_one(db_pool)
+    //     .await
+    //     .expect("db error");
+    let name: String = row.name;
+    let description: String = if let Some(d) = row.description {
+        d
+    } else {
+        "".into()
+    };
+    let _status = row.status;
+    let configuration = if let Some(conf) = row.configuration {
+        conf.to_string()
+    } else {
+        "".into()
+    };
+    println!("agent: {}:{} // {} // {}", agent_id, name, description, configuration);
 
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
@@ -301,18 +315,56 @@ WHERE u.username = '{}' AND a.agent_id = {};",
     (h, Html::from(out_html))
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct ChatAgentSetting {
+    name: String,
+    description: String,
+    provider: String,
+    model_name: String,
+    prompt: String,
+    follow_up_prompt: Option<String>,
+}
 
 use uuid::Uuid;
 async fn create_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
     session: Session,
-    Json(payload): Json<Value>
+    Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    println!("payload: {:?}", payload);
-    let uuid = Uuid::new_v4();
-    Html::from(format!(r#"<p class="py-4">{}"#, uuid))
+    println!("payload: {}", payload);
+    let _agent_configuration = payload.to_string();
 
+    let model_setting: ChatAgentSetting =
+        serde_json::from_value::<ChatAgentSetting>(payload.clone()).unwrap();
 
-    
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let ctx_guard = ctx.read().await;
+    let user_data = ctx_guard
+        .get_user_data()
+        .await
+        .expect("database error! can't get user data");
+
+    let db_pool = DB_POOL.clone();
+    // TODO: make sure the string is proper avoiding SQL injection
+    let _query = sqlx::query!(
+        r#"INSERT INTO agents (user_id, name, description, status, configuration)
+    SELECT user_id, $2, $3, $4, $5
+    FROM users
+    WHERE username = $1"#,
+        user_data.username,
+        model_setting.name,
+        model_setting.description,
+        "active",
+        payload
+    )
+    .fetch_one(&db_pool)
+    .await;
+
+    //let uuid = Uuid::new_v4();
+    Html::from(format!(
+        r#"<p class="py-4">An Agent "{}" Is Created "#,
+        model_setting.name
+    ))
 }
