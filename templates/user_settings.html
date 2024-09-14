@@ -1,0 +1,62 @@
+{% block content %}
+<div id="workspace">
+    <div class="container mx-auto p-4 max-w-2xl">
+        <h1 class="text-2xl font-bold mb-4">User Settings</h1>
+        <form class="form-control w-full">
+            <!-- <label class="label" for="username">
+                <span class="label-text">Username</span>
+            </label>
+            <input type="text" id="username" name="username" placeholder="Enter your username"
+                class="input input-bordered w-full" value="{{ username }}" required>
+
+            <label class="label" for="email">
+                <span class="label-text">Email</span>
+            </label>
+            <input type="email" id="email" name="email" placeholder="Enter your email"
+                class="input input-bordered w-full" value="{{ email }}" required> -->
+
+            <label class="label" for="anthropic_api_key">
+                <span class="label-text">Anthropic API Key (Optional)</span>
+            </label>
+            <div class="join w-full">
+                <input type="password" id="anthropic_api_key" name="anthropic_api_key"
+                    placeholder="Enter Anthropic API key" class="input input-bordered join-item flex-grow"
+                    value="{{ anthropic_api_key }}">
+                <button type="button" id="togglePassword" class="btn join-item"
+                    onclick="toggleAPIKEYVisibility('anthropic_api_key', 'eye_icon0')">
+                    <span id="eye_icon0">👁️</span>
+                </button>
+            </div>
+            <label class="label" for="openai_api_key">
+                <span class="label-text">OpenAI API Key (Optional)</span>
+            </label>
+            <div class="join w-full">
+                <input type="password" id="openai_api_key" name="anthropic_api_key"
+                    placeholder="Enter OpenAI API Key" class="input input-bordered join-item flex-grow"
+                    value="{{ openai_api_key }}">
+                <button type="button" id="togglePassword" class="btn join-item"
+                    onclick="toggleAPIKEYVisibility('openai_api_key', 'eye_icon1')">
+                    <span id="eye_icon1">👁️</span>
+                </button>
+            </div>
+            <button type="submit" class="btn btn-primary mt-4 w-full">Save Settings</button> <!-- Added w-full -->
+        </form>
+    </div>
+</div>
+
+<script>
+    function toggleAPIKEYVisibility(inputId, eyeIconId) {
+        const password = document.getElementById(inputId);
+        const eyeIcon = document.getElementById(eyeIconId);
+
+        if (password.type === 'password') {
+            password.type = 'text';
+            eyeIcon.innerHTML = '👀'; // Eyes symbol
+        } else {
+            password.type = 'password';
+            eyeIcon.innerHTML = '👁️'; // Eye symbol
+        }
+    };
+</script>
+
+{% endblock content %}

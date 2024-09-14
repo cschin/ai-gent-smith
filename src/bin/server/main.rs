@@ -32,10 +32,10 @@ use tron_components::{
     TnEvent, TnTextArea,
 };
 //use std::sync::Mutex;
-use std::{collections::HashMap, pin::Pin, sync::Arc, task::Context};
+use std::{collections::HashMap, default, pin::Pin, sync::Arc, task::Context};
 
-mod library_cards;
 mod fsm;
+mod library_cards;
 
 static BUTTON: &str = "button";
 static CARDS: &str = "cards";
@@ -71,7 +71,7 @@ fn build_context() -> TnContext {
         .init(CARDS.into(), "cards".into())
         .set_attr("class", "btn btn-sm btn-outline btn-primary flex-1")
         .set_attr("hx-target", "#count")
-        .set_attr("hx-swap", "innerHTML")
+        .set_attr("hx-swap", "innerHTML show:top")
         .add_to_context(&mut context);
 
     build_left_panel(&mut context);
@@ -91,7 +91,7 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .add("class", "btn btn-sm btn-block m-1 min-w-36")
         .add("hx-target", "#workspace")
         .add("hx-trigger", "click")
-        .add("hx-swap", "outerHTML")
+        .add("hx-swap", "outerHTML show:top")
         .build()
         .attributes;
 
@@ -112,8 +112,6 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
-
-
 }
 
 #[derive(Template)] // this will generate the code...
@@ -138,6 +136,19 @@ fn layout(context: TnContext) -> TnFutureString {
     }
 }
 
+#[derive(Template)]
+#[template(path = "setup_simple_agent.html")]
+struct SetupAgentTemplate {}
+
+#[derive(Template)]
+#[template(path = "user_settings.html")]
+struct UserSettingsTemplate {
+    username: String,
+    email: String,
+    anthropic_api_key: String,
+    openai_api_key: String,
+}
+
 fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
     tn_future! {
 
@@ -151,8 +162,27 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 Some(cards)
             },
 
-            USER_SETTING_BTN | CREATE_AGENT_BTN 
-                 => Some(format!(r#"<div id="workspace">{}</div>"#,event.e_trigger)),
+            CREATE_AGENT_BTN => {
+                let template = SetupAgentTemplate {};
+                Some(template.render().unwrap())
+            },
+
+            USER_SETTING_BTN
+                 => {
+                    let context_guard = context.read().await;
+                    if let Some(user_data) = context_guard.get_user_data().await {
+                        let username = user_data.username;
+                        let email = user_data.email;
+                        let template = UserSettingsTemplate {
+                            username,
+                            email,
+                            anthropic_api_key: "".into(),
+                            openai_api_key: "".into()
+                        };
+                        Some(template.render().unwrap())
+                    } else {
+                        None
+                    }},
 
             _ => None
         };
@@ -188,7 +218,12 @@ async fn get_agent(
     let user_data = ctx_guard.user_data.clone();
     println!("user_data: {:?}", user_data);
     let mut h = HeaderMap::new();
-    h.insert("Hx-Reswap", "outerHTML".parse().unwrap());
+    h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
-    (h, Html::from(format!(r#"<div id="workspace">agent_id: {agent_id}, parameter: {parameter}</div>"#)))
+    (
+        h,
+        Html::from(format!(
+            r#"<div id="workspace">agent_id: {agent_id}, parameter: {parameter}</div>"#
+        )),
+    )
 }
