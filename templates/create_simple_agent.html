@@ -1,0 +1,61 @@
+{% block content %}
+<div id="workspace">
+    <div class="container mx-auto max-w-4xl px-4 py-8">
+        <h1 class="text-3xl font-bold mb-6">Set Up New AI Agent</h1>
+        <form hx-post="/api/agent/create" hx-ext="json-enc" hx-swap="innerHTML" hx-target="#create_agent_notification_msg">
+            <div class="form-control mb-4">
+                <label for="agent_name" class="label">
+                    <span class="label-text">Agent Name:</span>
+                </label>
+                <input type="text" name="agent_name" id="agent_name" class="input input-bordered" required
+                    placeholder="Enter a name for your AI agent">
+            </div>
+            <div class="form-control mb-4">
+                <label for="agent_description" class="label">
+                    <span class="label-text">Agent Description:</span>
+                </label>
+                <textarea name="agent_description" id="agent_description" class="textarea textarea-bordered" rows="3"
+                    placeholder="Enter a brief description of your AI agent"></textarea>
+            </div>
+            <div class="form-control mb-4">
+                <label for="provider" class="label">
+                    <span class="label-text">LLM Provider:</span>
+                </label>
+                <select name="provider" id="provider" class="select select-bordered" required>
+                    <option value="">Select an LLM provider</option>
+                    <option value="openai">OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <!-- Add more options as needed -->
+                </select>
+            </div>
+            <div class="form-control mb-4">
+                <label for="model_name" class="label">
+                    <span class="label-text">Model Name:</span>
+                </label>
+                <input type="text" name="model_name" id="model_name" class="input input-bordered" required
+                    placeholder="Enter the model name (e.g., gpt-3.5-turbo)">
+            </div>
+
+            <div class="form-control mb-4">
+                <label for="prompt" class="label">
+                    <span class="label-text">Initial Prompt:</span>
+                </label>
+                <textarea name="prompt" id="prompt" class="textarea textarea-bordered" rows="5" required
+                    placeholder="Enter the initial system prompt for your AI agent"></textarea>
+            </div>
+
+            <div class="form-control mb-4">
+                <label for="follow_up_prompt" class="label">
+                    <span class="label-text">Follow Up Prompt:</span>
+                </label>
+                <textarea name="follow_up_prompt" id="follow_up_prompt" class="textarea textarea-bordered" rows="5" required
+                    placeholder="Enter the follow up prompt for your AI agent"></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-full" onclick="create_agent_notification.showModal()">Create Agent</button>
+        </form>
+    </div>
+</div>
+
+
+{% endblock %}

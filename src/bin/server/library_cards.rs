@@ -1,7 +1,9 @@
 use askama::Template;
 use axum::async_trait;
+use sqlx::Acquire;
 use sqlx::Postgres;
 use std::collections::HashMap;
+use std::sync::Arc;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
@@ -9,14 +11,16 @@ use tron_app::HtmlAttributes;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
+use super::DB_POOL;
 
 /// Represents a button component in a Tron application.
 #[non_exhaustive]
 #[derive(ComponentBase)]
 pub struct LibraryCards<'a: 'static> {
     base: TnComponentBase<'a>,
-    db_conn: Option<PgPool>,
+    db_pool: Option<PgPool>,
     user_data: String,
+    status_to_render: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -26,7 +30,7 @@ struct UserData {
 }
 
 impl<'a: 'static> LibraryCardsBuilder<'a> {
-    pub fn init(mut self, tnid: String, title: String) -> Self {
+    pub fn init(mut self, tnid: String, title: String, status: &str) -> Self {
         let component_type = TnComponentType::UserDefined("div".into());
         self.base = TnComponentBase::builder(self.base)
             .init("div".into(), tnid, component_type)
@@ -34,16 +38,16 @@ impl<'a: 'static> LibraryCardsBuilder<'a> {
             .set_attr("hx-trigger", "click, server_event")
             .build();
 
+        self.status_to_render = status.into();
+
         self
     }
 }
 
 impl<'a: 'static> LibraryCards<'a> {
-    pub async fn init_db(&mut self) {
-        self.db_conn = Some(
-            PgPool::connect("postgres://cschin@localhost/ai_gent")
-                .await
-                .expect("Failed to connect to the database"),
+    pub async fn init_db_pool(&mut self) {
+        self.db_pool = Some(
+          DB_POOL.clone()
         );
     }
 }
@@ -65,10 +69,11 @@ where
             "SELECT a.agent_id, a.name, a.description
 FROM agents a
 JOIN users u ON a.user_id = u.user_id
-WHERE u.username = '{}';",
-            self.user_data
+WHERE u.username = '{}' AND a.status = '{}';",
+            self.user_data,
+            self.status_to_render
         );
-        let pool = self.db_conn.as_ref().unwrap();
+        let pool = self.db_pool.as_ref().expect("Database connection not initialized");
         let rows = sqlx::query(&query).fetch_all(pool).await.expect("db error");
 
         let cards = rows
@@ -101,10 +106,10 @@ WHERE u.username = '{}';",
     }
 
     async fn pre_render(&mut self, ctx: &TnContextBase) {
-        if self.db_conn.as_mut().is_none() {
-            self.init_db().await;
+        if self.db_pool.as_mut().is_none() {
+            self.init_db_pool().await;
         }
-        println!("userdata {:?}", ctx.user_data);
+        //println!("userdata {:?}", ctx.user_data);
         let user_data = ctx.user_data.read().await;
         let json_str = user_data.as_ref().unwrap().clone();
         let user_data: UserData = serde_json::from_str(&json_str).unwrap();
