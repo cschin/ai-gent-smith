@@ -2,7 +2,7 @@
 <div id="workspace">
     <div class="container mx-auto max-w-4xl px-4 py-8">
         <h1 class="text-3xl font-bold mb-6">Set Up New AI Agent</h1>
-        <form hx-post="/api/agent/create" hx-ext="json-enc" hx-swap="innerHTML" hx-target="#create_agent_notification_msg">
+        <form hx-post="/api/agent/create" hx-ext="json-enc" hx-swap="innerHTML" hx-target="#create_agent_notification_msg" hx-on::after-request="create_agent_notification.showModal()">
             <div class="form-control mb-4">
                 <label for="agent_name" class="label">
                     <span class="label-text">Agent Name:</span>
@@ -48,14 +48,13 @@
                 <label for="follow_up_prompt" class="label">
                     <span class="label-text">Follow Up Prompt:</span>
                 </label>
-                <textarea name="follow_up_prompt" id="follow_up_prompt" class="textarea textarea-bordered" rows="5" required
+                <textarea name="follow_up_prompt" id="follow_up_prompt" class="textarea textarea-bordered" rows="5" 
                     placeholder="Enter the follow up prompt for your AI agent"></textarea>
             </div>
 
-            <button type="submit" class="btn btn-primary w-full" onclick="create_agent_notification.showModal()">Create Agent</button>
+            <button type="submit" class="btn btn-primary w-full">Create Agent</button>
         </form>
     </div>
 </div>
-
 
 {% endblock %}
