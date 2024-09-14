@@ -35,6 +35,7 @@ use tron_components::{
 use std::{collections::HashMap, pin::Pin, sync::Arc, task::Context};
 
 mod library_cards;
+mod fsm;
 
 static BUTTON: &str = "button";
 static CARDS: &str = "cards";

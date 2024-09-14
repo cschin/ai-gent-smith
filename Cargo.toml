@@ -26,3 +26,5 @@ futures = "0.3.30"
 axum = "0.7.5"
 tracing = "0.1.40"
 serde = "1.0.210"
+async-trait = "0.1"
+
