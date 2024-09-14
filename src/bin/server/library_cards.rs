@@ -69,7 +69,7 @@ where
             "SELECT a.agent_id, a.name, a.description
 FROM agents a
 JOIN users u ON a.user_id = u.user_id
-WHERE u.username = '{}' AND a.status = '{}';",
+WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.agent_id ASC;",
             self.user_data,
             self.status_to_render
         );
@@ -85,6 +85,7 @@ WHERE u.username = '{}' AND a.status = '{}';",
                 (id, name, description)
             })
             .collect::<Vec<_>>();
+        
         let html = AgentLibraryTemplate { cards };
         html.render().unwrap()
     }

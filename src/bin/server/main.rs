@@ -52,6 +52,16 @@ pub(crate) struct AgentConfiguration {
     follow_up_prompt: String,
 }
 
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct ChatAgentSetting {
+    name: String,
+    description: String,
+    provider: String,
+    model_name: String,
+    prompt: String,
+    follow_up_prompt: Option<String>,
+}
+
 static BUTTON: &str = "button";
 static CARDS: &str = "cards";
 
@@ -75,8 +85,10 @@ pub static DB_POOL: Lazy<PgPool> = Lazy::new(|| {
 #[tokio::main]
 async fn main() {
     let ui_action_routes = Router::<Arc<AppData>>::new()
-        .route("/agent/:id/:parameter", get(get_agent))
-        .route("/agent/create", post(create_agent));
+        .route("/agent/create", post(create_agent))
+        .route("/agent/:id/update", post(update_agent))
+        .route("/agent/:id/use", get(use_agent))
+        .route("/agent/:id/show", get(show_agent_setting));
 
     let app_config = tron_app::AppConfigure {
         cognito_login: true,
@@ -176,6 +188,9 @@ struct UpdateAgentTemplate {
     agent_id: i32,
     name: String,
     description: String,
+    model_name: String,
+    prompt: String,
+    follow_up_prompt: String,
 }
 
 #[derive(Template)]
@@ -241,16 +256,94 @@ fn logout(_context: TnContext, _event: TnEvent, _payload: Value) -> TnFutureHTML
     }
 }
 
-async fn get_agent(
+async fn show_agent_setting(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
-    Path((agent_id, parameter)): Path<(i32, String)>,
+    Path(agent_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
+    println!("in show_agent: agent_id {}", agent_id);
+    //println!("payload: {:?}", payload);
+
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let ctx_guard = ctx.read().await;
+    let user_data = ctx_guard
+        .get_user_data()
+        .await
+        .expect("database error! can't get user data");
+
+    let db_pool = DB_POOL.clone();
+
+    let row = sqlx::query!(
+        "SELECT a.agent_id, a.name, a.description, a.status, a.configuration FROM agents a
+JOIN users u ON a.user_id = u.user_id
+WHERE u.username = $1 AND a.agent_id = $2;",
+        user_data.username,
+        agent_id
+    )
+    .fetch_one(&db_pool)
+    .await
+    .unwrap();
+
+    let name: String = row.name;
+    let description: String = if let Some(d) = row.description {
+        d
+    } else {
+        "".into()
+    };
+    let _status = row.status;
+    let model_name;
+    let prompt;
+    let follow_up_prompt;
+    let configuration = if let Some(conf) = row.configuration {
+        let model_setting: ChatAgentSetting =
+            serde_json::from_value::<ChatAgentSetting>(conf.clone()).unwrap();
+        model_name = model_setting.model_name;
+        prompt = model_setting.prompt;
+        follow_up_prompt = model_setting.follow_up_prompt.unwrap_or_default();
+        conf.to_string()
+    } else {
+        model_name = "x".into();
+        prompt = "x".into();
+        follow_up_prompt = "x".into();
+        "x".into()
+    };
     println!(
-        "in get_agent: agent_id {}, parameter: {}",
-        agent_id, parameter
+        "agent: {}:{} // {} // {}",
+        agent_id, name, description, configuration
     );
+
+    let mut h = HeaderMap::new();
+    h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
+    h.insert("Hx-Retarget", "#workspace".parse().unwrap());
+
+    let out_html = if let Some(out_html) = {
+        let template = UpdateAgentTemplate {
+            agent_id,
+            name,
+            description,
+            model_name,
+            prompt,
+            follow_up_prompt,
+        };
+        Some(template.render().unwrap())
+    } {
+        out_html
+    } else {
+        format!(r#"<div id="workspace">agent_id: {agent_id}</div>"#)
+    };
+
+    (h, Html::from(out_html))
+}
+
+async fn use_agent(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    Path(agent_id): Path<i32>,
+    session: Session,
+) -> impl IntoResponse {
+    println!("in use_agent: agent_id {}", agent_id);
     //println!("payload: {:?}", payload);
 
     let ctx_store_guard = appdata.context_store.read().await;
@@ -285,44 +378,34 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         "".into()
     };
     let _status = row.status;
+    let model_name;
+    let prompt;
+    let follow_up_prompt;
     let configuration = if let Some(conf) = row.configuration {
+        let model_setting: ChatAgentSetting =
+            serde_json::from_value::<ChatAgentSetting>(conf.clone()).unwrap();
+        model_name = model_setting.model_name;
+        prompt = model_setting.prompt;
+        follow_up_prompt = model_setting.follow_up_prompt.unwrap_or_default();
         conf.to_string()
     } else {
+        model_name = "".into();
+        prompt = "".into();
+        follow_up_prompt = "".into();
         "".into()
     };
-    println!("agent: {}:{} // {} // {}", agent_id, name, description, configuration);
+    println!(
+        "agent: {}:{} // {} // {} // {} // {} // {}",
+        agent_id, name, description, model_name, prompt, follow_up_prompt, configuration
+    );
 
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
 
-    let out_html = if let Some(out_html) = match parameter.as_str() {
-        "update" => {
-            let template = UpdateAgentTemplate {
-                agent_id,
-                name,
-                description,
-            };
-            Some(template.render().unwrap())
-        }
-        _ => None,
-    } {
-        out_html
-    } else {
-        format!(r#"<div id="workspace">agent_id: {agent_id}, parameter: {parameter}</div>"#)
-    };
+    let out_html = format!(r#"<div id="workspace">use, agent_id: {agent_id}</div>"#);
 
     (h, Html::from(out_html))
-}
-
-#[derive(Debug, Default, Serialize, Deserialize)]
-struct ChatAgentSetting {
-    name: String,
-    description: String,
-    provider: String,
-    model_name: String,
-    prompt: String,
-    follow_up_prompt: Option<String>,
 }
 
 use uuid::Uuid;
@@ -364,7 +447,52 @@ async fn create_agent(
 
     //let uuid = Uuid::new_v4();
     Html::from(format!(
-        r#"<p class="py-4">An Agent "{}" Is Created "#,
+        r#"<p class="py-4">An agent "{}" is created "#,
+        model_setting.name
+    ))
+}
+
+async fn update_agent(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    session: Session,
+    Path(agent_id): Path<i32>,
+    Json(payload): Json<Value>,
+) -> impl IntoResponse {
+    println!("in update_agent   payload: {}", payload);
+    let _agent_configuration = payload.to_string();
+
+    let model_setting: ChatAgentSetting =
+        serde_json::from_value::<ChatAgentSetting>(payload.clone()).unwrap();
+
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let ctx_guard = ctx.read().await;
+    let user_data = ctx_guard
+        .get_user_data()
+        .await
+        .expect("database error! can't get user data");
+
+    let db_pool = DB_POOL.clone();
+    // TODO: make sure the string is proper avoiding SQL injection
+    let _query = sqlx::query!(
+        r#"UPDATE agents 
+    SET name = $3, description = $4, status = $5, configuration = $6
+    WHERE agent_id = $2 AND user_id = (SELECT user_id FROM users WHERE username = $1)"#,
+        user_data.username,
+        agent_id,
+        model_setting.name,
+        model_setting.description,
+        "active",
+        payload
+    )
+    .fetch_one(&db_pool)
+    .await;
+
+    println!("query rtn: {:?}", _query);
+    //let uuid = Uuid::new_v4();
+    Html::from(format!(
+        r#"<p class="py-4">The agent "{}" is updated "#,
         model_setting.name
     ))
 }
