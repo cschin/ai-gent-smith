@@ -138,10 +138,11 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(CREATE_AGENT_BTN.into(), "Create a New Agent ".into())
+        .init(CREATE_AGENT_BTN.into(), "Create a New Agent".into())
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
+
 }
 
 #[derive(Template)] // this will generate the code...
@@ -301,12 +302,17 @@ WHERE u.username = '{}' AND a.agent_id = {};",
 }
 
 
-
+use uuid::Uuid;
 async fn create_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
     session: Session,
     Json(payload): Json<Value>
 ) -> impl IntoResponse {
+    println!("payload: {:?}", payload);
+    let uuid = Uuid::new_v4();
+    Html::from(format!(r#"<p class="py-4">{}"#, uuid))
+
+
     
 }
