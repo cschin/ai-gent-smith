@@ -6,3 +6,4 @@
 self_signed_certs/**
 csv_output/**
 **/.DS_Store
+.sqlx/*
