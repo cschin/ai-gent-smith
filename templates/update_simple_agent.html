@@ -1,23 +1,23 @@
 {% block content %}
 <div id="workspace">
     <div class="container mx-auto max-w-4xl px-4 py-8">
-        <h1 class="text-3xl font-bold mb-6">Edit AI Agent</h1>
+        <h1 class="text-3xl font-bold mb-6">Edit The AI Agent</h1>
         <form hx-post="/api/agent/{{ agent_id }}/update" 
               hx-ext="json-enc" 
               hx-swap="innerHTML" 
               hx-target="#update_agent_notification_msg">
             <div class="form-control mb-4">
-                <label for="agent_name" class="label">
+                <label for="name" class="label">
                     <span class="label-text">Agent Name:</span>
                 </label>
-                <input type="text" name="agent_name" id="agent_name" class="input input-bordered" required
+                <input type="text" name="name" id="name" class="input input-bordered" required
                     placeholder="{{ name }}">
             </div>
             <div class="form-control mb-4">
-                <label for="agent_description" class="label">
+                <label for="description" class="label">
                     <span class="label-text">Agent Description:</span>
                 </label>
-                <textarea name="agent_description" id="agent_description" class="textarea textarea-bordered" rows="3"
+                <textarea name="description" id="description" class="textarea textarea-bordered" rows="3"
                     placeholder="{{ description }}"></textarea>
             </div>
             <div class="form-control mb-4">
