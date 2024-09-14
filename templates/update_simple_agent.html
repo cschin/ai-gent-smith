@@ -5,20 +5,21 @@
         <form hx-post="/api/agent/{{ agent_id }}/update" 
               hx-ext="json-enc" 
               hx-swap="innerHTML" 
-              hx-target="#update_agent_notification_msg">
+              hx-target="#update_agent_notification_msg"
+              hx-on::after-request="update_agent_notification.showModal()">
             <div class="form-control mb-4">
                 <label for="name" class="label">
                     <span class="label-text">Agent Name:</span>
                 </label>
                 <input type="text" name="name" id="name" class="input input-bordered" required
-                    placeholder="{{ name }}">
+                    placeholder="Enter a name for your AI agent"> value="{{ name }}">
             </div>
             <div class="form-control mb-4">
                 <label for="description" class="label">
                     <span class="label-text">Agent Description:</span>
                 </label>
                 <textarea name="description" id="description" class="textarea textarea-bordered" rows="3"
-                    placeholder="{{ description }}"></textarea>
+                    placeholder="Enter a brief description of your AI agent">>{{ description }}</textarea>
             </div>
             <div class="form-control mb-4">
                 <label for="provider" class="label">
@@ -26,7 +27,7 @@
                 </label>
                 <select name="provider" id="provider" class="select select-bordered" required>
                     <option value="">Select an LLM provider</option>
-                    <option value="openai">OpenAI</option>
+                    <option value="openai" selected>OpenAI</option>
                     <option value="anthropic">Anthropic</option>
                     <!-- Add more options as needed -->
                 </select>
@@ -36,7 +37,7 @@
                     <span class="label-text">Model Name:</span>
                 </label>
                 <input type="text" name="model_name" id="model_name" class="input input-bordered" required
-                    placeholder="Enter the model name (e.g., gpt-3.5-turbo)">
+                    value="{{ model_name }}">
             </div>
 
             <div class="form-control mb-4">
@@ -44,7 +45,7 @@
                     <span class="label-text">Initial Prompt:</span>
                 </label>
                 <textarea name="prompt" id="prompt" class="textarea textarea-bordered" rows="5" required
-                    placeholder="Enter the initial system prompt for your AI agent"></textarea>
+                    placeholder="Enter the initial system prompt for your AI agent">{{ prompt }}</textarea>
             </div>
 
             <div class="form-control mb-4">
@@ -52,10 +53,11 @@
                     <span class="label-text">Follow Up Prompt (Optional):</span>
                 </label>
                 <textarea name="follow_up_prompt" id="follow_up_prompt" class="textarea textarea-bordered" rows="5"
-                    placeholder="Enter the follow up prompt for your AI agent"></textarea>
+                    placeholder="Enter the follow up prompt for your AI agent">{{ follow_up_prompt }}</textarea>
             </div>
 
-            <button type="submit" class="btn btn-primary w-full" onclick="create_agent_notification.showModal()">Create Agent</button>
+            <button type="submit" class="btn btn-primary w-full">Update Agent</button>
+            <button type="button" class="btn btn-primary w-full mt-4">Delete Agent</button>
         </form>
     </div>
 </div>
