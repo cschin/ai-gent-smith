@@ -16,7 +16,7 @@ csv = "1.1"
 clap = { version = "4.3", features = ["derive", "env"] }
 anyhow = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
-serde_json = "1.0"
+serde_json = "1.0.128"
 # tron_app = { git = "https://github.com/cschin/tron.git" }
 tron_app = { path = "../tron/tron_app" }
 askama = "0.12.1"
