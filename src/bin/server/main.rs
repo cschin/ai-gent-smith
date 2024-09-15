@@ -88,7 +88,7 @@ async fn main() {
         .route("/agent/create", post(create_agent))
         .route("/agent/:id/update", post(update_agent))
         .route("/agent/:id/use", get(use_agent))
-        .route("/agent/:id/show", get(show_agent_setting))
+        .route("/agent/:id/show", get(show_basic_agent_setting))
         .route("/check_user", get(check_user));
 
     let app_config = tron_app::AppConfigure {
@@ -126,7 +126,8 @@ fn build_context() -> TnContext {
 
 const USER_SETTING_BTN: &str = "user_setting_btn";
 const SHOW_AGENT_LIB_BTN: &str = "show_agent_btn";
-const CREATE_AGENT_BTN: &str = "create_agent_btn";
+const BASIC_AGENT_DESIGN_BTN: &str = "basic_agent_design_btn";
+const ADV_AGENT_DESIGN_BTN: &str = "adv_agent_design_btn";
 const LOGOUT_BTN: &str = "logout_btn";
 
 fn build_left_panel(ctx: &mut TnContextBase) {
@@ -151,7 +152,13 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(CREATE_AGENT_BTN.into(), "Create a New Agent".into())
+        .init(BASIC_AGENT_DESIGN_BTN.into(), "Basic Agent Designer".into())
+        .update_attrs(attrs.clone())
+        .set_action(TnActionExecutionMethod::Await, change_workspace)
+        .add_to_context(ctx);
+
+    TnButton::builder()
+        .init(ADV_AGENT_DESIGN_BTN.into(), "Advanced Agent Designer".into())
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
@@ -169,7 +176,8 @@ fn layout(context: TnContext) -> TnFutureString {
         let context_guard = context.read().await;
         let cards = context_guard.get_initial_rendered_string(CARDS).await;
         let mut buttons = Vec::<String>::new();
-        for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN, CREATE_AGENT_BTN] {
+        for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN, 
+                    BASIC_AGENT_DESIGN_BTN, ADV_AGENT_DESIGN_BTN] {
             buttons.push(context_guard.get_rendered_string(btn).await);
         }
         let html = AppPageTemplate { cards, buttons };
@@ -180,11 +188,11 @@ fn layout(context: TnContext) -> TnFutureString {
 }
 
 #[derive(Template)]
-#[template(path = "create_simple_agent.html")]
+#[template(path = "create_basic_agent.html")]
 struct SetupAgentTemplate {}
 
 #[derive(Template)]
-#[template(path = "update_simple_agent.html")]
+#[template(path = "update_basic_agent.html")]
 struct UpdateAgentTemplate {
     agent_id: i32,
     name: String,
@@ -216,7 +224,12 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 Some(cards)
             },
 
-            CREATE_AGENT_BTN => {
+            BASIC_AGENT_DESIGN_BTN => {
+                let template = SetupAgentTemplate {};
+                Some(template.render().unwrap())
+            },
+
+            ADV_AGENT_DESIGN_BTN => {
                 let template = SetupAgentTemplate {};
                 Some(template.render().unwrap())
             },
@@ -238,7 +251,11 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                         None
                     }},
 
-            _ => None
+            _ => {
+                let context_guard = context.read().await;
+                let cards = context_guard.get_initial_rendered_string(CARDS).await;
+                Some(cards)
+            }
         };
 
         if let Some(output) = output {
@@ -257,7 +274,7 @@ fn logout(_context: TnContext, _event: TnEvent, _payload: Value) -> TnFutureHTML
     }
 }
 
-async fn show_agent_setting(
+async fn show_basic_agent_setting(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
     Path(agent_id): Path<i32>,
@@ -305,10 +322,10 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         follow_up_prompt = model_setting.follow_up_prompt.unwrap_or_default();
         conf.to_string()
     } else {
-        model_name = "x".into();
-        prompt = "x".into();
-        follow_up_prompt = "x".into();
-        "x".into()
+        model_name = "".into();
+        prompt = "".into();
+        follow_up_prompt = "".into();
+        "".into()
     };
     println!(
         "agent: {}:{} // {} // {}",
@@ -368,10 +385,6 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     .await
     .unwrap();
 
-    // let row = sqlx::query(&query)
-    //     .fetch_one(db_pool)
-    //     .await
-    //     .expect("db error");
     let name: String = row.name;
     let description: String = if let Some(d) = row.description {
         d
@@ -475,7 +488,6 @@ async fn update_agent(
         .expect("database error! can't get user data");
 
     let db_pool = DB_POOL.clone();
-    // TODO: make sure the string is proper avoiding SQL injection
     let _query = sqlx::query!(
         r#"UPDATE agents 
     SET name = $3, description = $4, status = $5, configuration = $6
