@@ -88,7 +88,8 @@ async fn main() {
         .route("/agent/create", post(create_agent))
         .route("/agent/:id/update", post(update_agent))
         .route("/agent/:id/use", get(use_agent))
-        .route("/agent/:id/show", get(show_agent_setting));
+        .route("/agent/:id/show", get(show_agent_setting))
+        .route("/check_user", get(check_user));
 
     let app_config = tron_app::AppConfigure {
         cognito_login: true,
@@ -495,4 +496,49 @@ async fn update_agent(
         r#"<p class="py-4">The agent "{}" is updated "#,
         model_setting.name
     ))
+}
+
+async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, session: Session) {
+    // let user_data = session
+    // .get::<String>("user_data")
+    // .await
+    // .expect("error on getting user data");
+
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let ctx_guard = ctx.read().await;
+    let user_data = ctx_guard
+        .get_user_data()
+        .await
+        .expect("database error! can't get user data");
+
+    let db_pool = DB_POOL.clone();
+    let res = sqlx::query!(
+        r#"SELECT user_id FROM users WHERE username = $1"#,
+        user_data.username
+    )
+    .fetch_one(&db_pool)
+    .await;
+
+    let user_id = if let Err(_res) = res {
+        let rec = sqlx::query!(
+            r#"INSERT INTO users (username, email, password_hash, created_at, last_login) VALUES
+($1, $2, 'hashed_password', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+RETURNING user_id"#,
+            user_data.username,
+            user_data.email
+        )
+        .fetch_one(&db_pool)
+        .await
+        .unwrap_or_else(|_| {
+            panic!(
+                "unable to active a new user, username {}",
+                user_data.username
+            )
+        });
+        rec.user_id
+    } else {
+        res.unwrap().user_id
+    };
+    println!("check_user: {:?} id: {}", user_data, user_id);
 }
