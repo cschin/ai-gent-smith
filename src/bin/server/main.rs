@@ -37,7 +37,6 @@ use sqlx::Acquire;
 use sqlx::Postgres;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 use std::{collections::HashMap, default, pin::Pin, sync::Arc, task::Context};
-mod fsm;
 mod library_cards;
 
 use lazy_static::lazy_static;

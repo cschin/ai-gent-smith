@@ -30,6 +30,12 @@ pub struct FiniteStateMachineBuilder {
     current_state: Option<String>,
 }
 
+impl Default for FiniteStateMachineBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FiniteStateMachineBuilder {
     pub fn new() -> Self {
         FiniteStateMachineBuilder {
@@ -45,10 +51,7 @@ impl FiniteStateMachineBuilder {
     }
 
     pub fn add_transition(mut self, from: String, to: String) -> Self {
-        self.transitions
-            .entry(from)
-            .or_default()
-            .insert(to);
+        self.transitions.entry(from).or_default().insert(to);
         self
     }
 
@@ -86,6 +89,13 @@ impl FiniteStateMachineBuilder {
     }
 }
 
+
+impl Default for FiniteStateMachine {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl FiniteStateMachine {
     pub fn new() -> Self {
         FiniteStateMachine {
@@ -104,6 +114,15 @@ impl FiniteStateMachine {
         self.transitions.entry(from).or_default().insert(to);
     }
 
+    pub fn available_transitions(&self) -> Option<HashSet<String>> {
+        self.current_state
+            .as_ref()
+            .and_then(|current| self.transitions.get(current).cloned())
+    }
+
+    pub fn current_state(&self) -> Option<String> {
+        self.current_state.clone()
+    }
 
     pub async fn set_initial_state(&mut self, state: String) -> Result<(), String> {
         if self.states.contains_key(&state) {
@@ -139,10 +158,16 @@ impl FiniteStateMachine {
                     self.states.get(&to).unwrap().on_enter().await;
                     (TransitionResult::Success, Some(to))
                 } else {
-                    (TransitionResult::InvalidTransition, Some(current_state.clone()))
+                    (
+                        TransitionResult::InvalidTransition,
+                        Some(current_state.clone()),
+                    )
                 }
             } else {
-                (TransitionResult::NoTransitionAvailable, Some(current_state.clone()))
+                (
+                    TransitionResult::NoTransitionAvailable,
+                    Some(current_state.clone()),
+                )
             }
         } else {
             (TransitionResult::NoCurrentState, None)
@@ -155,7 +180,6 @@ impl FiniteStateMachine {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use tokio::runtime::Runtime;
 
     struct TestState {
         name: String,
