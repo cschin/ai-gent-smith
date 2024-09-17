@@ -11,13 +11,17 @@ pub enum TransitionResult {
 
 #[async_trait]
 pub trait FSMState: Send + Sync {
-    async fn on_enter(&self);
-    async fn on_exit(&self);
-    async fn on_enter_mut(&mut self);
-    async fn on_exit_mut(&mut self);
-    async fn set_attribute(&mut self, k: &str, v: String);
-    async fn clone_attribute(&self, k:&str) -> Option<String>;
-    fn name(&self) -> String;
+    async fn on_enter(&self) {}
+    async fn on_exit(&self) {}
+    async fn on_enter_mut(&mut self) {}
+    async fn on_exit_mut(&mut self) {}
+    async fn set_attribute(&mut self, _k: &str, _v: String) {}
+    async fn clone_attribute(&self, _k: &str) -> Option<String> {
+        unimplemented!()
+    }
+    fn name(&self) -> String {
+        unimplemented!()
+    }
 }
 
 pub struct FiniteStateMachine {
@@ -91,7 +95,6 @@ impl FiniteStateMachineBuilder {
     }
 }
 
-
 impl Default for FiniteStateMachine {
     fn default() -> Self {
         Self::new()
@@ -125,7 +128,6 @@ impl FiniteStateMachine {
     pub fn current_state(&self) -> Option<String> {
         self.current_state.clone()
     }
-    
 
     pub async fn set_initial_state(&mut self, state: String) -> Result<(), String> {
         if self.states.contains_key(&state) {
@@ -187,7 +189,7 @@ mod tests {
     #[derive(Debug, Default)]
     struct TestState {
         name: String,
-        attributes: HashMap<String, String>
+        attributes: HashMap<String, String>,
     }
 
     #[async_trait]
@@ -208,14 +210,13 @@ mod tests {
             println!("Exiting state (mut): {}", self.name);
         }
 
-        async fn set_attribute(&mut self, k: &str, v:String) {
-            self.attributes.insert( k.into(), v);
+        async fn set_attribute(&mut self, k: &str, v: String) {
+            self.attributes.insert(k.into(), v);
         }
 
         async fn clone_attribute(&self, k: &str) -> Option<String> {
             self.attributes.get(k).cloned()
         }
-
 
         fn name(&self) -> String {
             self.name.clone()
@@ -252,21 +253,21 @@ mod tests {
             "State1".to_string(),
             Box::new(TestState {
                 name: "State1".to_string(),
-                attributes: HashMap::default()
+                attributes: HashMap::default(),
             }),
         );
         fsm.add_state(
             "State2".to_string(),
             Box::new(TestState {
                 name: "State2".to_string(),
-                attributes: HashMap::default()
+                attributes: HashMap::default(),
             }),
         );
         fsm.add_state(
             "State3".to_string(),
             Box::new(TestState {
                 name: "State3".to_string(),
-                attributes: HashMap::default()
+                attributes: HashMap::default(),
             }),
         );
         fsm.add_transition("State1".to_string(), "State2".to_string());
@@ -308,21 +309,21 @@ mod tests {
                 "State1".to_string(),
                 Box::new(TestState {
                     name: "State1".to_string(),
-                    attributes: HashMap::default()
+                    attributes: HashMap::default(),
                 }),
             )
             .add_state(
                 "State2".to_string(),
                 Box::new(TestState {
                     name: "State2".to_string(),
-                    attributes: HashMap::default()
+                    attributes: HashMap::default(),
                 }),
             )
             .add_state(
                 "State3".to_string(),
                 Box::new(TestState {
                     name: "State3".to_string(),
-                    attributes: HashMap::default()
+                    attributes: HashMap::default(),
                 }),
             )
             .add_transition("State1".to_string(), "State2".to_string())

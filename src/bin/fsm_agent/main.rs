@@ -48,9 +48,6 @@ impl FSMState for WaitInputState {
     async fn on_exit(&self) {
         println!("Exited WaitForInput State");
     }
-    async fn on_enter_mut(&mut self) {}
-    async fn on_exit_mut(&mut self) {}
-    async fn set_attribute(&mut self, _k: &str, _v: String) {}
     async fn clone_attribute(&self, _k: &str) -> Option<String> {
         None
     }
@@ -61,7 +58,6 @@ impl FSMState for WaitInputState {
 
 #[async_trait]
 impl<C: LLMClient + Sync + Send> FSMState for ProcessingState<C> {
-    async fn on_enter(&self) {}
     async fn on_exit(&self) {
         println!("Exited Processing State");
     }
@@ -98,14 +94,8 @@ impl FSMState for ResponseState {
     async fn on_exit(&self) {
         println!("Exited Response State");
     }
-    async fn on_enter_mut(&mut self) {}
-    async fn on_exit_mut(&mut self) {}
     fn name(&self) -> String {
         "Response".to_string()
-    }
-    async fn set_attribute(&mut self, _k: &str, _v: String) {}
-    async fn clone_attribute(&self, _k: &str) -> Option<String> {
-        None
     }
 }
 
