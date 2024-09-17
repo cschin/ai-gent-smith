@@ -1,7 +1,7 @@
-use crate::fsm::{FSMState, FiniteStateMachine, FiniteStateMachineBuilder, TransitionResult};
+use crate::{fsm::{FSMState, FiniteStateMachine, TransitionResult}, llm_service::LLMStreamOut};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap};
 
 
 
@@ -19,7 +19,7 @@ pub struct ToolManager {
 
 impl ToolManager {
     fn new() -> Self {
-        let mut tools = HashMap::new();
+        let tools = HashMap::new();
         // Register tools here
         // tools.insert("search".to_string(), Box::new(SearchTool));
         // tools.insert("calculator".to_string(), Box::new(CalculatorTool));
@@ -47,9 +47,12 @@ pub struct LLMAgent<C: LLMClient> {
     pub prompts: HashMap<String, String>,
 }
 
+
 #[async_trait]
 pub trait LLMClient {
-    async fn generate(&self, prompt: &str) -> String;
+    async fn generate(&self, prompt: &str, msg:&str) -> String;
+
+    async fn generate_stream(&self, prompt: &str, msg:&str) -> LLMStreamOut;
 }
 
 impl<C: LLMClient> LLMAgent<C> {
@@ -71,7 +74,7 @@ impl<C: LLMClient> LLMAgent<C> {
             .get(&current_state)
             .ok_or("No prompt for current state")?;
 
-        let full_prompt = format!(
+        let msg = format!(
             "{}\nCurrent State: {}\nAvailable Transitions: {:?}\nUser Input: {}",
             prompt,
             current_state,
@@ -79,7 +82,7 @@ impl<C: LLMClient> LLMAgent<C> {
             user_input
         );
 
-        let llm_output = self.llm_client.generate(&full_prompt).await;
+        let llm_output = self.llm_client.generate(prompt, &msg).await;
         let response: LLMResponse = serde_json::from_str(&llm_output)
             .map_err(|e| format!("Failed to parse LLM output: {}", e))?;
 
@@ -147,6 +150,11 @@ impl FSMState for InitialState {
     fn name(&self) -> String {
         "InitialState".to_string()
     }
+
+    async fn set_attribute(&mut self, _k: &str, _v: String) {}
+    async fn clone_attribute(&self, _k: &str) -> Option<String> {
+        None
+    }
 }
 
 #[async_trait]
@@ -170,6 +178,11 @@ impl FSMState for ProcessingState {
     fn name(&self) -> String {
         "ProcessingState".to_string()
     }
+
+    async fn set_attribute(&mut self, _k: &str, _v: String) {}
+    async fn clone_attribute(&self, _k: &str) -> Option<String> {
+        None
+    }
 }
 
 // Example tool implementation
@@ -185,6 +198,9 @@ impl Tool for SearchTool {
 
 #[cfg(test)]
 mod tests {
+    use crate::llm_service::openai_stream_service;
+    use crate::fsm::FiniteStateMachineBuilder;
+
     use super::*;
 
     // Mock LLM Client for testing
@@ -193,9 +209,12 @@ mod tests {
 
     #[async_trait]
     impl LLMClient for MockLLMClient {
-        async fn generate(&self, _prompt: &str) -> String {
+        async fn generate(&self, _prompt: &str, _msg: &str) -> String {
             r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
                 .to_string()
+        }
+        async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut {
+            openai_stream_service(prompt, msg).await
         }
     }
 

@@ -1,79 +1,141 @@
 pub mod fsm;
 pub mod llm_agent;
+pub mod llm_service;
 
+use std::{collections::HashMap, sync::Arc};
 
-use rustyline::DefaultEditor;
 use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
 
-use async_trait::async_trait;
-use fsm::{FiniteStateMachine, FSMState};
 use anyhow::Result;
+use async_trait::async_trait;
+use fsm::{FSMState, FiniteStateMachine};
 
-// Mock LLM Agent
-struct MockLLMAgent;
+use llm_agent::{LLMAgent, LLMClient};
 
-impl MockLLMAgent {
-    fn new() -> Self {
-        MockLLMAgent
+use futures::StreamExt;
+use llm_service::{openai_stream_service, LLMStreamOut};
+struct TestLLMClient {}
+
+#[async_trait]
+impl LLMClient for TestLLMClient {
+    async fn generate(&self, _prompt: &str, _msg: &str) -> String {
+        r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
+            .to_string()
     }
 
-    async fn process(&self, input: &str) -> String {
-        format!("Processed: {}", input)
+    async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut {
+        openai_stream_service(prompt, msg).await
     }
 }
 
 // Define states for the FSM
-struct InitialState;
-struct ProcessingState;
+#[derive(Debug, Default)]
+struct WaitInputState;
+
+#[derive(Debug)]
+struct ProcessingState<C: LLMClient + Sync + Send> {
+    attributes: HashMap<String, String>,
+    llm_client: Arc<C>,
+}
 struct ResponseState;
 
 #[async_trait]
-impl FSMState for InitialState {
-    async fn on_enter(&self) { println!("Entered Initial State"); }
-    async fn on_exit(&self) { println!("Exited Initial State"); }
+impl FSMState for WaitInputState {
+    async fn on_enter(&self) {
+        println!("Entered WaitForInput State");
+    }
+    async fn on_exit(&self) {
+        println!("Exited WaitForInput State");
+    }
     async fn on_enter_mut(&mut self) {}
     async fn on_exit_mut(&mut self) {}
-    fn name(&self) -> String { "Initial".to_string() }
+    async fn set_attribute(&mut self, _k: &str, _v: String) {}
+    async fn clone_attribute(&self, _k: &str) -> Option<String> {
+        None
+    }
+    fn name(&self) -> String {
+        "WaitForInput".to_string()
+    }
 }
 
 #[async_trait]
-impl FSMState for ProcessingState {
-    async fn on_enter(&self) { println!("Entered Processing State"); }
-    async fn on_exit(&self) { println!("Exited Processing State"); }
-    async fn on_enter_mut(&mut self) {}
+impl<C: LLMClient + Sync + Send> FSMState for ProcessingState<C> {
+    async fn on_enter(&self) {}
+    async fn on_exit(&self) {
+        println!("Exited Processing State");
+    }
+    async fn on_enter_mut(&mut self) {
+        println!("Entered Processing State");
+        let guard = self.llm_client.clone();
+        let prompt = self.attributes.get("prompt").unwrap();
+        let msg = self.attributes.get("msg").unwrap();
+        let mut llm_stream = guard.generate_stream(prompt, msg).await;
+        while let Some(result) = llm_stream.next().await {
+            if let Some(output) = result {
+                print!("{}", output);
+            }
+        }
+        println!();
+    }
     async fn on_exit_mut(&mut self) {}
-    fn name(&self) -> String { "Processing".to_string() }
+    fn name(&self) -> String {
+        "Processing".to_string()
+    }
+    async fn set_attribute(&mut self, k: &str, v: String) {
+        self.attributes.insert(k.into(), v);
+    }
+    async fn clone_attribute(&self, k: &str) -> Option<String> {
+        self.attributes.get(k).cloned()
+    }
 }
 
 #[async_trait]
 impl FSMState for ResponseState {
-    async fn on_enter(&self) { println!("Entered Response State"); }
-    async fn on_exit(&self) { println!("Exited Response State"); }
+    async fn on_enter(&self) {
+        println!("Entered Response State");
+    }
+    async fn on_exit(&self) {
+        println!("Exited Response State");
+    }
     async fn on_enter_mut(&mut self) {}
     async fn on_exit_mut(&mut self) {}
-    fn name(&self) -> String { "Response".to_string() }
+    fn name(&self) -> String {
+        "Response".to_string()
+    }
+    async fn set_attribute(&mut self, _k: &str, _v: String) {}
+    async fn clone_attribute(&self, _k: &str) -> Option<String> {
+        None
+    }
 }
-
-
-
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut fsm = FiniteStateMachine::new();
-    fsm.add_state("Initial".to_string(), Box::new(InitialState));
-    fsm.add_state("Processing".to_string(), Box::new(ProcessingState));
+    let llm_client = TestLLMClient {};
+
+    fsm.add_state("WaitForInput".to_string(), Box::new(WaitInputState));
+    fsm.add_state(
+        "Processing".to_string(),
+        Box::new(ProcessingState {
+            llm_client: Arc::new(llm_client),
+            attributes: HashMap::<String, String>::default(),
+        }),
+    );
+
     fsm.add_state("Response".to_string(), Box::new(ResponseState));
 
-    fsm.add_transition("Initial".to_string(), "Processing".to_string());
+    fsm.add_transition("WaitForInput".to_string(), "Processing".to_string());
     fsm.add_transition("Processing".to_string(), "Response".to_string());
-    fsm.add_transition("Response".to_string(), "Initial".to_string());
+    fsm.add_transition("Response".to_string(), "WaitForInput".to_string());
 
-    fsm.set_initial_state("Initial".to_string()).await?;
+    fsm.set_initial_state("WaitForInput".to_string()).await?;
 
-    let llm_agent = MockLLMAgent::new();
+    let llm_client = TestLLMClient {};
+    let mut agent = LLMAgent::new(fsm, llm_client);
 
     println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
-    let mut rl = DefaultEditor::new()?;  // Use DefaultEditor instead
+    let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
     loop {
         let readline = rl.readline(">> ");
         match readline {
@@ -85,24 +147,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let _ = rl.add_history_entry(line.as_str());
 
-                let _ = fsm.transition("Processing".to_string()).await;
-                let response = llm_agent.process(&line).await;
-                fsm.transition("Response".to_string()).await;
-                println!("Agent: {}", response);
-                fsm.transition("Initial".to_string()).await;
+                let processing_state = agent.fsm.states.get_mut("Processing").unwrap();
 
-                if let Some(current_state) = fsm.current_state() {
+                processing_state
+                    .set_attribute("prompt", "test prompt".into())
+                    .await;
+
+                processing_state.set_attribute("msg", line).await;
+
+                let _ = agent.fsm.transition("Processing".to_string()).await;
+
+                agent.fsm.transition("Response".to_string()).await;
+                agent.fsm.transition("WaitForInput".to_string()).await;
+
+                if let Some(current_state) = agent.fsm.current_state() {
                     println!("Current state: {}", current_state);
                 }
-            },
+            }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");
                 break;
-            },
+            }
             Err(ReadlineError::Eof) => {
                 println!("CTRL-D");
                 break;
-            },
+            }
             Err(err) => {
                 println!("Error: {:?}", err);
                 break;
