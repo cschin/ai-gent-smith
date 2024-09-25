@@ -128,6 +128,7 @@ const SHOW_AGENT_LIB_BTN: &str = "show_agent_btn";
 const BASIC_AGENT_DESIGN_BTN: &str = "basic_agent_design_btn";
 const ADV_AGENT_DESIGN_BTN: &str = "adv_agent_design_btn";
 const LOGOUT_BTN: &str = "logout_btn";
+const SEARCH_AGENT_BTN: &str = "search_agent_btn";
 
 fn build_left_panel(ctx: &mut TnContextBase) {
     let attrs = HtmlAttributes::builder()
@@ -157,7 +158,16 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(ADV_AGENT_DESIGN_BTN.into(), "Advanced Agent Designer".into())
+        .init(SEARCH_AGENT_BTN.into(), "Search Agents".into())
+        .update_attrs(attrs.clone())
+        .set_action(TnActionExecutionMethod::Await, change_workspace)
+        .add_to_context(ctx);
+
+    TnButton::builder()
+        .init(
+            ADV_AGENT_DESIGN_BTN.into(),
+            "Advanced Agent Designer".into(),
+        )
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
@@ -175,8 +185,9 @@ fn layout(context: TnContext) -> TnFutureString {
         let context_guard = context.read().await;
         let cards = context_guard.get_initial_rendered_string(CARDS).await;
         let mut buttons = Vec::<String>::new();
-        for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN, 
-                    BASIC_AGENT_DESIGN_BTN, ADV_AGENT_DESIGN_BTN] {
+        for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN,
+                    SEARCH_AGENT_BTN, BASIC_AGENT_DESIGN_BTN, 
+                    ADV_AGENT_DESIGN_BTN] {
             buttons.push(context_guard.get_rendered_string(btn).await);
         }
         let html = AppPageTemplate { cards, buttons };
@@ -231,6 +242,14 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
             ADV_AGENT_DESIGN_BTN => {
                 let template = SetupAgentTemplate {};
                 Some(template.render().unwrap())
+            },
+            
+            SEARCH_AGENT_BTN => {
+                // TODO: need a chat system to find the right agent
+                let context_guard = context.read().await;
+                let cards = context_guard.get_initial_rendered_string(CARDS).await;
+                Some(cards)
+
             },
 
             USER_SETTING_BTN
