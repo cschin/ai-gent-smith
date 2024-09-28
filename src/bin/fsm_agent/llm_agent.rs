@@ -150,9 +150,7 @@ impl<C: LLMClient> LLMAgent<C> {
 
         self.messages.push(("user".into(), user_input.into()));
         last_message.push(("user".into(), user_input.into()));
-
         if let Some(prompt) = current_stat.get_attribute("prompt").await {
-
             let msg = format!(
                 "Current State: {}\nAvailable Transitions: {:?}",
                 current_state_name,
@@ -160,43 +158,41 @@ impl<C: LLMClient> LLMAgent<C> {
             );
 
             let fsm_prompt = [FSM_PROMPT, msg.as_str()].join("\n");
-            
+
             let prompt = [
+                self.sys_prompt.as_str(),
                 prompt.as_str(),
                 "\nHere is the current summary:\n",
                 &self.summary,
             ]
             .join("\n");
-            
+
             let summary_prompt = [SUMMARY_PROMPT, self.summary.as_str()].join("\n");
-            
+
             tracing::info!("summary prompt: {}\n\n", summary_prompt);
-            
+
             let llm_output = self.llm_client.generate(&prompt, &self.messages).await;
-            
+
             self.messages.push(("assistant".into(), llm_output.clone()));
             last_message.push(("assistant".into(), llm_output.clone()));
 
             tracing::info!("raw output: {}\n", llm_output);
 
-            let next_state = self
-                .llm_client
-                .generate(&fsm_prompt, &self.messages)
-                .await;
+            let next_state = self.llm_client.generate(&fsm_prompt, &self.messages).await;
 
             self.summary = self
                 .llm_client
                 .generate(&summary_prompt, &last_message)
                 .await;
-            
+
             tracing::info!("summary: {}", self.summary);
             tracing::info!("next_state raw: {}", next_state);
-            
+
             let mut response: LLMResponse = serde_json::from_str(&next_state)
-                .map_err(|e| format!("Failed to parse LLM output: {}", e))?;
-            
+                .map_err(|e| format!("Failed to parse LLM output: {e}, {}", next_state))?;
+
             response.message = llm_output;
-            
+
             tracing::info!(
                 "resp: {:?} /n NEXT STATE:{:?}\n",
                 response,
@@ -238,7 +234,6 @@ impl<C: LLMClient> LLMAgent<C> {
 #[cfg(test)]
 mod tests {
     use crate::fsm::{FSMBuilder, FSMState};
-    use crate::llm_service::openai_stream_service;
 
     use super::*;
 
@@ -312,8 +307,8 @@ mod tests {
             r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
                 .to_string()
         }
-        async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut {
-            openai_stream_service(prompt, msg).await
+        async fn generate_stream(&self, _prompt: &str, _msg: &str) -> LLMStreamOut {
+            unimplemented!()
         }
     }
 
@@ -332,6 +327,7 @@ mod tests {
                 "Processing".to_string(),
                 "This is the processing state prompt.".to_string(),
             )
+            .set_sys_prompt("".into())
             .build()
             .unwrap();
 
@@ -345,7 +341,10 @@ mod tests {
 
         let result = agent.process_input("Test input").await;
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), "Test response");
+        assert_eq!(
+            result.unwrap(),
+            r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
+        );
     }
 
     #[tokio::test]
