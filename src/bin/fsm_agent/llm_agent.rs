@@ -1,14 +1,116 @@
-use crate::{fsm::{FSMState, FiniteStateMachine, TransitionResult}, llm_service::LLMStreamOut};
+use crate::{
+    fsm::{FSMState, FiniteStateMachine, TransitionResult},
+    llm_service::LLMStreamOut,
+};
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 
 
-#[derive(Deserialize, Serialize)]
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct FSMAgentConfig {
+    pub states: Vec<String>,
+    pub transitions: Vec<(String, String)>,
+    pub initial_state: String,
+    pub prompts: HashMap<String, String>,
+    pub sys_prompt: String,
+}
+
+
+impl FSMAgentConfig {
+    pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json_str)
+    }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(self)
+    }
+
+    pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
+}
+
+
+#[derive(Default)]
+pub struct FSMAgentConfigBuilder {
+    states: Vec<String>,
+    transitions: Vec<(String, String)>,
+    initial_state: Option<String>,
+    prompts: HashMap<String, String>,
+    sys_prompt: Option<String>,
+}
+
+impl FSMAgentConfigBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn add_state(mut self, state: String) -> Self {
+        self.states.push(state);
+        self
+    }
+
+    pub fn add_transition(mut self, from: String, to: String) -> Self {
+        self.transitions.push((from, to));
+        self
+    }
+
+    pub fn set_initial_state(mut self, state: String) -> Self {
+        self.initial_state = Some(state);
+        self
+    }
+
+    pub fn add_prompt(mut self, state: String, prompt: String) -> Self {
+        self.prompts.insert(state, prompt);
+        self
+    }
+
+    pub fn set_sys_prompt(mut self, prompt: String) -> Self {
+        self.sys_prompt = Some(prompt);
+        self
+    }
+
+    pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
+        let config: FSMAgentConfig = serde_json::from_str(json_str)?;
+        Ok(Self {
+            states: config.states,
+            transitions: config.transitions,
+            initial_state: Some(config.initial_state),
+            prompts: config.prompts,
+            sys_prompt: Some(config.sys_prompt),
+        })
+    }
+
+    pub fn build(self) -> Result<FSMAgentConfig, &'static str> {
+        if self.states.is_empty() {
+            return Err("At least one state is required");
+        }
+        if self.initial_state.is_none() {
+            return Err("Initial state must be set");
+        }
+        if self.sys_prompt.is_none() {
+            return Err("System prompt must be set");
+        }
+
+        Ok(FSMAgentConfig {
+            states: self.states,
+            transitions: self.transitions,
+            initial_state: self.initial_state.unwrap(),
+            prompts: self.prompts,
+            sys_prompt: self.sys_prompt.unwrap(),
+        })
+    }
+}
+
+#[derive(Deserialize, Serialize, Debug)]
 pub struct LLMResponse {
+    #[serde(default)]
     message: String,
+    #[serde(default)]
     tool: Option<String>,
+    #[serde(default)]
     tool_input: Option<String>,
     next_state: Option<String>,
 }
@@ -44,16 +146,20 @@ pub struct LLMAgent<C: LLMClient> {
     pub fsm: FiniteStateMachine,
     pub llm_client: C,
     pub tool_manager: ToolManager,
-    pub prompts: HashMap<String, String>,
+    pub sys_prompt: String,
+    pub summary: String,
+    pub messages: Vec<(String, String)>,  // (role, message)
 }
-
 
 #[async_trait]
 pub trait LLMClient {
-    async fn generate(&self, prompt: &str, msg:&str) -> String;
+    async fn generate(&self, prompt: &str, msg: &Vec<(String, String)>) -> String;
 
-    async fn generate_stream(&self, prompt: &str, msg:&str) -> LLMStreamOut;
+    async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut;
 }
+
+const FSM_PROMPT: &str = include_str!("../../../fsm_prompt");
+const SUMMARY_PROMPT: &str = include_str!("../../../summary_prompt");
 
 impl<C: LLMClient> LLMAgent<C> {
     pub fn new(fsm: FiniteStateMachine, llm_client: C) -> Self {
@@ -63,49 +169,72 @@ impl<C: LLMClient> LLMAgent<C> {
             fsm,
             llm_client,
             tool_manager,
-            prompts: HashMap::default(),
+            summary: String::default(),
+            sys_prompt: String::default(),
+            messages: Vec::default(),
         }
     }
 
     pub async fn process_input(&mut self, user_input: &str) -> Result<String, String> {
-        let current_state = self.fsm.current_state().ok_or("No current state")?;
-        let prompt = self
-            .prompts
-            .get(&current_state)
-            .ok_or("No prompt for current state")?;
 
-        let msg = format!(
-            "{}\nCurrent State: {}\nAvailable Transitions: {:?}\nUser Input: {}",
-            prompt,
-            current_state,
-            self.fsm.available_transitions(),
-            user_input
-        );
+        let mut last_message = Vec::<(String, String)>::new();
 
-        let llm_output = self.llm_client.generate(prompt, &msg).await;
-        let response: LLMResponse = serde_json::from_str(&llm_output)
-            .map_err(|e| format!("Failed to parse LLM output: {}", e))?;
+        let current_state_name = self.fsm.current_state().ok_or("No current state")?;
+        let current_stat = self.fsm.states.get(&current_state_name).unwrap();
+        // println!("current_state: {:?} {:?}", current_state,  self.prompts.get(&current_state)); 
 
-        let mut final_response = response.message.clone();
+        self.messages.push( ("user".into(), user_input.into()));
+        last_message.push(("user".into(), user_input.into()));
 
-        // Use tool if specified
-        if let (Some(tool), Some(tool_input)) = (response.tool, response.tool_input) {
-            match self.tool_manager.use_tool(&tool, &tool_input).await {
-                Ok(tool_output) => {
-                    final_response.push_str(&format!("\nTool '{}' output: {}", tool, tool_output));
-                }
-                Err(e) => {
-                    final_response.push_str(&format!("\nError using tool '{}': {}", tool, e));
-                }
+        if let Some(prompt) = current_stat.get_attribute("prompt").await {
+            let msg = format!(
+                "Current State: {}\nAvailable Transitions: {:?}",
+                current_state_name,
+                self.fsm.available_transitions(),
+            );
+            let state_prompt = [FSM_PROMPT, msg.as_str()].join("\n");
+            let prompt = [prompt.as_str(), &self.summary].join("\n");
+            let summary_prompt = [SUMMARY_PROMPT, self.summary.as_str()].join("\n");
+            println!("summary prompt: {}\n\n",summary_prompt);
+            let llm_output = self.llm_client.generate(&prompt, &self.messages).await;
+            self.messages.push( ("assistant".into(), llm_output.clone()));
+            last_message.push(("assistant".into(), llm_output.clone()));
+            println!("raw output: {}\n", llm_output);
+
+            let next_state = self.llm_client.generate(&state_prompt, &self.messages).await;
+            self.summary =  self.llm_client.generate(&summary_prompt, &last_message).await;
+            println!("summary: {}", self.summary);
+            println!("next_state raw: {}", next_state); 
+            let mut response: LLMResponse = serde_json::from_str(&next_state)
+                .map_err(|e| format!("Failed to parse LLM output: {}", e))?;
+            response.message = llm_output; 
+            println!("resp: {:?} /n NEXT STATE:{:?}\n",response, response.next_state);
+
+
+             // Use tool if specified
+            // if let (Some(tool), Some(tool_input)) = (response.tool, response.tool_input) {
+            //     match self.tool_manager.use_tool(&tool, &tool_input).await {
+            //         Ok(tool_output) => {
+            //             response.message
+            //                 .push_str(&format!("\nTool '{}' output: {}", tool, tool_output));
+            //         }
+            //         Err(e) => {
+            //             response.message.push_str(&format!("\nError using tool '{}': {}", tool, e));
+            //         }
+            //     }
+            // }
+
+            // Transition state if specified
+            if let Some(next_state) = &response.next_state {
+                self.transition_state(next_state).await?;
             }
+
+            Ok(response.message)
+        } else {
+            Ok("".to_string())
         }
 
-        // Transition state if specified
-        if let Some(next_state) = &response.next_state {
-            self.transition_state(next_state).await?;
-        }
-
-        Ok(final_response)
+       
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), String> {
@@ -115,7 +244,7 @@ impl<C: LLMClient> LLMAgent<C> {
                 Ok(())
             }
             (TransitionResult::InvalidTransition, _) => {
-                Err(format!("Invalid transition to state: {}", next_state))
+                Err(format!("Invalid transition to state:{:?} -> {}", self.fsm.current_state(), next_state))
             }
             (TransitionResult::NoTransitionAvailable, _) => {
                 Err(format!("No transition available to state: {}", next_state))
@@ -185,21 +314,10 @@ impl FSMState for ProcessingState {
     }
 }
 
-// Example tool implementation
-struct SearchTool;
-
-#[async_trait]
-impl Tool for SearchTool {
-    async fn run(&self, input: &str) -> Result<String, String> {
-        // Implement search logic here
-        Ok(format!("Search results for: {}", input))
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::llm_service::openai_stream_service;
     use crate::fsm::FiniteStateMachineBuilder;
+    use crate::llm_service::openai_stream_service;
 
     use super::*;
 
@@ -209,7 +327,7 @@ mod tests {
 
     #[async_trait]
     impl LLMClient for MockLLMClient {
-        async fn generate(&self, _prompt: &str, _msg: &str) -> String {
+        async fn generate(&self, _prompt: &str, _msg: &Vec<(String, String)>) -> String {
             r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
                 .to_string()
         }
@@ -230,28 +348,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_llm_agent_process_input() {
-        let mut fsm_builder = FiniteStateMachineBuilder::new();
-        fsm_builder = fsm_builder.add_state("Initial".to_string(), Box::new(InitialState));
-        fsm_builder = fsm_builder.add_state("Processing".to_string(), Box::new(ProcessingState));
-        fsm_builder = fsm_builder.add_transition("Initial".to_string(), "Processing".to_string());
-        fsm_builder = fsm_builder.set_initial_state("Initial".to_string());
+        let fsm_config = FSMAgentConfigBuilder::new()
+            .add_state("Initial".to_string())
+            .add_state("Processing".to_string())
+            .add_transition("Initial".to_string(), "Processing".to_string())
+            .set_initial_state("Initial".to_string())
+            .add_prompt("Initial".to_string(), "This is the initial state prompt.".to_string())
+            .add_prompt("Processing".to_string(), "This is the processing state prompt.".to_string())
+            .build()
+            .unwrap();
 
-        let fsm = fsm_builder.build().unwrap();
-
+        let fsm = FiniteStateMachineBuilder::from_config(&fsm_config).unwrap().build().unwrap();
         let llm_client = MockLLMClient;
 
         let mut agent = LLMAgent::new(fsm, llm_client);
-
-        // Add a mock prompt
-        agent.prompts.insert(
-            "Initial".to_string(),
-            "This is the initial state prompt.".to_string(),
-        );
-
-        agent.prompts.insert(
-            "Processing".to_string(),
-            "This is the processing state prompt.".to_string(),
-        );
 
         // Add a mock tool
         agent

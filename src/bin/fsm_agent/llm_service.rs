@@ -34,7 +34,7 @@ pub async fn openai_stream_service(prompt: &str, query: &str) -> LLMStreamOut {
     let client = Client::new();
 
     let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(2048u16)
+        .max_tokens(4096u16)
         //.model("gpt-4")
         .model("gpt-4o")
         .messages(messages)
@@ -64,4 +64,59 @@ pub async fn openai_stream_service(prompt: &str, query: &str) -> LLMStreamOut {
     });
 
     Box::pin(llm_output)
+}
+
+
+pub async fn openai_service(prompt: &str, msgs: &Vec<(String, String)>) -> String  {
+    let mut messages: Vec<ChatCompletionRequestMessage> =
+        vec![ChatCompletionRequestSystemMessageArgs::default()
+            .content(prompt)
+            .build()
+            .expect("error")
+            .into()];
+
+    msgs.iter().for_each(|(role, msg)| {
+        match role.as_str() {
+            "user" => {
+                messages.push(
+                    ChatCompletionRequestUserMessageArgs::default()
+                        .content(msg.as_str())
+                        .build()
+                        .expect("error")
+                        .into(),
+                );
+            },
+            "assistant" => {
+                messages.push(
+                    ChatCompletionRequestAssistantMessageArgs::default()
+                        .content(msg.as_str())
+                        .build()
+                        .expect("error")
+                        .into(),
+                );
+            },
+            _ => {}
+        }
+    });
+
+
+
+    let client = Client::new();
+
+    let request = CreateChatCompletionRequestArgs::default()
+        .max_tokens(2048u16)
+        //.model("gpt-4")
+        .model("gpt-4o")
+        .messages(messages)
+        .build()
+        .expect("error");
+
+    let llm_output = client
+        .chat()
+        .create(request)
+        .await
+        .expect("create stream fail for LLM API call");
+
+    llm_output.choices.first().unwrap().message.content.as_ref().unwrap().clone() //we will handle the exception later
+
 }

@@ -1,6 +1,8 @@
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 
+use crate::llm_agent::FSMAgentConfig;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransitionResult {
     Success,
@@ -16,6 +18,7 @@ pub trait FSMState: Send + Sync {
     async fn on_enter_mut(&mut self) {}
     async fn on_exit_mut(&mut self) {}
     async fn set_attribute(&mut self, _k: &str, _v: String) {}
+    async fn get_attribute(&self, _k: &str) -> Option<String> { None }
     async fn clone_attribute(&self, _k: &str) -> Option<String> {
         unimplemented!()
     }
@@ -42,6 +45,59 @@ impl Default for FiniteStateMachineBuilder {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct DefaultFSMChatState {
+    name: String,
+    attributes: HashMap<String, String>,
+}
+
+impl DefaultFSMChatState {
+    pub fn new(name: String, prompt: String) -> Self {
+        let mut attributes = HashMap::new();
+        attributes.insert("prompt".to_string(), prompt); 
+        DefaultFSMChatState {
+            name,
+            attributes,
+        }
+    }
+}
+
+#[async_trait]
+impl FSMState for DefaultFSMChatState {
+    async fn on_enter(&self) {
+        println!("Entering state: {}", self.name);
+    }
+
+    async fn on_exit(&self) {
+        println!("Exiting state: {}", self.name);
+    }
+
+    async fn on_enter_mut(&mut self) {
+        println!("Entering state (mut): {}", self.name);
+    }
+
+    async fn on_exit_mut(&mut self) {
+        println!("Exiting state (mut): {}", self.name);
+    }
+
+    async fn set_attribute(&mut self, k: &str, v: String) {
+        self.attributes.insert(k.to_string(), v);
+    }
+
+    async fn get_attribute(&self, k: &str) -> Option<String> {
+        self.attributes.get(k).cloned()
+    }
+
+    async fn clone_attribute(&self, k: &str) -> Option<String> {
+        self.attributes.get(k).cloned()
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+
 impl FiniteStateMachineBuilder {
     pub fn new() -> Self {
         FiniteStateMachineBuilder {
@@ -64,6 +120,38 @@ impl FiniteStateMachineBuilder {
     pub fn set_initial_state(mut self, state: String) -> Self {
         self.current_state = Some(state);
         self
+    }
+
+    pub fn from_config(config: &FSMAgentConfig) -> Result<Self, &'static str> {
+        let mut builder = FiniteStateMachineBuilder {
+            states: HashMap::new(),
+            transitions: HashMap::new(),
+            current_state: Some(config.initial_state.clone()),
+        };
+
+        // Add states
+        for state_name in &config.states {
+            let prompt = config.prompts.get(state_name)
+                .ok_or("Missing prompt for state")?
+                .clone();
+            let state = DefaultFSMChatState::new(state_name.clone(), prompt);
+            builder.states.insert(state_name.clone(), Box::new(state));
+        }
+
+        // Add transitions
+        for (from, to) in &config.transitions {
+            builder.transitions
+                .entry(from.clone())
+                .or_insert_with(HashSet::new)
+                .insert(to.clone());
+        }
+
+        // Validate initial state
+        if !builder.states.contains_key(&config.initial_state) {
+            return Err("Initial state not found in states");
+        }
+
+        Ok(builder)
     }
 
     pub fn build(self) -> Result<FiniteStateMachine, String> {
