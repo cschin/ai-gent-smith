@@ -11,7 +11,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use fsm::FSMBuilder;
 
-use llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder, LLMAgent, LLMClient};
+use llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 
 // use futures::StreamExt;
 use llm_service::{openai_service, openai_stream_service, LLMStreamOut};
@@ -71,6 +71,7 @@ const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
 
 // use std::fs::File;
 // use std::io::Write;
+// use llm_agent::FSMAgentConfig;
 // fn write_agent_config_to_file(fsm_config: &FSMAgentConfig) -> Result<(), std::io::Error> {
 //     let json_output = fsm_config.to_json().unwrap();
 //     let mut file = File::create("agent_config.json")?;
