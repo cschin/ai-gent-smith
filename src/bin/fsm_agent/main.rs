@@ -2,8 +2,7 @@ pub mod fsm;
 pub mod llm_agent;
 pub mod llm_service;
 
-use std::fs::File;
-use std::io::Write;
+
 
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
@@ -12,7 +11,7 @@ use anyhow::Result;
 use async_trait::async_trait;
 use fsm::FSMBuilder;
 
-use llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
+use llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder, LLMAgent, LLMClient};
 
 // use futures::StreamExt;
 use llm_service::{openai_service, openai_stream_service, LLMStreamOut};
@@ -70,54 +69,29 @@ impl LLMClient for TestLLMClient {
 
 const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
 
+// use std::fs::File;
+// use std::io::Write;
+// fn write_agent_config_to_file(fsm_config: &FSMAgentConfig) -> Result<(), std::io::Error> {
+//     let json_output = fsm_config.to_json().unwrap();
+//     let mut file = File::create("agent_config.json")?;
+//     file.write_all(json_output.as_bytes())?;
+//     tracing::info!("Agent config written to agent_config.json");
+//     Ok(())
+// }
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG)?.build()?;
-    // let fsm_config = FSMAgentConfigBuilder::new()
-    //     .add_state("StandBy".to_string())
-    //     .add_state("InitialResponse".to_string())
-    //     .add_state("AskFollowUpQuestion".to_string())
-    //     .add_transition("StandBy".to_string(), "StandBy".to_string())
-    //     .add_transition("StandBy".to_string(), "InitialResponse".to_string())
-    //     .add_transition("StandBy".to_string(), "AskFollowUpQuestion".to_string())
-    //     .add_transition(
-    //         "InitialResponse".to_string(),
-    //         "AskFollowUpQuestion".to_string(),
-    //     )
-    //     .add_transition("InitialResponse".to_string(), "StandBy".to_string())
-    //     .add_transition(
-    //         "AskFollowUpQuestion".to_string(),
-    //         "AskFollowUpQuestion".to_string(),
-    //     )
-    //     .add_transition("AskFollowUpQuestion".to_string(), "StandBy".to_string())
-    //     .set_initial_state("StandBy".to_string())
-    //     .add_prompt(
-    //         "StandBy".to_string(),
-    //         STANDBY_PROMPT.into(),
-    //     )
-    //     .add_prompt(
-    //         "InitialResponse".to_string(),
-    //         RESPONSE_PROMPT.into(),
-    //     )
-    //     .add_prompt(
-    //         "AskFollowUpQuestion".to_string(),
-    //         FOLLOWUP_PROMPT.into(),
-    //     )
-    //     .set_sys_prompt(SYS_PROMPT.into())
-    //     .build()
-    //     .unwrap();
-
+   
     let fsm = FSMBuilder::from_config(&fsm_config)?.build()?;
 
     let llm_client = TestLLMClient {};
     let mut agent = LLMAgent::new(fsm, llm_client);
 
     tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
-    let json_output = fsm_config.to_json().unwrap();
-    let mut file = File::create("agent_config.json").expect("Failed to create file");
-    file.write_all(json_output.as_bytes())
-        .expect("Failed to write to file");
-    tracing::info!("Agent config written to agent_config.json");
+
+    //write_agent_config_to_file(&fsm_config); 
+   
 
     println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
