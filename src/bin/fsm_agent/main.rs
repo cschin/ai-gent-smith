@@ -2,56 +2,33 @@ pub mod fsm;
 pub mod llm_agent;
 pub mod llm_service;
 
-use std::{collections::HashMap, sync::Arc};
+use std::fs::File;
+use std::io::Write;
 
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use fsm::{FSMState, FiniteStateMachine, FiniteStateMachineBuilder};
+use fsm::FSMBuilder;
 
-use llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder, LLMAgent, LLMClient};
+use llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 
 // use futures::StreamExt;
 use llm_service::{openai_service, openai_stream_service, LLMStreamOut};
 struct TestLLMClient {}
 
-const SYS_PROMPT: &str = include_str!("../../../sys_prompt");
-const STANDBY_PROMPT: &str = include_str!("../../../standby_prompt");
-const RESPONSE_PROMPT: &str = include_str!("../../../resp_prompt"); 
-const FOLLOWUP_PROMPT: &str = include_str!("../../../followup_prompt"); 
 
 #[async_trait]
 impl LLMClient for TestLLMClient {
-    async fn generate(&self, prompt: &str, msgs: &Vec<(String, String)>) -> String {
+    async fn generate(&self, prompt: &str, msgs: &[(String, String)]) -> String {
         // r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
         //     .to_string()
-        openai_service(prompt, msgs).await 
+        openai_service(prompt, msgs).await
     }
 
     async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut {
         openai_stream_service(prompt, msg).await
-    }
-}
-
-struct StandBy;
-struct InitialResponseState;
-struct AskFollowUpQuestionState;
-
-#[async_trait]
-impl FSMState for StandBy {
-    async fn on_enter(&self) {
-        println!("Entered StandBy State");
-    }
-    async fn on_exit(&self) {
-        println!("Exited StandBy State");
-    }
-    async fn clone_attribute(&self, _k: &str) -> Option<String> {
-        None
-    }
-    fn name(&self) -> String {
-        "StandBy".to_string()
     }
 }
 
@@ -91,61 +68,57 @@ impl FSMState for StandBy {
 //     }
 // }
 
-#[async_trait]
-impl FSMState for AskFollowUpQuestionState {
-    async fn on_enter(&self) {
-        println!("Entered AskFollowUpQuestion State");
-    }
-    async fn on_exit(&self) {
-        println!("Exited AskFollowUpQuestion State");
-    }
-    fn name(&self) -> String {
-        "AskFollowUpQuestion".to_string()
-    }
-}
-
-#[async_trait]
-impl FSMState for InitialResponseState {
-    async fn on_enter(&self) {
-        println!("Entered Response State");
-    }
-    async fn on_exit(&self) {
-        println!("Exited Response State");
-    }
-    fn name(&self) -> String {
-        "InitialResponseState".to_string()
-    }
-}
+const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG)?.build()?;
+    // let fsm_config = FSMAgentConfigBuilder::new()
+    //     .add_state("StandBy".to_string())
+    //     .add_state("InitialResponse".to_string())
+    //     .add_state("AskFollowUpQuestion".to_string())
+    //     .add_transition("StandBy".to_string(), "StandBy".to_string())
+    //     .add_transition("StandBy".to_string(), "InitialResponse".to_string())
+    //     .add_transition("StandBy".to_string(), "AskFollowUpQuestion".to_string())
+    //     .add_transition(
+    //         "InitialResponse".to_string(),
+    //         "AskFollowUpQuestion".to_string(),
+    //     )
+    //     .add_transition("InitialResponse".to_string(), "StandBy".to_string())
+    //     .add_transition(
+    //         "AskFollowUpQuestion".to_string(),
+    //         "AskFollowUpQuestion".to_string(),
+    //     )
+    //     .add_transition("AskFollowUpQuestion".to_string(), "StandBy".to_string())
+    //     .set_initial_state("StandBy".to_string())
+    //     .add_prompt(
+    //         "StandBy".to_string(),
+    //         STANDBY_PROMPT.into(),
+    //     )
+    //     .add_prompt(
+    //         "InitialResponse".to_string(),
+    //         RESPONSE_PROMPT.into(),
+    //     )
+    //     .add_prompt(
+    //         "AskFollowUpQuestion".to_string(),
+    //         FOLLOWUP_PROMPT.into(),
+    //     )
+    //     .set_sys_prompt(SYS_PROMPT.into())
+    //     .build()
+    //     .unwrap();
 
-    let fsm_config = FSMAgentConfigBuilder::new()
-    .add_state("StandBy".to_string())
-    .add_state("InitialResponse".to_string())
-    .add_state("AskFollowUpQuestion".to_string())
-    .add_transition("StandBy".to_string(), "StandBy".to_string())
-    .add_transition("StandBy".to_string(), "InitialResponse".to_string())
-    .add_transition("StandBy".to_string(), "AskFollowUpQuestion".to_string())
-    .add_transition("InitialResponse".to_string(), "AskFollowUpQuestion".to_string())
-    .add_transition("InitialResponse".to_string(), "StandBy".to_string())
-    .add_transition("AskFollowUpQuestion".to_string(), "AskFollowUpQuestion".to_string())
-    .add_transition("AskFollowUpQuestion".to_string(), "StandBy".to_string())
-    .set_initial_state("StandBy".to_string())
-    .add_prompt("StandBy".to_string(), [SYS_PROMPT, STANDBY_PROMPT].join("\n"))
-    .add_prompt("InitialResponse".to_string(), [SYS_PROMPT, RESPONSE_PROMPT].join("\n"))
-    .add_prompt("AskFollowUpQuestion".to_string(), [SYS_PROMPT, FOLLOWUP_PROMPT].join("\n"))
-    .set_sys_prompt(SYS_PROMPT.into())
-    .build().unwrap();
-
-    let fsm = FiniteStateMachineBuilder::from_config(&fsm_config)?
-    .build()?;
+    let fsm = FSMBuilder::from_config(&fsm_config)?.build()?;
 
     let llm_client = TestLLMClient {};
     let mut agent = LLMAgent::new(fsm, llm_client);
 
+    tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
+    let json_output = fsm_config.to_json().unwrap();
+    let mut file = File::create("agent_config.json").expect("Failed to create file");
+    file.write_all(json_output.as_bytes())
+        .expect("Failed to write to file");
+    tracing::info!("Agent config written to agent_config.json");
 
-    println!("agent config: {}", fsm_config.to_json().unwrap());
     println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
     loop {
@@ -159,15 +132,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let _ = rl.add_history_entry(line.as_str());
 
-
-                if let Ok(res) = agent.process_input(&line).await {
-                    println!("Response: {}", res);
-                } else {
-                    println!("LLM error, please retry your question.");
+                match agent.process_input(&line).await {
+                    Ok(res) => println!("Response: {}", res),
+                    Err(err) => println!("LLM error, please retry your question. {:?}", err),
                 }
 
                 if let Some(current_state) = agent.fsm.current_state() {
-                    println!("Current state: {}", current_state);
+                    tracing::info!("Current state: {}", current_state);
                 }
             }
             Err(ReadlineError::Interrupted) => {

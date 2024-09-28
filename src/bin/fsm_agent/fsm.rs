@@ -27,19 +27,19 @@ pub trait FSMState: Send + Sync {
     }
 }
 
-pub struct FiniteStateMachine {
+pub struct FSM {
     pub states: HashMap<String, Box<dyn FSMState>>,
     transitions: HashMap<String, HashSet<String>>,
     current_state: Option<String>,
 }
 
-pub struct FiniteStateMachineBuilder {
+pub struct FSMBuilder {
     states: HashMap<String, Box<dyn FSMState>>,
     transitions: HashMap<String, HashSet<String>>,
     current_state: Option<String>,
 }
 
-impl Default for FiniteStateMachineBuilder {
+impl Default for FSMBuilder {
     fn default() -> Self {
         Self::new()
     }
@@ -65,19 +65,19 @@ impl DefaultFSMChatState {
 #[async_trait]
 impl FSMState for DefaultFSMChatState {
     async fn on_enter(&self) {
-        println!("Entering state: {}", self.name);
+        tracing::info!("Entering state: {}", self.name);
     }
 
     async fn on_exit(&self) {
-        println!("Exiting state: {}", self.name);
+        tracing::info!("Exiting state: {}", self.name);
     }
 
     async fn on_enter_mut(&mut self) {
-        println!("Entering state (mut): {}", self.name);
+        tracing::info!("Entering state (mut): {}", self.name);
     }
 
     async fn on_exit_mut(&mut self) {
-        println!("Exiting state (mut): {}", self.name);
+        tracing::info!("Exiting state (mut): {}", self.name);
     }
 
     async fn set_attribute(&mut self, k: &str, v: String) {
@@ -98,9 +98,9 @@ impl FSMState for DefaultFSMChatState {
 }
 
 
-impl FiniteStateMachineBuilder {
+impl FSMBuilder {
     pub fn new() -> Self {
-        FiniteStateMachineBuilder {
+        FSMBuilder {
             states: HashMap::new(),
             transitions: HashMap::new(),
             current_state: None,
@@ -123,7 +123,7 @@ impl FiniteStateMachineBuilder {
     }
 
     pub fn from_config(config: &FSMAgentConfig) -> Result<Self, &'static str> {
-        let mut builder = FiniteStateMachineBuilder {
+        let mut builder = FSMBuilder {
             states: HashMap::new(),
             transitions: HashMap::new(),
             current_state: Some(config.initial_state.clone()),
@@ -142,7 +142,7 @@ impl FiniteStateMachineBuilder {
         for (from, to) in &config.transitions {
             builder.transitions
                 .entry(from.clone())
-                .or_insert_with(HashSet::new)
+                .or_default()
                 .insert(to.clone());
         }
 
@@ -154,7 +154,7 @@ impl FiniteStateMachineBuilder {
         Ok(builder)
     }
 
-    pub fn build(self) -> Result<FiniteStateMachine, String> {
+    pub fn build(self) -> Result<FSM, String> {
         if self.states.is_empty() {
             return Err("FSM must have at least one state".to_string());
         }
@@ -175,7 +175,7 @@ impl FiniteStateMachineBuilder {
             }
         }
 
-        Ok(FiniteStateMachine {
+        Ok(FSM {
             states: self.states,
             transitions: self.transitions,
             current_state: self.current_state,
@@ -183,15 +183,15 @@ impl FiniteStateMachineBuilder {
     }
 }
 
-impl Default for FiniteStateMachine {
+impl Default for FSM {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl FiniteStateMachine {
+impl FSM {
     pub fn new() -> Self {
-        FiniteStateMachine {
+        FSM {
             states: HashMap::new(),
             transitions: HashMap::new(),
             current_state: None,
@@ -335,7 +335,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_finite_state_machine() {
-        let mut fsm = FiniteStateMachine::new();
+        let mut fsm = FSM::new();
 
         fsm.add_state(
             "State1".to_string(),
@@ -392,7 +392,7 @@ mod tests {
     }
     #[tokio::test]
     async fn test_finite_state_machine_builder() {
-        let fsm = FiniteStateMachineBuilder::new()
+        let fsm = FSMBuilder::new()
             .add_state(
                 "State1".to_string(),
                 Box::new(TestState {

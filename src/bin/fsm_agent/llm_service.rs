@@ -67,7 +67,7 @@ pub async fn openai_stream_service(prompt: &str, query: &str) -> LLMStreamOut {
 }
 
 
-pub async fn openai_service(prompt: &str, msgs: &Vec<(String, String)>) -> String  {
+pub async fn openai_service(prompt: &str, msgs: &[(String, String)]) -> String  {
     let mut messages: Vec<ChatCompletionRequestMessage> =
         vec![ChatCompletionRequestSystemMessageArgs::default()
             .content(prompt)
