@@ -98,7 +98,7 @@ async fn main() {
     };
     // set app state
     let app_share_data = AppData::builder(build_context, layout)
-        .set_head(include_str!("../../../templates/head.html"))
+        .set_head(include_str!("../templates/head.html"))
         .set_html_attributes(r#"lang="en" data-theme="business""#)
         .build();
     tron_app::run(app_share_data, app_config).await

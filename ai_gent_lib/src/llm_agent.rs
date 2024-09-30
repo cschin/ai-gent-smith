@@ -126,8 +126,8 @@ pub trait LLMClient {
     async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut;
 }
 
-const FSM_PROMPT: &str = include_str!("../../../dev_config/fsm_prompt");
-const SUMMARY_PROMPT: &str = include_str!("../../../dev_config/summary_prompt");
+const FSM_PROMPT: &str = include_str!("../dev_config/fsm_prompt");
+const SUMMARY_PROMPT: &str = include_str!("../dev_config/summary_prompt");
 
 impl<C: LLMClient> LLMAgent<C> {
     pub fn new(fsm: FSM, llm_client: C) -> Self {

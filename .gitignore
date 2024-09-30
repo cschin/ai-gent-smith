@@ -1,5 +1,6 @@
 /.vscode
 /target
+**/target
 **/Cargo.lock
 **/.env
 **/env
@@ -7,3 +8,5 @@ self_signed_certs/**
 csv_output/**
 **/.DS_Store
 .sqlx/*
+ai_gent_web/self_signed_certs/cert.pem
+ai_gent_web/self_signed_certs/key.pem

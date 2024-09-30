@@ -1,7 +1,3 @@
-pub mod fsm;
-pub mod llm_agent;
-pub mod llm_service;
-
 
 
 use rustyline::error::ReadlineError;
@@ -9,12 +5,12 @@ use rustyline::DefaultEditor;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use fsm::FSMBuilder;
+use ai_gent_lib::fsm::FSMBuilder;
 
-use llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
+use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 
 // use futures::StreamExt;
-use llm_service::{openai_service, openai_stream_service, LLMStreamOut};
+use ai_gent_lib::llm_service::{openai_service, openai_stream_service, LLMStreamOut};
 struct TestLLMClient {}
 
 
@@ -67,7 +63,7 @@ impl LLMClient for TestLLMClient {
 //     }
 // }
 
-const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
+const FSM_CONFIG: &str = include_str!("../../../../ai_gent_lib/dev_config/fsm_config.json");
 
 // use std::fs::File;
 // use std::io::Write;
