@@ -1,6 +1,11 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+mod agent_workspace;
+mod library_cards;
+mod llm_agent;
+
+use agent_workspace::*;
 use askama::Template;
 use futures_util::Future;
 use library_cards::{LibraryCards, LibraryCardsBuilder};
@@ -37,7 +42,6 @@ use sqlx::Acquire;
 use sqlx::Postgres;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 use std::{collections::HashMap, default, pin::Pin, sync::Arc, task::Context};
-mod library_cards;
 
 use lazy_static::lazy_static;
 use once_cell::sync::Lazy;
@@ -52,7 +56,7 @@ pub(crate) struct AgentConfiguration {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct ChatAgentSetting {
+struct AgentSetting {
     name: String,
     description: String,
     provider: String,
@@ -63,6 +67,7 @@ struct ChatAgentSetting {
 
 static BUTTON: &str = "button";
 static CARDS: &str = "cards";
+static AGENT_WORKSPACE: &str = "agent_workspace";
 
 // Function to get the database URL
 fn get_database_url() -> String {
@@ -112,8 +117,14 @@ fn build_context() -> TnContext {
     LibraryCards::builder()
         .init(CARDS.into(), "cards".into(), "active")
         .set_attr("class", "btn btn-sm btn-outline btn-primary flex-1")
-        .set_attr("hx-target", "#count")
-        .set_attr("hx-swap", "innerHTML show:top")
+        .add_to_context(&mut context);
+
+    AgentWorkSpace::builder()
+        .init(
+            AGENT_WORKSPACE.into(),
+            "agent workspace".into(),
+            &mut context,
+        )
         .add_to_context(&mut context);
 
     build_left_panel(&mut context);
@@ -186,7 +197,7 @@ fn layout(context: TnContext) -> TnFutureString {
         let cards = context_guard.get_initial_rendered_string(CARDS).await;
         let mut buttons = Vec::<String>::new();
         for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN,
-                    SEARCH_AGENT_BTN, BASIC_AGENT_DESIGN_BTN, 
+                    SEARCH_AGENT_BTN, BASIC_AGENT_DESIGN_BTN,
                     ADV_AGENT_DESIGN_BTN] {
             buttons.push(context_guard.get_rendered_string(btn).await);
         }
@@ -243,7 +254,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let template = SetupAgentTemplate {};
                 Some(template.render().unwrap())
             },
-            
+
             SEARCH_AGENT_BTN => {
                 // TODO: need a chat system to find the right agent
                 let context_guard = context.read().await;
@@ -333,11 +344,11 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     let prompt;
     let follow_up_prompt;
     let configuration = if let Some(conf) = row.configuration {
-        let model_setting: ChatAgentSetting =
-            serde_json::from_value::<ChatAgentSetting>(conf.clone()).unwrap();
-        model_name = model_setting.model_name;
-        prompt = model_setting.prompt;
-        follow_up_prompt = model_setting.follow_up_prompt.unwrap_or_default();
+        let agent_setting: AgentSetting =
+            serde_json::from_value::<AgentSetting>(conf.clone()).unwrap();
+        model_name = agent_setting.model_name;
+        prompt = agent_setting.prompt;
+        follow_up_prompt = agent_setting.follow_up_prompt.unwrap_or_default();
         conf.to_string()
     } else {
         model_name = "".into();
@@ -381,66 +392,85 @@ async fn use_agent(
 ) -> impl IntoResponse {
     println!("in use_agent: agent_id {}", agent_id);
     //println!("payload: {:?}", payload);
-
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
-    let ctx_guard = ctx.read().await;
-    let user_data = ctx_guard
-        .get_user_data()
-        .await
-        .expect("database error! can't get user data");
 
-    let db_pool = DB_POOL.clone();
+    let name;
+    {
+        let ctx_guard = ctx.read().await;
+    
+        let user_data = ctx_guard
+            .get_user_data()
+            .await
+            .expect("database error! can't get user data");
 
-    let row = sqlx::query!(
-        "SELECT a.agent_id, a.name, a.description, a.status, a.configuration FROM agents a
+        let db_pool = DB_POOL.clone();
+
+        let row = sqlx::query!(
+            "SELECT a.agent_id, a.name, a.description, a.status, a.configuration FROM agents a
 JOIN users u ON a.user_id = u.user_id
 WHERE u.username = $1 AND a.agent_id = $2;",
-        user_data.username,
-        agent_id
-    )
-    .fetch_one(&db_pool)
-    .await
-    .unwrap();
+            user_data.username,
+            agent_id
+        )
+        .fetch_one(&db_pool)
+        .await
+        .unwrap();
 
-    let name: String = row.name;
-    let description: String = if let Some(d) = row.description {
-        d
-    } else {
-        "".into()
-    };
-    let _status = row.status;
-    let model_name;
-    let prompt;
-    let follow_up_prompt;
-    let configuration = if let Some(conf) = row.configuration {
-        let model_setting: ChatAgentSetting =
-            serde_json::from_value::<ChatAgentSetting>(conf.clone()).unwrap();
-        model_name = model_setting.model_name;
-        prompt = model_setting.prompt;
-        follow_up_prompt = model_setting.follow_up_prompt.unwrap_or_default();
-        conf.to_string()
-    } else {
-        model_name = "".into();
-        prompt = "".into();
-        follow_up_prompt = "".into();
-        "".into()
-    };
-    println!(
-        "agent: {}:{} // {} // {} // {} // {} // {}",
-        agent_id, name, description, model_name, prompt, follow_up_prompt, configuration
-    );
+        name = row.name;
+        let description: String = if let Some(d) = row.description {
+            d
+        } else {
+            "".into()
+        };
+        let _status = row.status;
+        let model_name;
+        let prompt;
+        let follow_up_prompt;
+        let configuration = if let Some(conf) = row.configuration {
+            let model_setting: AgentSetting =
+                serde_json::from_value::<AgentSetting>(conf.clone()).unwrap();
+            model_name = model_setting.model_name;
+            prompt = model_setting.prompt;
+            follow_up_prompt = model_setting.follow_up_prompt.unwrap_or_default();
+            conf.to_string()
+        } else {
+            model_name = "".into();
+            prompt = "".into();
+            follow_up_prompt = "".into();
+            "".into()
+        };
 
+        println!(
+            "agent: {}:{} // {} // {} // {} // {} // {}",
+            agent_id, name, description, model_name, prompt, follow_up_prompt, configuration
+        );
+    }
+    {
+        let ctx_guard = ctx.write().await;
+        let mut assets_guard = ctx_guard.assets.write().await;
+        assets_guard.insert("agent_name".into(), TnAsset::String(name.clone()));
+
+    }
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
 
-    let out_html = format!(r#"<div id="workspace">use, agent_id: {agent_id}</div>"#);
+    let out_html = {
+        let ctx_guard = ctx.read().await;
 
+        let component_guard = ctx_guard.components.read().await;
+        let mut agent_ws = component_guard.get(AGENT_WORKSPACE).unwrap().write().await;
+        agent_ws.pre_render(&ctx_guard).await;
+        let out_html = agent_ws 
+            .render()
+            .await;
+        out_html
+    };
     (h, Html::from(out_html))
 }
 
-use uuid::Uuid;
+use uuid::{timestamp::context, Uuid};
 async fn create_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
@@ -450,8 +480,8 @@ async fn create_agent(
     println!("payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
-    let model_setting: ChatAgentSetting =
-        serde_json::from_value::<ChatAgentSetting>(payload.clone()).unwrap();
+    let model_setting: AgentSetting =
+        serde_json::from_value::<AgentSetting>(payload.clone()).unwrap();
 
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
@@ -494,8 +524,8 @@ async fn update_agent(
     println!("in update_agent   payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
-    let model_setting: ChatAgentSetting =
-        serde_json::from_value::<ChatAgentSetting>(payload.clone()).unwrap();
+    let model_setting: AgentSetting =
+        serde_json::from_value::<AgentSetting>(payload.clone()).unwrap();
 
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();

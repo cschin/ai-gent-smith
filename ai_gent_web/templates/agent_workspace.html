@@ -1,0 +1,29 @@
+<div id="workspace" class="container mx-auto px-4">
+    <div class="flex flex-col p-1 w-full p-1  min-h-[80svh]">
+
+        <label> {{ agent_name }} </label>
+        <div class="flex-1 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min">
+            {{ chat_textarea }}
+        </div>
+        <div class="flex-1 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min">
+            {{ stream_output }}
+        </div>
+
+        <div class="flex flex-col w-full">
+            <label class="flex flex-row">User Input</label>
+            <div class="flex flex-row w-full">
+                <div class="flex flex-col w-5/6 p-1 border-2 mb-1 border-gray-600 rounded-lg">
+                    {{ query_text_input }}
+                </div>
+                <div class="flex-col w-1/6 p-1">
+                    <div class="p-1">
+                        {{ query_button }}
+                    </div>
+                    <div class="p-1">
+                        {{ new_session_button }}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
