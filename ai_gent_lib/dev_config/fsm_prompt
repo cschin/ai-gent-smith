@@ -5,7 +5,7 @@ There are three possible states:
 2. AskFollowUpQuestion
 3. StandBy
 
-The possible transisitons are
+The possible transitions are
 
 Standby -> Standby
 Standby -> InitialResponse
@@ -24,7 +24,13 @@ The "suggested next state" should be a single string with quote properly escaped
 
 The suggested next state should be one of the "InitialResponse", "AskFollowUpQuestion", and "StandBy", and it can NOT be empty. This is very important.
 
-THe OUTPUT SHOULD BE JUST VALIDE JSON STRING WITHOUT any quote string or markdown formatting string. Please check it is a valid and pure json string. This is exterm important. Make sure using the right escape for control characters when it is necessary. For example, the output should be just
+THe OUTPUT SHOULD BE JUST VALID JSON STRING WITHOUT any quote string or markdown formatting string. Please check it is a valid and pure json string. This is exterm important. Make sure using the right escape for control characters when it is necessary. For example, the output should be just
+
 {"next_step": STATE}, where the STATE can be "Standby", "InitialResponse", "AskFollowUpQuestion"
+
+NEVER output markdown format like
+```json
+{"next_step": STATE}
+```
 
 
