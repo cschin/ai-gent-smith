@@ -35,7 +35,7 @@ pub struct FSMAgentConfigBuilder {
     transitions: Vec<(String, String)>,
     initial_state: Option<String>,
     prompts: HashMap<String, String>,
-    sys_prompt: Option<String>,
+    sys_prompt: String,
 }
 
 impl FSMAgentConfigBuilder {
@@ -64,7 +64,7 @@ impl FSMAgentConfigBuilder {
     }
 
     pub fn set_sys_prompt(mut self, prompt: String) -> Self {
-        self.sys_prompt = Some(prompt);
+        self.sys_prompt = prompt;
         self
     }
 
@@ -75,7 +75,7 @@ impl FSMAgentConfigBuilder {
             transitions: config.transitions,
             initial_state: Some(config.initial_state),
             prompts: config.prompts,
-            sys_prompt: Some(config.sys_prompt),
+            sys_prompt: config.sys_prompt,
         })
     }
 
@@ -86,16 +86,13 @@ impl FSMAgentConfigBuilder {
         if self.initial_state.is_none() {
             return Err("Initial state must be set");
         }
-        if self.sys_prompt.is_none() {
-            return Err("System prompt must be set");
-        }
 
         Ok(FSMAgentConfig {
             states: self.states,
             transitions: self.transitions,
             initial_state: self.initial_state.unwrap(),
             prompts: self.prompts,
-            sys_prompt: self.sys_prompt.unwrap(),
+            sys_prompt: self.sys_prompt,
         })
     }
 }
@@ -115,6 +112,8 @@ pub struct LLMAgent<C: LLMClient> {
     pub fsm: FSM,
     pub llm_client: C,
     pub sys_prompt: String,
+    pub fsm_prompt: String,
+    pub summary_prompt: String,
     pub summary: String,
     pub messages: Vec<(String, String)>, // (role, message)
 }
@@ -126,17 +125,24 @@ pub trait LLMClient {
     async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut;
 }
 
-const FSM_PROMPT: &str = include_str!("../dev_config/fsm_prompt");
-const SUMMARY_PROMPT: &str = include_str!("../dev_config/summary_prompt");
+
 
 impl<C: LLMClient> LLMAgent<C> {
-    pub fn new(fsm: FSM, llm_client: C) -> Self {
+    pub fn new(
+        fsm: FSM,
+        llm_client: C,
+        sys_prompt: &str,
+        fsm_prompt: &str,
+        summary_prompt: &str,
+    ) -> Self {
         // Initialize prompts for each state here
         Self {
             fsm,
             llm_client,
             summary: String::default(),
-            sys_prompt: String::default(),
+            sys_prompt: sys_prompt.into(),
+            fsm_prompt: fsm_prompt.into() ,
+            summary_prompt: summary_prompt.into(),
             messages: Vec::default(),
         }
     }
@@ -145,19 +151,19 @@ impl<C: LLMClient> LLMAgent<C> {
         let mut last_message = Vec::<(String, String)>::new();
 
         let current_state_name = self.fsm.current_state().ok_or("No current state")?;
-        let current_stat = self.fsm.states.get(&current_state_name).unwrap();
+        let current_state = self.fsm.states.get(&current_state_name).unwrap();
         // println!("current_state: {:?} {:?}", current_state,  self.prompts.get(&current_state));
 
         self.messages.push(("user".into(), user_input.into()));
         last_message.push(("user".into(), user_input.into()));
-        if let Some(prompt) = current_stat.get_attribute("prompt").await {
+        if let Some(prompt) = current_state.get_attribute("prompt").await {
             let msg = format!(
                 "Current State: {}\nAvailable Transitions: {:?}",
                 current_state_name,
                 self.fsm.available_transitions(),
             );
 
-            let fsm_prompt = [FSM_PROMPT, msg.as_str()].join("\n");
+            let fsm_prompt = [self.fsm_prompt.as_str(), msg.as_str()].join("\n");
 
             let prompt = [
                 self.sys_prompt.as_str(),
@@ -167,7 +173,7 @@ impl<C: LLMClient> LLMAgent<C> {
             ]
             .join("\n");
 
-            let summary_prompt = [SUMMARY_PROMPT, self.summary.as_str()].join("\n");
+            let summary_prompt = [self.summary_prompt.as_str(), self.summary.as_str()].join("\n");
 
             tracing::info!("summary prompt: {}\n\n", summary_prompt);
 
@@ -337,7 +343,7 @@ mod tests {
             .unwrap();
         let llm_client = MockLLMClient;
 
-        let mut agent = LLMAgent::new(fsm, llm_client);
+        let mut agent = LLMAgent::new(fsm, llm_client, "", "", "");
 
         let result = agent.process_input("Test input").await;
         assert!(result.is_ok());

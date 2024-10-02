@@ -1,11 +1,9 @@
-
-
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
+use ai_gent_lib::fsm::FSMBuilder;
 use anyhow::Result;
 use async_trait::async_trait;
-use ai_gent_lib::fsm::FSMBuilder;
 
 use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 
@@ -13,6 +11,9 @@ use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 use ai_gent_lib::llm_service::{openai_service, openai_stream_service, LLMStreamOut};
 struct TestLLMClient {}
 
+const SYS_PROMPT: &str = include_str!("../../../dev_config/sys_prompt");
+const FSM_PROMPT: &str = include_str!("../../../dev_config/fsm_prompt");
+const SUMMARY_PROMPT: &str = include_str!("../../../dev_config/summary_prompt");
 
 #[async_trait]
 impl LLMClient for TestLLMClient {
@@ -63,7 +64,7 @@ impl LLMClient for TestLLMClient {
 //     }
 // }
 
-const FSM_CONFIG: &str = include_str!("../../../../ai_gent_lib/dev_config/fsm_config.json");
+const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
 
 // use std::fs::File;
 // use std::io::Write;
@@ -79,16 +80,15 @@ const FSM_CONFIG: &str = include_str!("../../../../ai_gent_lib/dev_config/fsm_co
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG)?.build()?;
-   
+
     let fsm = FSMBuilder::from_config(&fsm_config)?.build()?;
 
     let llm_client = TestLLMClient {};
-    let mut agent = LLMAgent::new(fsm, llm_client);
+    let mut agent = LLMAgent::new(fsm, llm_client, SYS_PROMPT, FSM_PROMPT, SUMMARY_PROMPT);
 
     tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
 
-    //write_agent_config_to_file(&fsm_config); 
-   
+    //write_agent_config_to_file(&fsm_config);
 
     println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
