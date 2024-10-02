@@ -35,7 +35,6 @@ impl<'a: 'static> LibraryCardsBuilder<'a> {
         self.base = TnComponentBase::builder(self.base)
             .init("div".into(), tnid, component_type)
             .set_value(TnComponentValue::String(title))
-            .set_attr("hx-trigger", "click, server_event")
             .build();
 
         self.status_to_render = status.into();
