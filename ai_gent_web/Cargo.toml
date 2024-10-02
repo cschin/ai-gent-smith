@@ -34,3 +34,4 @@ once_cell = { workspace = true }
 tokio-test = { workspace = true }
 rustyline = { workspace = true }
 async-openai = { workspace = true }
+ai_gent_lib = {path = "../ai_gent_lib" }

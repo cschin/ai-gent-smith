@@ -6,6 +6,7 @@ mod library_cards;
 mod llm_agent;
 
 use agent_workspace::*;
+use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
 use askama::Template;
 use futures_util::Future;
 use library_cards::{LibraryCards, LibraryCardsBuilder};
@@ -56,13 +57,22 @@ pub(crate) struct AgentConfiguration {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
-struct AgentSetting {
+struct SimpleAgentSettingForm {
     name: String,
     description: String,
     provider: String,
     model_name: String,
     prompt: String,
     follow_up_prompt: Option<String>,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct AgentSetting {
+    name: String,
+    description: String,
+    provider: String,
+    model_name: String,
+    fsm_agent_config: String,
 }
 
 static BUTTON: &str = "button";
@@ -89,8 +99,8 @@ pub static DB_POOL: Lazy<PgPool> = Lazy::new(|| {
 #[tokio::main]
 async fn main() {
     let ui_action_routes = Router::<Arc<AppData>>::new()
-        .route("/agent/create", post(create_agent))
-        .route("/agent/:id/update", post(update_agent))
+        .route("/agent/create", post(create_simple_agent))
+        .route("/agent/:id/update", post(update_simple_agent))
         .route("/agent/:id/use", get(use_agent))
         .route("/agent/:id/show", get(show_basic_agent_setting))
         .route("/check_user", get(check_user));
@@ -341,21 +351,28 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     };
     let _status = row.status;
     let model_name;
-    let prompt;
-    let follow_up_prompt;
+    let fsm_agent_config: String;
     let configuration = if let Some(conf) = row.configuration {
         let agent_setting: AgentSetting =
             serde_json::from_value::<AgentSetting>(conf.clone()).unwrap();
         model_name = agent_setting.model_name;
-        prompt = agent_setting.prompt;
-        follow_up_prompt = agent_setting.follow_up_prompt.unwrap_or_default();
+        fsm_agent_config = agent_setting.fsm_agent_config;
         conf.to_string()
     } else {
         model_name = "".into();
-        prompt = "".into();
-        follow_up_prompt = "".into();
+        fsm_agent_config = "".into();
         "".into()
     };
+    let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config)
+        .unwrap()
+        .build()
+        .unwrap();
+    let prompt = fsm_config.sys_prompt.clone();
+    let follow_up_prompt = fsm_config
+        .prompts
+        .get("AskFollowUpQuestion")
+        .unwrap_or(&"".to_string())
+        .clone();
     println!(
         "agent: {}:{} // {} // {}",
         agent_id, name, description, configuration
@@ -398,7 +415,7 @@ async fn use_agent(
     let name;
     {
         let ctx_guard = ctx.read().await;
-    
+
         let user_data = ctx_guard
             .get_user_data()
             .await
@@ -425,32 +442,25 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         };
         let _status = row.status;
         let model_name;
-        let prompt;
-        let follow_up_prompt;
         let configuration = if let Some(conf) = row.configuration {
             let model_setting: AgentSetting =
                 serde_json::from_value::<AgentSetting>(conf.clone()).unwrap();
             model_name = model_setting.model_name;
-            prompt = model_setting.prompt;
-            follow_up_prompt = model_setting.follow_up_prompt.unwrap_or_default();
             conf.to_string()
         } else {
             model_name = "".into();
-            prompt = "".into();
-            follow_up_prompt = "".into();
             "".into()
         };
 
         println!(
-            "agent: {}:{} // {} // {} // {} // {} // {}",
-            agent_id, name, description, model_name, prompt, follow_up_prompt, configuration
+            "agent: {}:{} // {} // {} // {}",
+            agent_id, name, description, model_name, configuration
         );
     }
     {
         let ctx_guard = ctx.write().await;
         let mut assets_guard = ctx_guard.assets.write().await;
         assets_guard.insert("agent_name".into(), TnAsset::String(name.clone()));
-
     }
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
@@ -462,16 +472,22 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         let component_guard = ctx_guard.components.read().await;
         let mut agent_ws = component_guard.get(AGENT_WORKSPACE).unwrap().write().await;
         agent_ws.pre_render(&ctx_guard).await;
-        let out_html = agent_ws 
-            .render()
-            .await;
+        let out_html = agent_ws.render().await;
         out_html
     };
     (h, Html::from(out_html))
 }
 
 use uuid::{timestamp::context, Uuid};
-async fn create_agent(
+
+#[derive(Template)] // this will generate the code...
+#[template(path = "simple_agent_config.json", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
+struct SimpleAgentConfigTemplate {
+    prompt: String,
+    follow_up: String,
+}
+
+async fn create_simple_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
     session: Session,
@@ -480,8 +496,8 @@ async fn create_agent(
     println!("payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
-    let model_setting: AgentSetting =
-        serde_json::from_value::<AgentSetting>(payload.clone()).unwrap();
+    let agent_setting_form: SimpleAgentSettingForm =
+        serde_json::from_value::<SimpleAgentSettingForm>(payload.clone()).unwrap();
 
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
@@ -490,6 +506,21 @@ async fn create_agent(
         .get_user_data()
         .await
         .expect("database error! can't get user data");
+
+    let simple_agent_config = SimpleAgentConfigTemplate {
+        prompt: agent_setting_form.prompt,
+        follow_up: agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())
+    }.render().unwrap();
+
+    let agent_setting = AgentSetting {
+        name: agent_setting_form.name.clone(),
+        model_name: agent_setting_form.model_name.clone(),
+        description: agent_setting_form.description.clone(),
+        provider: agent_setting_form.provider.clone(),
+        fsm_agent_config: simple_agent_config,
+    };
+
+    let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
 
     let db_pool = DB_POOL.clone();
     // TODO: make sure the string is proper avoiding SQL injection
@@ -499,10 +530,10 @@ async fn create_agent(
     FROM users
     WHERE username = $1"#,
         user_data.username,
-        model_setting.name,
-        model_setting.description,
+        agent_setting_form.name,
+        agent_setting_form.description,
         "active",
-        payload
+        agent_setting_value
     )
     .fetch_one(&db_pool)
     .await;
@@ -510,11 +541,11 @@ async fn create_agent(
     //let uuid = Uuid::new_v4();
     Html::from(format!(
         r#"<p class="py-4">An agent "{}" is created "#,
-        model_setting.name
+        agent_setting_form.name
     ))
 }
 
-async fn update_agent(
+async fn update_simple_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
     session: Session,
@@ -524,8 +555,8 @@ async fn update_agent(
     println!("in update_agent   payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
-    let model_setting: AgentSetting =
-        serde_json::from_value::<AgentSetting>(payload.clone()).unwrap();
+    let agent_setting_form: SimpleAgentSettingForm =
+        serde_json::from_value::<SimpleAgentSettingForm>(payload.clone()).unwrap();
 
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
@@ -534,6 +565,19 @@ async fn update_agent(
         .get_user_data()
         .await
         .expect("database error! can't get user data");
+    let simple_agent_config = SimpleAgentConfigTemplate {
+        prompt: agent_setting_form.prompt,
+        follow_up: agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())
+    }.render().unwrap();
+    let agent_setting = AgentSetting {
+        name: agent_setting_form.name.clone(),
+        model_name: agent_setting_form.model_name.clone(),
+        description: agent_setting_form.description.clone(),
+        provider: agent_setting_form.provider.clone(),
+        fsm_agent_config: simple_agent_config,
+    };
+
+    let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
 
     let db_pool = DB_POOL.clone();
     let _query = sqlx::query!(
@@ -542,10 +586,10 @@ async fn update_agent(
     WHERE agent_id = $2 AND user_id = (SELECT user_id FROM users WHERE username = $1)"#,
         user_data.username,
         agent_id,
-        model_setting.name,
-        model_setting.description,
+        agent_setting_form.name,
+        agent_setting_form.description,
         "active",
-        payload
+        agent_setting_value
     )
     .fetch_one(&db_pool)
     .await;
@@ -554,7 +598,7 @@ async fn update_agent(
     //let uuid = Uuid::new_v4();
     Html::from(format!(
         r#"<p class="py-4">The agent "{}" is updated "#,
-        model_setting.name
+        agent_setting_form.name
     ))
 }
 
