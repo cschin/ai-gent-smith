@@ -40,5 +40,5 @@
     "StandBy": "Your goal to let the user know that you are ready to take a new question. You should welcome the user and encourage the user to ask new question.",
     "AskFollowUpQuestion": "Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need."
   },
-  "sys_prompt": "You are a helpful agent to help a programer figuring out the correction command line tools to use based the current summary of the previous conversation and new user message. Output your response in the markdown format.\n"
+  "sys_prompt": "You are a helpful agent to help a programmer figuring out the correction command line tools to use based the current summary of the previous conversation and new user message. Output your response in the markdown format.\n"
 }
