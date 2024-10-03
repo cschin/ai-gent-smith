@@ -1,6 +1,6 @@
 <div>
     <div>
-        <div hx-get="/api/check_user" hx-trigger="load" hx-swap=""></div> 
+        <div hx-get="/api/check_user" hx-trigger="load" hx-swap=""></div>
         <sl-split-panel vertical position-in-pixels="50" style="--max: 50px" id="m_panel">
             <div slot="start"
                 style="height: 100%; width:100%; background: #585858; display: flex; align-items: center; justify-content: start; overflow: hidden;">
@@ -15,13 +15,48 @@
 
                     <div slot="start"
                         style="height: 100%; background: #6f8975; display: flex; align-items: start; justify-content:start; overflow: hidden;">
-                        <div class="container w-full flex flex-col my-1 mx-2 p-2">
-                            {% for value in buttons %}
-                            {{ value }}
-                            {% endfor %}
-                            <button class="btn btn-sm btn-block m-1 min-w-36"
-                                onclick="logout_confirm.showModal()">Logout</button>
+                        <div class="container flow flow-col">
+                            <div class="collapse collapse-arrow">
+                                <input type="radio" name="side-accordion" checked="checked" />
+                                <div class="collapse-title text-xl font-medium">Agent Setting</div>
+                                <div class="collapse-content">
+                                    <!-- <div class="container w-full flex flex-col my-1 mx-2 p-2"> -->
+                                    {% for value in buttons %}
+                                    {{ value }}
+                                    {% endfor %}
+                                    <button class="btn btn-sm btn-block m-1 min-w-36"
+                                        onclick="logout_confirm.showModal()">Logout</button>
+                                    <!-- </div> -->
+                                </div>
+                            </div>
+                            <div class="collapse collapse-arrow">
+                                <input type="radio" name="side-accordion" />
+                                <div class="collapse-title text-xl font-medium">Sessions</div>
+                                <div class="collapse-content">
+                                    <ul>
+                                        <li>Apple</li>
+                                        <li>Banana</li>
+                                        <li>Orange</li>
+                                        <li>Strawberry</li>
+                                        <li>Mango</li>
+                                    </ul>
+                                </div>
+                            </div>
+                            <div class="collapse collapse-arrow">
+                                <input type="radio" name="side-accordion" />
+                                <div class="collapse-title text-xl font-medium">Asset Collections</div>
+                                <div class="collapse-content">
+                                    <ul>
+                                        <li>Apple</li>
+                                        <li>Banana</li>
+                                        <li>Orange</li>
+                                        <li>Strawberry</li>
+                                        <li>Mango</li>
+                                    </ul>
+                                </div>
+                            </div>
                         </div>
+
                     </div>
 
                     <div slot="end"
