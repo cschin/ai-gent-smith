@@ -4,6 +4,7 @@ use rustyline::DefaultEditor;
 use ai_gent_lib::fsm::FSMBuilder;
 use anyhow::Result;
 use async_trait::async_trait;
+use tokio::sync::mpsc;
 
 use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 
@@ -23,46 +24,10 @@ impl LLMClient for TestLLMClient {
         openai_service(prompt, msgs).await
     }
 
-    async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut {
-        openai_stream_service(prompt, msg).await
+    async fn generate_stream(&self, prompt: &str, msgs: &[(String, String)]) -> LLMStreamOut {
+        openai_stream_service(prompt, msgs).await
     }
 }
-
-// #[derive(Debug)]
-// struct InitialState<C: LLMClient + Sync + Send> {
-//     attributes: HashMap<String, String>,
-//     llm_client: Arc<C>,
-// }
-
-// #[async_trait]
-// impl<C: LLMClient + Sync + Send> FSMState for InitialState<C> {
-//     async fn on_exit(&self) {
-//         println!("Exited then LMM Processing State");
-//     }
-//     async fn on_enter_mut(&mut self) {
-//         println!("Entered the LMM Processing State");
-//         let guard = self.llm_client.clone();
-//         let prompt = self.attributes.get("prompt").unwrap();
-//         let msg = self.attributes.get("msg").unwrap();
-//         let mut llm_stream = guard.generate_stream(prompt, msg).await;
-//         while let Some(result) = llm_stream.next().await {
-//             if let Some(output) = result {
-//                 print!("{}", output);
-//             }
-//         }
-//         println!();
-//     }
-//     async fn on_exit_mut(&mut self) {}
-//     fn name(&self) -> String {
-//         "exit the LMM Processing processing".to_string()
-//     }
-//     async fn set_attribute(&mut self, k: &str, v: String) {
-//         self.attributes.insert(k.into(), v);
-//     }
-//     async fn clone_attribute(&self, k: &str) -> Option<String> {
-//         self.attributes.get(k).cloned()
-//     }
-// }
 
 const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
 
@@ -76,6 +41,8 @@ const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
 //     tracing::info!("Agent config written to agent_config.json");
 //     Ok(())
 // }
+
+use std::io::{stdout, Write}; //for flush()
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -92,6 +59,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
+    let (tx, mut rx) = mpsc::channel::<String>(8);
+
+    tokio::spawn(async move {
+        while let Some(_message) = rx.recv().await {
+            stdout().write(b".").and(stdout().flush()).unwrap();
+        }
+    });
+
     loop {
         let readline = rl.readline("\n>> ");
         match readline {
@@ -103,8 +78,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let _ = rl.add_history_entry(line.as_str());
 
-                match agent.process_input(&line).await {
-                    Ok(res) => println!("Response: {}", res),
+                match agent.process_input(&line, Some(tx.clone())).await {
+                    Ok(res) => println!("\nResponse: {}", res),
                     Err(err) => println!("LLM error, please retry your question. {:?}", err),
                 }
 
