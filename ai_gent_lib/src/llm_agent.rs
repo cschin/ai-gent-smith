@@ -5,6 +5,9 @@ use crate::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use tokio::sync::mpsc::Sender;
+
+use futures::StreamExt;
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct FSMAgentConfig {
@@ -122,10 +125,8 @@ pub struct LLMAgent<C: LLMClient> {
 pub trait LLMClient {
     async fn generate(&self, prompt: &str, msg: &[(String, String)]) -> String;
 
-    async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut;
+    async fn generate_stream(&self, prompt: &str, msg: &[(String, String)]) -> LLMStreamOut;
 }
-
-
 
 impl<C: LLMClient> LLMAgent<C> {
     pub fn new(
@@ -141,13 +142,17 @@ impl<C: LLMClient> LLMAgent<C> {
             llm_client,
             summary: String::default(),
             sys_prompt: sys_prompt.into(),
-            fsm_prompt: fsm_prompt.into() ,
+            fsm_prompt: fsm_prompt.into(),
             summary_prompt: summary_prompt.into(),
             messages: Vec::default(),
         }
     }
 
-    pub async fn process_input(&mut self, user_input: &str) -> Result<String, String> {
+    pub async fn process_input(
+        &mut self,
+        user_input: &str,
+        tx: Option<Sender<String>>,
+    ) -> Result<String, String> {
         let mut last_message = Vec::<(String, String)>::new();
 
         let current_state_name = self.fsm.current_state().ok_or("No current state")?;
@@ -177,7 +182,23 @@ impl<C: LLMClient> LLMAgent<C> {
 
             tracing::info!("summary prompt: {}\n\n", summary_prompt);
 
-            let llm_output = self.llm_client.generate(&prompt, &self.messages).await;
+            let llm_output = if let Some(tx) = tx {
+                let mut llm_output = String::default();
+
+                let mut llm_stream = self
+                    .llm_client
+                    .generate_stream(&prompt, &self.messages)
+                    .await;
+                while let Some(result) = llm_stream.next().await {
+                    if let Some(output) = result {
+                        llm_output.push_str(&output);
+                        let _ = tx.send(output).await; 
+                    };
+                };
+                llm_output
+            } else {
+                self.llm_client.generate(&prompt, &self.messages).await
+            };
 
             self.messages.push(("assistant".into(), llm_output.clone()));
             last_message.push(("assistant".into(), llm_output.clone()));
@@ -313,7 +334,7 @@ mod tests {
             r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
                 .to_string()
         }
-        async fn generate_stream(&self, _prompt: &str, _msg: &str) -> LLMStreamOut {
+        async fn generate_stream(&self, _prompt: &str, _msg: &[(String, String)]) -> LLMStreamOut {
             unimplemented!()
         }
     }
@@ -345,7 +366,7 @@ mod tests {
 
         let mut agent = LLMAgent::new(fsm, llm_client, "", "", "");
 
-        let result = agent.process_input("Test input").await;
+        let result = agent.process_input("Test input", None).await;
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),

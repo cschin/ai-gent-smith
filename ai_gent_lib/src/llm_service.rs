@@ -15,7 +15,7 @@ use futures::{Stream, StreamExt};
 
 pub type LLMStreamOut = Pin<Box<dyn Stream<Item = Option<String>> + Send>>;
 
-pub async fn openai_stream_service(prompt: &str, query: &str) -> LLMStreamOut {
+pub async fn openai_stream_service(prompt: &str, msgs: &[(String, String)]) -> LLMStreamOut {
     let mut messages: Vec<ChatCompletionRequestMessage> =
         vec![ChatCompletionRequestSystemMessageArgs::default()
             .content(prompt)
@@ -23,13 +23,29 @@ pub async fn openai_stream_service(prompt: &str, query: &str) -> LLMStreamOut {
             .expect("error")
             .into()];
 
-    messages.push(
-        ChatCompletionRequestUserMessageArgs::default()
-            .content(query)
-            .build()
-            .expect("error")
-            .into(),
-    );
+            msgs.iter().for_each(|(role, msg)| {
+                match role.as_str() {
+                    "user" => {
+                        messages.push(
+                            ChatCompletionRequestUserMessageArgs::default()
+                                .content(msg.as_str())
+                                .build()
+                                .expect("error")
+                                .into(),
+                        );
+                    },
+                    "assistant" => {
+                        messages.push(
+                            ChatCompletionRequestAssistantMessageArgs::default()
+                                .content(msg.as_str())
+                                .build()
+                                .expect("error")
+                                .into(),
+                        );
+                    },
+                    _ => {}
+                }
+            });
 
     let client = Client::new();
 
