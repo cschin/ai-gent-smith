@@ -18,7 +18,7 @@ impl LLMClient for OAI_LLMClient {
         openai_service(prompt, msgs).await
     }
 
-    async fn generate_stream(&self, prompt: &str, msg: &str) -> LLMStreamOut {
-        openai_stream_service(prompt, msg).await
+    async fn generate_stream(&self, prompt: &str, msgs: &[(String, String)]) -> LLMStreamOut {
+        openai_stream_service(prompt, msgs).await
     }
 }

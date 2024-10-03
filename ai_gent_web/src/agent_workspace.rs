@@ -6,6 +6,7 @@ use axum::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
+use tokio::sync::mpsc;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
@@ -65,7 +66,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let mut query_text_input = TnTextArea::builder()
             .init(AGENT_QUERY_TEXT_INPUT.into(), "".into())
-            .set_attr("class", "min-h-32 w-full")
+            .set_attr("class", "min-h-32 w-full p-2")
             .set_attr("style", "resize:none")
             .set_attr("hx-trigger", "change, server_event")
             .set_attr("hx-vals", r##"js:{event_data:get_input_event(event)}"##)
@@ -74,7 +75,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let agent_stream_output = TnStreamTextArea::builder()
             .init(AGENT_STREAM_OUTPUT.into(), Vec::new())
-            .set_attr("class", "min-h-20 w-full")
+            .set_attr("class", "min-h-20 w-full p-2")
             .set_attr("style", r#"resize:none"#)
             .build();
 
@@ -98,26 +99,6 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             )
             // .set_action(TnActionExecutionMethod::Await, query_with_hits)
             .build();
-
-        // let rt = tokio::runtime::Runtime::new().unwrap();
-        // let chat_textarea_html =
-        //     rt.block_on(async { chat_textarea.initial_render().await });
-        // //let agent_chat_textarea_string = agent_chat_textarea.initial_render();
-        // let query_text_input_html =
-        //     rt.block_on(async { query_text_input.initial_render().await });
-        // let query_button_html =
-        //     rt.block_on(async { query_button.initial_render().await });
-        // let new_session_button_html =
-        //     rt.block_on(async { new_session_button.initial_render().await });
-
-        // self.html = AgentWorkspaceTemplate {
-        //     chat_textarea: chat_textarea_html,
-        //     query_text_input: query_text_input_html,
-        //     query_button: query_button_html,
-        //     new_session_button: new_session_button_html
-        // }
-        // .render()
-        // .unwrap();
 
         context.add_component(chat_textarea);
         context.add_component(query_text_input);
@@ -237,9 +218,22 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let llm_client = OAI_LLMClient {};
         let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config.sys_prompt, FSM_PROMPT, SUMMARY_PROMPT);
 
-        let mut options = Options::empty();
-        options.insert(Options::ENABLE_STRIKETHROUGH);
-        
+        // let mut options = Options::empty();
+        // options.insert(Options::ENABLE_STRIKETHROUGH);
+
+        let (tx, mut rx) = mpsc::channel::<String>(8);
+        let context_cloned = context.clone();
+        let handle = tokio::spawn(async move {
+            while let Some(token) = rx.recv().await {
+                println!("stream out: {}", token);
+                text::append_and_update_stream_textarea_with_context(
+                    &context_cloned,
+                    AGENT_STREAM_OUTPUT,
+                    &token,
+                )
+                .await;
+            }
+        });
 
 
         if let TnComponentValue::String(s) =  query_text {
@@ -247,20 +241,26 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 let query = s.replace('\n', "<br>");
                 chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.clone())).await;
                 context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
-                match agent.process_input(&query).await {
-                    Ok(res) => { println!("Response: {}", res);
-                    let parser = Parser::new_ext(&res, options);
-                    let mut html_output = String::new();
-                    html::push_html(&mut html_output, parser);
-
-    
-                    chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;},
+                match agent.process_input(&query, Some(tx)).await {
+                    Ok(res) => {
+                        println!("Response: {}", res);
+                        let parser = Parser::new_ext(&res, Options::all());
+                        let mut html_output = String::new();
+                        html::push_html(&mut html_output, parser);
+                        chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
+                    },
                     Err(err) => println!("LLM error, please retry your question. {:?}", err),
                 }
         }
 
         context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
+        handle.abort();
 
+        text::clean_stream_textarea_with_context(
+            &context,
+            AGENT_STREAM_OUTPUT,
+        )
+        .await;
         None
     }
 }
