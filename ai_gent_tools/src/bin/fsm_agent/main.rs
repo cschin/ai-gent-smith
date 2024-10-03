@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
     let (tx, mut rx) = mpsc::channel::<String>(8);
 
-    tokio::spawn(async move {
+    let t = tokio::spawn(async move {
         while let Some(_message) = rx.recv().await {
             stdout().write(b".").and(stdout().flush()).unwrap();
         }
@@ -101,6 +101,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-
+    t.abort();
     Ok(())
 }
