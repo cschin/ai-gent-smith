@@ -66,9 +66,9 @@ where
     async fn render(&self) -> String {
         let query = format!(
             "SELECT a.agent_id, a.name, a.description
-FROM agents a
-JOIN users u ON a.user_id = u.user_id
-WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.agent_id ASC;",
+            FROM agents a
+            JOIN users u ON a.user_id = u.user_id
+            WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.agent_id ASC;",
             self.user_data,
             self.status_to_render
         );
