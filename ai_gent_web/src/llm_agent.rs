@@ -7,7 +7,7 @@ use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 // use futures::StreamExt;
 use ai_gent_lib::llm_service::{openai_service, openai_stream_service, LLMStreamOut};
 
-struct OAI_LLMClient {}
+pub struct OAI_LLMClient {}
 
 
 #[async_trait]

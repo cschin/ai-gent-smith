@@ -1,3 +1,6 @@
+use ai_gent_lib::fsm::FSMBuilder;
+use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
+use ai_gent_lib::llm_agent::LLMAgent;
 use askama::Template;
 use axum::async_trait;
 use serde_json::Value;
@@ -8,11 +11,15 @@ use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
 
 use super::DB_POOL;
+use crate::llm_agent::*;
+use crate::AgentSetting;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::Acquire;
 use sqlx::Postgres;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
+
+use pulldown_cmark::{html, Options, Parser};
 
 pub const AGENT_CHAT_TEXTAREA: &str = "agent_chat_textarea";
 pub const AGENT_STREAM_OUTPUT: &str = "agent_stream_output";
@@ -50,7 +57,10 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let chat_textarea = TnChatBox::builder()
             .init(AGENT_CHAT_TEXTAREA.into(), vec![])
-            .set_attr("class", "min-h-[435px] max-h-[435px] overflow-auto flex-1 p-2")
+            .set_attr(
+                "class",
+                "min-h-[435px] max-h-[435px] overflow-auto flex-1 p-2",
+            )
             .build();
 
         let mut query_text_input = TnTextArea::builder()
@@ -62,12 +72,11 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .build(); //over-ride the default as we need the value of the input text
         query_text_input.remove_attribute("disabled");
 
-
         let agent_stream_output = TnStreamTextArea::builder()
-        .init(AGENT_STREAM_OUTPUT.into(), Vec::new())
-        .set_attr("class", "min-h-20 w-full")
-        .set_attr("style", r#"resize:none"#)
-        .build();
+            .init(AGENT_STREAM_OUTPUT.into(), Vec::new())
+            .set_attr("class", "min-h-20 w-full")
+            .set_attr("style", r#"resize:none"#)
+            .build();
 
         let query_button = TnButton::builder()
             .init(AGENT_QUERY_BUTTON.into(), "Submit Query".into())
@@ -79,7 +88,10 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .build();
 
         let new_session_button = TnButton::builder()
-            .init(AGENT_NEW_SESSION_BUTTON.into(), "Start A New Session".into())
+            .init(
+                AGENT_NEW_SESSION_BUTTON.into(),
+                "Start A New Session".into(),
+            )
             .set_attr(
                 "class",
                 "btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item",
@@ -87,7 +99,6 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             // .set_action(TnActionExecutionMethod::Await, query_with_hits)
             .build();
 
-       
         // let rt = tokio::runtime::Runtime::new().unwrap();
         // let chat_textarea_html =
         //     rt.block_on(async { chat_textarea.initial_render().await });
@@ -167,7 +178,6 @@ where
             .render()
             .await;
 
-
         let new_session_button_html = comp_guard
             .get(AGENT_NEW_SESSION_BUTTON)
             .unwrap()
@@ -199,24 +209,57 @@ where
 
     async fn post_render(&mut self, _ctx: &TnContextBase) {}
 }
-
+const FSM_PROMPT: &str = include_str!("../dev_config/fsm_prompt"); // this should be generated from fsm_agent_config
+const SUMMARY_PROMPT: &str = include_str!("../dev_config/summary_prompt");
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
     tn_future! {
         if event.e_trigger != AGENT_QUERY_BUTTON {
             return None;
         };
-
+        let asset_ref = context.get_asset_ref().await;
+        let asset_guarad = asset_ref.read().await;
+        let fsm_agent_config;
+        let _agent_config = if let TnAsset::String(agent_config) = asset_guarad.get("agent_configuration").unwrap() {
+            let model_setting: AgentSetting =
+                serde_json::from_str::<AgentSetting>(agent_config).unwrap();
+                fsm_agent_config = model_setting.fsm_agent_config;
+            agent_config
+        } else {
+            fsm_agent_config = "".into();
+            &"".into()
+        };
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
+
+        let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config).unwrap().build().unwrap();
+
+        let fsm = FSMBuilder::from_config(&fsm_config).unwrap().build().unwrap();
+
+        let llm_client = OAI_LLMClient {};
+        let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config.sys_prompt, FSM_PROMPT, SUMMARY_PROMPT);
+
+        let mut options = Options::empty();
+        options.insert(Options::ENABLE_STRIKETHROUGH);
+        
+
 
         if let TnComponentValue::String(s) =  query_text {
                 let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
                 let query = s.replace('\n', "<br>");
+                chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.clone())).await;
+                context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
+                match agent.process_input(&query).await {
+                    Ok(res) => { println!("Response: {}", res);
+                    let parser = Parser::new_ext(&res, options);
+                    let mut html_output = String::new();
+                    html::push_html(&mut html_output, parser);
+
     
-                chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query)).await;
+                    chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;},
+                    Err(err) => println!("LLM error, please retry your question. {:?}", err),
+                }
         }
 
         context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
-    
 
         None
     }

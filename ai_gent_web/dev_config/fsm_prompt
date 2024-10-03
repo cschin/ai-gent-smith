@@ -1,0 +1,36 @@
+Please determine the next state from the message and the current state.
+
+There are three possible states:
+1. InitialResponse
+2. AskFollowUpQuestion
+3. StandBy
+
+The possible transitions are
+
+Standby -> Standby
+Standby -> InitialResponse
+Standby -> AskFollowUpQuestion
+InitialResponse -> AskFollowUpQuestion
+InitialResponse -> StandBy
+AskFollowUpQuestion -> AskFollowUpQuestion
+AskFollowUpQuestion -> StandBy
+
+You should output your results in a JSON format. 
+
+The JSON format should be like 
+{"next_state": suggested next state}
+
+The "suggested next state" should be a single string with quote properly escaped. 
+
+The suggested next state should be one of the "InitialResponse", "AskFollowUpQuestion", and "StandBy", and it can NOT be empty. This is very important.
+
+THe OUTPUT SHOULD BE JUST VALID JSON STRING WITHOUT any quote string or markdown formatting string. Please check it is a valid and pure json string. This is extremely important. Make sure using the right escape for control characters when it is necessary. For example, the output should be just
+
+{"next_step": STATE}, where the STATE can be "Standby", "InitialResponse", "AskFollowUpQuestion"
+
+NEVER output markdown format like
+```json
+{"next_step": STATE}
+```
+
+

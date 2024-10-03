@@ -39,7 +39,7 @@ use tron_components::{
     TnEvent, TnTextArea,
 };
 //use std::sync::Mutex;
-use sqlx::Acquire;
+use sqlx::{any::AnyRow, prelude::FromRow, query::Query, Acquire};
 use sqlx::Postgres;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 use std::{collections::HashMap, default, pin::Pin, sync::Arc, task::Context};
@@ -99,10 +99,10 @@ pub static DB_POOL: Lazy<PgPool> = Lazy::new(|| {
 #[tokio::main]
 async fn main() {
     let ui_action_routes = Router::<Arc<AppData>>::new()
-        .route("/agent/create", post(create_simple_agent))
-        .route("/agent/:id/update", post(update_simple_agent))
+        .route("/agent/create", post(create_basic_agent))
+        .route("/agent/:id/update", post(update_basic_agent))
         .route("/agent/:id/use", get(use_agent))
-        .route("/agent/:id/show", get(show_basic_agent_setting))
+        .route("/agent/:id/show", get(show_agent_setting))
         .route("/check_user", get(check_user));
 
     let app_config = tron_app::AppConfigure {
@@ -313,7 +313,16 @@ fn logout(_context: TnContext, _event: TnEvent, _payload: Value) -> TnFutureHTML
     }
 }
 
-async fn show_basic_agent_setting(
+struct AgentQueryResult {
+    agent_id: i32,  // or whatever type agent_id is in your database
+    name: String,
+    description: Option<String>,
+    status: String,  // or an enum if status is represented as such
+    configuration: serde_json::Value,  // assuming configuration is stored as JSON
+    class: String,  // or another appropriate type
+}
+
+async fn show_agent_setting(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
     Path(agent_id): Path<i32>,
@@ -321,7 +330,6 @@ async fn show_basic_agent_setting(
 ) -> impl IntoResponse {
     println!("in show_agent: agent_id {}", agent_id);
     //println!("payload: {:?}", payload);
-
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
@@ -332,8 +340,9 @@ async fn show_basic_agent_setting(
 
     let db_pool = DB_POOL.clone();
 
-    let row = sqlx::query!(
-        "SELECT a.agent_id, a.name, a.description, a.status, a.configuration FROM agents a
+    let row = sqlx::query_as!(
+        AgentQueryResult,
+        "SELECT a.agent_id, a.name, a.description, a.status, a.configuration, a.class FROM agents a
 JOIN users u ON a.user_id = u.user_id
 WHERE u.username = $1 AND a.agent_id = $2;",
         user_data.username,
@@ -342,27 +351,27 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     .fetch_one(&db_pool)
     .await
     .unwrap();
+    match row.class.as_str() {
+        "basic" => show_basic_agent_setting(&row, agent_id),
+        "advanced" =>  unimplemented!(),
+        _ =>  unimplemented!()
+    }
+}
 
-    let name: String = row.name;
-    let description: String = if let Some(d) = row.description {
+fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, Html<String>) {
+    let name: String = row.name.clone();
+    let description: String = if let Some(d) = row.description.clone() {
         d
     } else {
         "".into()
     };
-    let _status = row.status;
-    let model_name;
-    let fsm_agent_config: String;
-    let configuration = if let Some(conf) = row.configuration {
-        let agent_setting: AgentSetting =
-            serde_json::from_value::<AgentSetting>(conf.clone()).unwrap();
-        model_name = agent_setting.model_name;
-        fsm_agent_config = agent_setting.fsm_agent_config;
-        conf.to_string()
-    } else {
-        model_name = "".into();
-        fsm_agent_config = "".into();
-        "".into()
-    };
+    let _status = row.status.clone();
+    let configuration=  row.configuration.clone();
+    let agent_setting: AgentSetting =
+        serde_json::from_value::<AgentSetting>(configuration.clone()).unwrap();
+    let model_name = agent_setting.model_name;
+    let fsm_agent_config = agent_setting.fsm_agent_config;
+
     let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config)
         .unwrap()
         .build()
@@ -413,10 +422,12 @@ async fn use_agent(
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
 
     let name;
+    let user_data;
+    let configuration;
     {
         let ctx_guard = ctx.read().await;
 
-        let user_data = ctx_guard
+        user_data = ctx_guard
             .get_user_data()
             .await
             .expect("database error! can't get user data");
@@ -442,7 +453,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         };
         let _status = row.status;
         let model_name;
-        let configuration = if let Some(conf) = row.configuration {
+        configuration = if let Some(conf) = row.configuration {
             let model_setting: AgentSetting =
                 serde_json::from_value::<AgentSetting>(conf.clone()).unwrap();
             model_name = model_setting.model_name;
@@ -461,6 +472,28 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         let ctx_guard = ctx.write().await;
         let mut assets_guard = ctx_guard.assets.write().await;
         assets_guard.insert("agent_name".into(), TnAsset::String(name.clone()));
+        assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
+        let uuid = Uuid::new_v4();
+        let title = format!("{}:{}", name, uuid);
+        let db_pool = DB_POOL.clone();
+        let new_chat = sqlx::query!(
+            r#"
+            INSERT INTO chats (user_id, agent_id, title)
+            SELECT u.user_id, $2, $3
+            FROM users u
+            WHERE u.username = $1
+            RETURNING chat_id, created_at, updated_at
+            "#,
+            user_data.username,
+            agent_id,
+            title
+        )
+        .fetch_one(&db_pool)
+        .await
+        .unwrap();
+        let chat_id = new_chat.chat_id;
+        assets_guard.insert("chat_id".into(), TnAsset::U32(chat_id as u32));
+        assets_guard.insert("agent_configuration".into(), TnAsset::String(configuration));
     }
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
@@ -472,8 +505,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         let component_guard = ctx_guard.components.read().await;
         let mut agent_ws = component_guard.get(AGENT_WORKSPACE).unwrap().write().await;
         agent_ws.pre_render(&ctx_guard).await;
-        let out_html = agent_ws.render().await;
-        out_html
+        agent_ws.render().await
     };
     (h, Html::from(out_html))
 }
@@ -487,7 +519,7 @@ struct SimpleAgentConfigTemplate {
     follow_up: String,
 }
 
-async fn create_simple_agent(
+async fn create_basic_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
     session: Session,
@@ -525,15 +557,16 @@ async fn create_simple_agent(
     let db_pool = DB_POOL.clone();
     // TODO: make sure the string is proper avoiding SQL injection
     let _query = sqlx::query!(
-        r#"INSERT INTO agents (user_id, name, description, status, configuration)
-    SELECT user_id, $2, $3, $4, $5
-    FROM users
-    WHERE username = $1"#,
+        r#"INSERT INTO agents (user_id, name, description, status, configuration, class)
+        SELECT user_id, $2, $3, $4, $5, $6
+        FROM users
+        WHERE username = $1"#,
         user_data.username,
         agent_setting_form.name,
         agent_setting_form.description,
         "active",
-        agent_setting_value
+        agent_setting_value,
+        "basic".into()
     )
     .fetch_one(&db_pool)
     .await;
@@ -545,7 +578,7 @@ async fn create_simple_agent(
     ))
 }
 
-async fn update_simple_agent(
+async fn update_basic_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
     session: Session,

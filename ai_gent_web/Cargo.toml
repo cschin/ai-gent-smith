@@ -35,3 +35,4 @@ tokio-test = { workspace = true }
 rustyline = { workspace = true }
 async-openai = { workspace = true }
 ai_gent_lib = {path = "../ai_gent_lib" }
+pulldown-cmark = "0.12.1"
