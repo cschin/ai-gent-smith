@@ -422,6 +422,7 @@ async fn use_agent(
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
 
     let name;
+    let user_id;
     let user_data;
     let configuration;
     {
@@ -435,7 +436,7 @@ async fn use_agent(
         let db_pool = DB_POOL.clone();
 
         let row = sqlx::query!(
-            "SELECT a.agent_id, a.name, a.description, a.status, a.configuration FROM agents a
+            "SELECT a.agent_id, a.name, a.description, a.status, a.configuration, a.user_id FROM agents a
 JOIN users u ON a.user_id = u.user_id
 WHERE u.username = $1 AND a.agent_id = $2;",
             user_data.username,
@@ -452,6 +453,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
             "".into()
         };
         let _status = row.status;
+        user_id = row.user_id;
         let model_name;
         configuration = if let Some(conf) = row.configuration {
             let model_setting: AgentSetting =
@@ -471,6 +473,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     {
         let ctx_guard = ctx.write().await;
         let mut assets_guard = ctx_guard.assets.write().await;
+        assets_guard.insert("user_id".into(), TnAsset::U32(user_id as u32));
         assets_guard.insert("agent_name".into(), TnAsset::String(name.clone()));
         assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
         let uuid = Uuid::new_v4();

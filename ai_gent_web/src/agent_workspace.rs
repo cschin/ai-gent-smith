@@ -190,6 +190,39 @@ where
 
     async fn post_render(&mut self, _ctx: &TnContextBase) {}
 }
+
+async fn insert_message(
+    chat_id: i32,
+    user_id: i32,
+    agent_id: i32,
+    content: &str,
+    role: &str,
+    message_type: &str,
+) -> Result<i32, sqlx::Error> {
+    println!("XXX insert_message: chat:{}", chat_id);
+
+    let pool = DB_POOL.clone();
+    let result = sqlx::query!(
+        r#"
+        INSERT INTO messages (chat_id, user_id, agent_id, content, role, message_type)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING message_id
+        "#,
+        chat_id,
+        user_id,
+        agent_id,
+        content,
+        role,
+        message_type
+    )
+    .fetch_one(&pool)
+    .await?;
+    println!("XXX message_id: {}", result.message_id);
+
+    Ok(result.message_id)
+}
+
+
 const FSM_PROMPT: &str = include_str!("../dev_config/fsm_prompt"); // this should be generated from fsm_agent_config
 const SUMMARY_PROMPT: &str = include_str!("../dev_config/summary_prompt");
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
@@ -209,6 +242,25 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             fsm_agent_config = "".into();
             &"".into()
         };
+
+        let user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
+            *user_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
+
+        let agent_id = if let TnAsset::U32(agent_id) =  asset_guarad.get("agent_id").unwrap() {
+            *agent_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
+
+        let chat_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("chat_id").unwrap() {
+            *chat_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
+
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
         let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config).unwrap().build().unwrap();
@@ -235,11 +287,11 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             }
         });
 
-
-        if let TnComponentValue::String(s) =  query_text {
+        if let TnComponentValue::String(s) = query_text {
                 let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
                 let query = s.replace('\n', "<br>");
                 chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.clone())).await;
+                insert_message(chat_id, user_id, agent_id, &query, "user", "text").await;
                 context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
                 match agent.process_input(&query, Some(tx)).await {
                     Ok(res) => {
@@ -248,6 +300,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         let mut html_output = String::new();
                         html::push_html(&mut html_output, parser);
                         chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
+                        insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
                     },
                     Err(err) => println!("LLM error, please retry your question. {:?}", err),
                 }
