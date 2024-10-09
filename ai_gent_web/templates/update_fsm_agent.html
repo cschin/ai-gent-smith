@@ -1,0 +1,61 @@
+{% block content %}
+<div id="workspace">
+    <div class="container mx-auto max-w-4xl px-4 py-8">
+        <h1 class="text-3xl font-bold mb-6">Edit The AI Agent</h1>
+        <form hx-post="/api/agent/{{ agent_id }}/update_adv" 
+              hx-ext="json-enc" 
+              hx-swap="innerHTML" 
+              hx-target="#update_agent_notification_msg"
+              hx-on::after-request="update_agent_notification.showModal()">
+            <div class="form-control mb-4">
+                <label for="name" class="label">
+                    <span class="label-text">Agent Name:</span>
+                </label>
+                <input type="text" name="name" id="name" class="input input-bordered" required
+                    placeholder="Enter a name for your AI agent" value="{{ name }}">
+            </div>
+            <div class="form-control mb-4">
+                <label for="description" class="label">
+                    <span class="label-text">Agent Description:</span>
+                </label>
+                <textarea name="description" id="description" class="textarea textarea-bordered" rows="3"
+                    placeholder="Enter a brief description of your AI agent">{{ description }}</textarea>
+            </div>
+            <div class="form-control mb-4">
+                <label for="provider" class="label">
+                    <span class="label-text">LLM Provider:</span>
+                </label>
+                <select name="provider" id="provider" class="select select-bordered" required>
+                    <option value="">Select an LLM provider</option>
+                    <option value="openai" selected>OpenAI</option>
+                    <option value="anthropic">Anthropic</option>
+                    <!-- Add more options as needed -->
+                </select>
+            </div>
+            <div class="form-control mb-4">
+                <label for="model_name" class="label">
+                    <span class="label-text">Model Name:</span>
+                </label>
+                <input type="text" name="model_name" id="model_name" class="input input-bordered" required
+                    value="{{ model_name }}">
+            </div>
+
+            <div class="form-control mb-4">
+                <label for="config_json" class="label">
+                    <span class="label-text">Configuration JSON:</span>
+                </label>
+                <textarea name="agent_config" id="agent_config" class="textarea textarea-bordered" rows="5" required
+                    placeholder="Please Fill in The Finite State Agent Configuration in the JSON Format"></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-full">Update Agent</button>
+            <div class="container flex mt-4 mx-auto w-full space-x-4 justify-end">
+                <button type="button" class="btn btn-secondary w-1/4">Deactive Agent</button>
+                <button type="button" class="btn btn-secondary w-1/4">Delete Agent</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+
+{% endblock %}

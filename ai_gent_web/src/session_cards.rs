@@ -1,5 +1,7 @@
 use askama::Template;
 use axum::async_trait;
+use chrono::DateTime;
+use sqlx::query;
 use sqlx::Acquire;
 use sqlx::Postgres;
 use std::collections::HashMap;
@@ -12,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 use super::DB_POOL;
+use chrono::Utc;
 
 /// Represents a button component in a Tron application.
 #[non_exhaustive]
@@ -19,8 +22,9 @@ use super::DB_POOL;
 pub struct SessionCards<'a: 'static> {
     base: TnComponentBase<'a>,
     db_pool: Option<PgPool>,
-    user_data: String,
+    username: String,
     status_to_render: String,
+    since_then: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -64,24 +68,33 @@ where
 {
     /// Generates the internal HTML representation of the button component.
     async fn render(&self) -> String {
-        let query = format!(
-            "SELECT c.chat_id, c.title, c.summary, c.updated_at, a.name AS agent_name, u.username AS user_name
+        let since_then = if let Some(since_then) = self.since_then {
+            since_then 
+        } else {
+            Utc::now() - chrono::Duration::days(3650)
+        };
+        let pool = self.db_pool.as_ref().expect("Database connection not initialized");
+        let chats = query!(
+            "SELECT c.chat_id, c.title, c.summary, c.updated_at, a.name AS agent_name, u.username AS username
              FROM chats c
              JOIN agents a ON c.agent_id = a.agent_id
              JOIN users u ON c.user_id = u.user_id
-             WHERE u.username = '{}' 
+             WHERE u.username = $1 AND c.updated_at > $2 
              ORDER BY c.updated_at DESC",
-            self.user_data,
-        );
-        let pool = self.db_pool.as_ref().expect("Database connection not initialized");
-        let rows = sqlx::query(&query).fetch_all(pool).await.expect("db error");
+            self.username,
+            since_then
+        )
+        .fetch_all(pool)
+        .await
+        .unwrap();
 
-        let cards = rows
+
+        let cards = chats
             .iter()
             .map(|row| {
-                let id: i32 = row.try_get("chat_id").unwrap_or_default();
-                let name: String = row.try_get("agent_name").unwrap_or_default();
-                let description: String = row.try_get("summary").unwrap_or_default();
+                let id: i32 = row.chat_id;
+                let name: String = row.agent_name.clone();
+                let description: String = row.summary.clone().unwrap_or_default();
                 (id, name, description)
             })
             .collect::<Vec<_>>();
@@ -114,7 +127,11 @@ where
         let user_data = ctx.user_data.read().await;
         let json_str = user_data.as_ref().unwrap().clone();
         let user_data: UserData = serde_json::from_str(&json_str).unwrap();
-        self.user_data = user_data.username;
+        self.username = user_data.username;
+        let assets_guard = ctx.assets.read().await;
+        if let Some(TnAsset::U32(since_then_in_days)) = assets_guard.get("since_then_in_days") {
+            self.since_then =  Some(Utc::now() - chrono::Duration::days(*since_then_in_days as i64));
+        } 
     }
 
     async fn post_render(&mut self, _ctx: &TnContextBase) {}

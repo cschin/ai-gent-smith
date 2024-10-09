@@ -69,6 +69,15 @@ struct SimpleAgentSettingForm {
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
+struct AdvAgentSettingForm {
+    name: String,
+    description: String,
+    provider: String,
+    model_name: String,
+    agent_config: String,
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
 struct AgentSetting {
     name: String,
     description: String,
@@ -103,7 +112,9 @@ pub static DB_POOL: Lazy<PgPool> = Lazy::new(|| {
 async fn main() {
     let ui_action_routes = Router::<Arc<AppData>>::new()
         .route("/agent/create", post(create_basic_agent))
+        .route("/agent/create_adv", post(create_adv_agent))
         .route("/agent/:id/update", post(update_basic_agent))
+        .route("/agent/:id/update_adv", post(update_adv_agent))
         .route("/agent/:id/use", get(use_agent))
         .route("/agent/:id/show", get(show_agent_setting))
         .route("/chat/:id/delete", get(delete_chat))
@@ -269,7 +280,7 @@ struct SetupAgentTemplate {}
 
 #[derive(Template)]
 #[template(path = "update_basic_agent.html")]
-struct UpdateAgentTemplate {
+struct UpdateBasicAgentTemplate {
     agent_id: i32,
     name: String,
     description: String,
@@ -277,6 +288,23 @@ struct UpdateAgentTemplate {
     prompt: String,
     follow_up_prompt: String,
 }
+
+
+#[derive(Template)]
+#[template(path = "update_fsm_agent.html")]
+struct UpdateAdvAgentTemplate {
+    agent_id: i32,
+    name: String,
+    description: String,
+    model_name: String,
+    agent_config: String,
+}
+
+
+#[derive(Template)]
+#[template(path = "create_fsm_agent.html")]
+struct SetupAdvAgentTemplate {}
+
 
 #[derive(Template)]
 #[template(path = "user_settings.html")]
@@ -306,7 +334,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
             },
 
             ADV_AGENT_DESIGN_BTN => {
-                let template = SetupAgentTemplate {};
+                let template = SetupAdvAgentTemplate {};
                 Some(template.render().unwrap())
             },
 
@@ -318,11 +346,38 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
 
             },
 
-            SHOW_TODAY_SESSION_BTN | SHOW_YESTERDAY_SESSION_BTN | SHOW_LAST_WEEK_SESSION_BTN | SHOW_ALL_SESSION_BTN => {
+           SHOW_TODAY_SESSION_BTN => {
                 let context_guard = context.read().await;
+                let mut assets_guard = context_guard.assets.write().await;
+                assets_guard.insert("since_then_in_days".into(), TnAsset::U32(1));
                 let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
                 Some(cards)
-            }
+            },
+
+            SHOW_YESTERDAY_SESSION_BTN => {
+                let context_guard = context.read().await;
+                let mut assets_guard = context_guard.assets.write().await;
+                assets_guard.insert("since_then_in_days".into(), TnAsset::U32(2));
+                let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
+                Some(cards)
+            },
+
+            SHOW_LAST_WEEK_SESSION_BTN => {
+                let context_guard = context.read().await;
+                let mut assets_guard = context_guard.assets.write().await;
+                assets_guard.insert("since_then_in_days".into(), TnAsset::U32(7));
+                let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
+                Some(cards)
+            },
+
+            SHOW_ALL_SESSION_BTN => {
+                let context_guard = context.read().await;
+                let mut assets_guard = context_guard.assets.write().await;
+                assets_guard.remove("since_then_in_days");
+                //assets_guard.insert("since_then_in_days".into(), TnAsset::U32(3650));
+                let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
+                Some(cards)
+            },
 
             USER_SETTING_BTN
                  => {
@@ -404,7 +459,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     .unwrap();
     match row.class.as_str() {
         "basic" => show_basic_agent_setting(&row, agent_id),
-        "advanced" => unimplemented!(),
+        "advanced" => show_adv_agent_setting(&row, agent_id),
         _ => unimplemented!(),
     }
 }
@@ -444,7 +499,7 @@ fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
 
     let out_html = if let Some(out_html) = {
-        let template = UpdateAgentTemplate {
+        let template = UpdateBasicAgentTemplate {
             agent_id,
             name,
             description,
@@ -461,6 +516,45 @@ fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap
 
     (h, Html::from(out_html))
 }
+
+
+fn show_adv_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, Html<String>) {
+    let name: String = row.name.clone();
+    let description: String = if let Some(d) = row.description.clone() {
+        d
+    } else {
+        "".into()
+    };
+    let _status = row.status.clone();
+    let configuration = row.configuration.clone();
+    let agent_setting =
+        serde_json::from_value::<AgentSetting>(configuration.clone()).unwrap_or_default();
+
+    let model_name = agent_setting.model_name;
+    let fsm_agent_config = agent_setting.fsm_agent_config;
+    
+    let mut h = HeaderMap::new();
+    h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
+    h.insert("Hx-Retarget", "#workspace".parse().unwrap());
+
+    let out_html = if let Some(out_html) = {
+        let template = UpdateAdvAgentTemplate {
+            agent_id,
+            name,
+            description,
+            model_name,
+            agent_config: fsm_agent_config,
+        };
+        Some(template.render().unwrap())
+    } {
+        out_html
+    } else {
+        format!(r#"<div id="workspace">agent_id: {agent_id}</div>"#)
+    };
+
+    (h, Html::from(out_html))
+}
+
 
 async fn use_agent(
     _method: Method,
@@ -635,6 +729,62 @@ async fn create_basic_agent(
     ))
 }
 
+
+
+async fn create_adv_agent(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    session: Session,
+    Json(payload): Json<Value>,
+) -> impl IntoResponse {
+    println!("payload: {}", payload);
+    let _agent_configuration = payload.to_string();
+
+    let agent_setting_form: AdvAgentSettingForm =
+        serde_json::from_value::<AdvAgentSettingForm>(payload.clone()).unwrap();
+
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let ctx_guard = ctx.read().await;
+    let user_data = ctx_guard
+        .get_user_data()
+        .await
+        .expect("database error! can't get user data");
+
+    let agent_setting = AgentSetting {
+        name: agent_setting_form.name.clone(),
+        model_name: agent_setting_form.model_name.clone(),
+        description: agent_setting_form.description.clone(),
+        provider: agent_setting_form.provider.clone(),
+        fsm_agent_config: agent_setting_form.agent_config,
+    };
+
+    let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
+
+    let db_pool = DB_POOL.clone();
+    // TODO: make sure the string is proper avoiding SQL injection
+    let _query = sqlx::query!(
+        r#"INSERT INTO agents (user_id, name, description, status, configuration, class)
+        SELECT user_id, $2, $3, $4, $5, $6
+        FROM users
+        WHERE username = $1"#,
+        user_data.username,
+        agent_setting_form.name,
+        agent_setting_form.description,
+        "active",
+        agent_setting_value,
+        "advanced".into()
+    )
+    .fetch_one(&db_pool)
+    .await;
+
+    //let uuid = Uuid::new_v4();
+    Html::from(format!(
+        r#"<p class="py-4">An agent "{}" is created "#,
+        agent_setting_form.name
+    ))
+}
+
 async fn update_basic_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
@@ -665,6 +815,63 @@ async fn update_basic_agent(
         description: agent_setting_form.description.clone(),
         provider: agent_setting_form.provider.clone(),
         fsm_agent_config: simple_agent_config,
+    };
+
+    let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
+
+    let db_pool = DB_POOL.clone();
+    let _query = sqlx::query!(
+        r#"UPDATE agents 
+    SET name = $3, description = $4, status = $5, configuration = $6
+    WHERE agent_id = $2 AND user_id = (SELECT user_id FROM users WHERE username = $1)"#,
+        user_data.username,
+        agent_id,
+        agent_setting_form.name,
+        agent_setting_form.description,
+        "active",
+        agent_setting_value
+    )
+    .fetch_one(&db_pool)
+    .await;
+
+    println!("query rtn: {:?}", _query);
+    //let uuid = Uuid::new_v4();
+    Html::from(format!(
+        r#"<p class="py-4">The agent "{}" is updated "#,
+        agent_setting_form.name
+    ))
+}
+
+
+async fn update_adv_agent(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    session: Session,
+    Path(agent_id): Path<i32>,
+    Json(payload): Json<Value>,
+) -> impl IntoResponse {
+    println!("in update_agent   payload: {}", payload);
+    let _agent_configuration = payload.to_string();
+
+    let agent_setting_form: AdvAgentSettingForm =
+        serde_json::from_value::<AdvAgentSettingForm>(payload.clone()).unwrap();
+
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let ctx_guard = ctx.read().await;
+    let user_data = ctx_guard
+        .get_user_data()
+        .await
+        .expect("database error! can't get user data");
+
+    // TODO: validate agent_config
+
+    let agent_setting = AgentSetting {
+        name: agent_setting_form.name.clone(),
+        model_name: agent_setting_form.model_name.clone(),
+        description: agent_setting_form.description.clone(),
+        provider: agent_setting_form.provider.clone(),
+        fsm_agent_config: agent_setting_form.agent_config,
     };
 
     let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
