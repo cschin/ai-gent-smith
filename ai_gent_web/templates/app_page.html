@@ -21,7 +21,7 @@
                                 <div class="collapse-title text-xl font-medium">Agent Setting</div>
                                 <div class="collapse-content">
                                     <!-- <div class="container w-full flex flex-col my-1 mx-2 p-2"> -->
-                                    {% for value in buttons %}
+                                    {% for value in agent_buttons %}
                                     {{ value }}
                                     {% endfor %}
                                     <button class="btn btn-sm btn-block m-1 min-w-36"
@@ -33,13 +33,11 @@
                                 <input type="radio" name="side-accordion" />
                                 <div class="collapse-title text-xl font-medium">Sessions</div>
                                 <div class="collapse-content">
-                                    <ul>
-                                        <li>Apple</li>
-                                        <li>Banana</li>
-                                        <li>Orange</li>
-                                        <li>Strawberry</li>
-                                        <li>Mango</li>
-                                    </ul>
+                                    <!-- <div class="container w-full flex flex-col my-1 mx-2 p-2"> -->
+                                    {% for value in sessions_buttons %}
+                                    {{ value }}
+                                    {% endfor %}
+                                    <!-- </div> -->
                                 </div>
                             </div>
                             <div class="collapse collapse-arrow">
@@ -47,11 +45,9 @@
                                 <div class="collapse-title text-xl font-medium">Asset Collections</div>
                                 <div class="collapse-content">
                                     <ul>
-                                        <li>Apple</li>
-                                        <li>Banana</li>
-                                        <li>Orange</li>
-                                        <li>Strawberry</li>
-                                        <li>Mango</li>
+                                        <li>Book</li>
+                                        <li>Paper</li>
+                                        <li>Example</li>
                                     </ul>
                                 </div>
                             </div>
@@ -63,7 +59,7 @@
                         style="height: 100%; width:100%; background: #a2a2a2; display:flex; align-items: flex-start; justify-content:stretch; overflow: auto;">
 
                         <div class="container mx-auto w-full h-svh p-1">
-                            {{cards}}
+                            {{library_cards}}
                         </div>
 
                     </div>

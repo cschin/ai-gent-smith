@@ -4,12 +4,14 @@
 mod agent_workspace;
 mod library_cards;
 mod llm_agent;
+mod session_cards;
 
 use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
 use askama::Template;
 use futures_util::Future;
 use library_cards::{LibraryCards, LibraryCardsBuilder};
+use session_cards::{SessionCards, SessionCardsBuilder};
 
 use axum::{
     extract::{Json, Path, State},
@@ -20,7 +22,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 //use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc::Sender, RwLock};
+use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
 use serde_json::{json, Value};
 
@@ -28,9 +30,9 @@ use tower_sessions::Session;
 use tracing::debug;
 use tron_app::{
     tron_components::{
-        self, button::TnButtonBuilder, tn_future, TnActionExecutionMethod, TnAsset,
+        self, button::TnButtonBuilder, chatbox, text, tn_future, TnActionExecutionMethod, TnAsset,
         TnComponentBaseRenderTrait, TnComponentBaseTrait, TnFutureHTMLResponse, TnFutureString,
-        TnHtmlResponse,
+        TnHtmlResponse, TnServiceRequestMsg,
     },
     AppData, HtmlAttributes,
 };
@@ -39,8 +41,8 @@ use tron_components::{
     TnEvent, TnTextArea,
 };
 //use std::sync::Mutex;
-use sqlx::{any::AnyRow, prelude::FromRow, query::Query, Acquire};
 use sqlx::Postgres;
+use sqlx::{any::AnyRow, prelude::FromRow, query::Query, Acquire};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 use std::{collections::HashMap, default, pin::Pin, sync::Arc, task::Context};
 
@@ -76,7 +78,8 @@ struct AgentSetting {
 }
 
 static BUTTON: &str = "button";
-static CARDS: &str = "cards";
+static LIBRARY_CARDS: &str = "lib_cards";
+static SESSION_CARDS: &str = "session_cards";
 static AGENT_WORKSPACE: &str = "agent_workspace";
 
 // Function to get the database URL
@@ -103,6 +106,8 @@ async fn main() {
         .route("/agent/:id/update", post(update_basic_agent))
         .route("/agent/:id/use", get(use_agent))
         .route("/agent/:id/show", get(show_agent_setting))
+        .route("/chat/:id/delete", get(delete_chat))
+        .route("/chat/:id/show", get(show_chat))
         .route("/check_user", get(check_user));
 
     let app_config = tron_app::AppConfigure {
@@ -125,7 +130,12 @@ fn build_context() -> TnContext {
     let mut context = TnContextBase::default();
 
     LibraryCards::builder()
-        .init(CARDS.into(), "cards".into(), "active")
+        .init(LIBRARY_CARDS.into(), "cards".into(), "active")
+        .set_attr("class", "btn btn-sm btn-outline btn-primary flex-1")
+        .add_to_context(&mut context);
+
+    SessionCards::builder()
+        .init(SESSION_CARDS.into(), "cards".into(), "active")
         .set_attr("class", "btn btn-sm btn-outline btn-primary flex-1")
         .add_to_context(&mut context);
 
@@ -150,6 +160,11 @@ const BASIC_AGENT_DESIGN_BTN: &str = "basic_agent_design_btn";
 const ADV_AGENT_DESIGN_BTN: &str = "adv_agent_design_btn";
 const LOGOUT_BTN: &str = "logout_btn";
 const SEARCH_AGENT_BTN: &str = "search_agent_btn";
+
+const SHOW_TODAY_SESSION_BTN: &str = "show_today_sessions_btn";
+const SHOW_YESTERDAY_SESSION_BTN: &str = "show_yesterday_sessions_btn";
+const SHOW_LAST_WEEK_SESSION_BTN: &str = "show_lastweek_sessions_btn";
+const SHOW_ALL_SESSION_BTN: &str = "show_all_sessions_btn";
 
 fn build_left_panel(ctx: &mut TnContextBase) {
     let attrs = HtmlAttributes::builder()
@@ -192,26 +207,56 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
+
+    TnButton::builder()
+        .init(SHOW_TODAY_SESSION_BTN.into(), "Today's".into())
+        .update_attrs(attrs.clone())
+        .set_action(TnActionExecutionMethod::Await, change_workspace)
+        .add_to_context(ctx);
+
+    TnButton::builder()
+        .init(SHOW_YESTERDAY_SESSION_BTN.into(), "Yesterday's".into())
+        .update_attrs(attrs.clone())
+        .set_action(TnActionExecutionMethod::Await, change_workspace)
+        .add_to_context(ctx);
+
+    TnButton::builder()
+        .init(SHOW_LAST_WEEK_SESSION_BTN.into(), "Last Week".into())
+        .update_attrs(attrs.clone())
+        .set_action(TnActionExecutionMethod::Await, change_workspace)
+        .add_to_context(ctx);
+
+    TnButton::builder()
+        .init(SHOW_ALL_SESSION_BTN.into(), "All".into())
+        .update_attrs(attrs.clone())
+        .set_action(TnActionExecutionMethod::Await, change_workspace)
+        .add_to_context(ctx);
 }
 
 #[derive(Template)] // this will generate the code...
 #[template(path = "app_page.html", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct AppPageTemplate {
-    cards: String,
-    buttons: Vec<String>,
+    library_cards: String,
+    agent_buttons: Vec<String>,
+    sessions_buttons: Vec<String>,
 }
 
 fn layout(context: TnContext) -> TnFutureString {
     tn_future! {
         let context_guard = context.read().await;
-        let cards = context_guard.get_initial_rendered_string(CARDS).await;
-        let mut buttons = Vec::<String>::new();
+        let library_cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
+        let mut agent_buttons = Vec::<String>::new();
         for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN,
                     SEARCH_AGENT_BTN, BASIC_AGENT_DESIGN_BTN,
                     ADV_AGENT_DESIGN_BTN] {
-            buttons.push(context_guard.get_rendered_string(btn).await);
+            agent_buttons.push(context_guard.get_rendered_string(btn).await);
+        };
+        let mut sessions_buttons = Vec::<String>::new();
+        for btn in [SHOW_TODAY_SESSION_BTN, SHOW_YESTERDAY_SESSION_BTN,
+        SHOW_LAST_WEEK_SESSION_BTN, SHOW_ALL_SESSION_BTN] {
+            sessions_buttons.push(context_guard.get_rendered_string(btn).await);
         }
-        let html = AppPageTemplate { cards, buttons };
+        let html = AppPageTemplate { library_cards, agent_buttons, sessions_buttons };
         let s = html.render().unwrap();
         println!("{}", s);
         s
@@ -251,7 +296,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
 
             SHOW_AGENT_LIB_BTN => {
                 let context_guard = context.read().await;
-                let cards = context_guard.get_initial_rendered_string(CARDS).await;
+                let cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
                 Some(cards)
             },
 
@@ -268,10 +313,16 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
             SEARCH_AGENT_BTN => {
                 // TODO: need a chat system to find the right agent
                 let context_guard = context.read().await;
-                let cards = context_guard.get_initial_rendered_string(CARDS).await;
+                let cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
                 Some(cards)
 
             },
+
+            SHOW_TODAY_SESSION_BTN | SHOW_YESTERDAY_SESSION_BTN | SHOW_LAST_WEEK_SESSION_BTN | SHOW_ALL_SESSION_BTN => {
+                let context_guard = context.read().await;
+                let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
+                Some(cards)
+            }
 
             USER_SETTING_BTN
                  => {
@@ -292,7 +343,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
 
             _ => {
                 let context_guard = context.read().await;
-                let cards = context_guard.get_initial_rendered_string(CARDS).await;
+                let cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
                 Some(cards)
             }
         };
@@ -314,12 +365,12 @@ fn logout(_context: TnContext, _event: TnEvent, _payload: Value) -> TnFutureHTML
 }
 
 struct AgentQueryResult {
-    agent_id: i32,  // or whatever type agent_id is in your database
+    agent_id: i32, // or whatever type agent_id is in your database
     name: String,
     description: Option<String>,
-    status: String,  // or an enum if status is represented as such
-    configuration: serde_json::Value,  // assuming configuration is stored as JSON
-    class: String,  // or another appropriate type
+    status: String,                   // or an enum if status is represented as such
+    configuration: serde_json::Value, // assuming configuration is stored as JSON
+    class: String,                    // or another appropriate type
 }
 
 async fn show_agent_setting(
@@ -353,8 +404,8 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     .unwrap();
     match row.class.as_str() {
         "basic" => show_basic_agent_setting(&row, agent_id),
-        "advanced" =>  unimplemented!(),
-        _ =>  unimplemented!()
+        "advanced" => unimplemented!(),
+        _ => unimplemented!(),
     }
 }
 
@@ -366,16 +417,17 @@ fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap
         "".into()
     };
     let _status = row.status.clone();
-    let configuration=  row.configuration.clone();
-    let agent_setting: AgentSetting =
-        serde_json::from_value::<AgentSetting>(configuration.clone()).unwrap();
+    let configuration = row.configuration.clone();
+    let agent_setting =
+        serde_json::from_value::<AgentSetting>(configuration.clone()).unwrap_or_default();
+
     let model_name = agent_setting.model_name;
     let fsm_agent_config = agent_setting.fsm_agent_config;
 
     let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config)
-        .unwrap()
+        .unwrap_or_default()
         .build()
-        .unwrap();
+        .unwrap_or_default();
     let prompt = fsm_config.sys_prompt.clone();
     let follow_up_prompt = fsm_config
         .prompts
@@ -420,14 +472,12 @@ async fn use_agent(
     //println!("payload: {:?}", payload);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
-
     let name;
     let user_id;
     let user_data;
     let configuration;
     {
         let ctx_guard = ctx.read().await;
-
         user_data = ctx_guard
             .get_user_data()
             .await
@@ -471,7 +521,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         );
     }
     {
-        let ctx_guard = ctx.write().await;
+        let ctx_guard = ctx.read().await;
         let mut assets_guard = ctx_guard.assets.write().await;
         assets_guard.insert("user_id".into(), TnAsset::U32(user_id as u32));
         assets_guard.insert("agent_name".into(), TnAsset::String(name.clone()));
@@ -502,6 +552,10 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
 
+    {
+        chatbox::clean_chatbox_with_context(ctx, AGENT_CHAT_TEXTAREA).await;
+        text::clean_textarea_with_context(ctx, AGENT_QUERY_TEXT_INPUT).await;
+    }
     let out_html = {
         let ctx_guard = ctx.read().await;
 
@@ -681,4 +735,86 @@ RETURNING user_id"#,
         res.unwrap().user_id
     };
     println!("check_user: {:?} id: {}", user_data, user_id);
+}
+
+async fn show_chat(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    Path(chat_id): Path<i32>,
+    session: Session,
+) -> impl IntoResponse {
+    println!("in show_chat: chat_id {}", chat_id);
+    //println!("payload: {:?}", payload);
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let user_id;
+    let agent_id;
+    let agent_name;
+    let user_data;
+    let configuration;
+    {
+        let ctx_guard = ctx.read().await;
+        user_data = ctx_guard
+            .get_user_data()
+            .await
+            .expect("database error! can't get user data");
+
+        let db_pool = DB_POOL.clone();
+
+        let row = sqlx::query!(
+            "SELECT c.agent_id, c.user_id, a.name, a.configuration FROM chats c
+JOIN users u ON c.user_id = u.user_id
+JOIN agents a ON c.agent_id = a.agent_id
+WHERE u.username = $1 AND c.chat_id = $2;",
+            user_data.username,
+            chat_id
+        )
+        .fetch_one(&db_pool)
+        .await
+        .unwrap();
+
+        user_id = row.user_id;
+        agent_id = row.agent_id.unwrap_or_default();
+        agent_name = row.name;
+        configuration = if let Some(conf) = row.configuration {
+            conf.to_string()
+        } else {
+            "".into()
+        };
+    }
+    {
+        let ctx_guard = ctx.read().await;
+        let mut assets_guard = ctx_guard.assets.write().await;
+        assets_guard.insert("user_id".into(), TnAsset::U32(user_id as u32));
+        assets_guard.insert("agent_name".into(), TnAsset::String(agent_name.clone()));
+        assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
+        assets_guard.insert("chat_id".into(), TnAsset::U32(chat_id as u32));
+        assets_guard.insert("agent_configuration".into(), TnAsset::String(configuration));
+    }
+    let mut h = HeaderMap::new();
+    h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
+    h.insert("Hx-Retarget", "#workspace".parse().unwrap());
+
+    {
+        //chatbox::clean_chatbox_with_context(ctx, AGENT_CHAT_TEXTAREA).await;
+        text::clean_textarea_with_context(ctx, AGENT_QUERY_TEXT_INPUT).await;
+    }
+    let out_html = {
+        let ctx_guard = ctx.read().await;
+
+        let component_guard = ctx_guard.components.read().await;
+        let mut agent_ws = component_guard.get(AGENT_WORKSPACE).unwrap().write().await;
+        agent_ws.pre_render(&ctx_guard).await;
+        agent_ws.render().await
+    };
+    (h, Html::from(out_html))
+}
+
+async fn delete_chat(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    Path(agent_id): Path<i32>,
+    session: Session,
+) -> impl IntoResponse {
+    todo!()
 }

@@ -7,6 +7,7 @@ use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::mpsc;
+use tokio::sync::mpsc::Receiver;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
@@ -18,6 +19,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::Acquire;
 use sqlx::Postgres;
+use sqlx::{any::AnyRow, prelude::FromRow, query as sqlx_query};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
 use pulldown_cmark::{html, Options, Parser};
@@ -127,13 +129,6 @@ where
 
     async fn pre_render(&mut self, ctx: &TnContextBase) {
         let comp_guard = ctx.components.read().await;
-        let chat_textarea_html = comp_guard
-            .get(AGENT_CHAT_TEXTAREA)
-            .unwrap()
-            .read()
-            .await
-            .initial_render()
-            .await;
 
         let stream_output_html = comp_guard
             .get(AGENT_STREAM_OUTPUT)
@@ -176,6 +171,33 @@ where
             }
         };
 
+        let chat_id = {
+            let assets_guard = ctx.assets.read().await;
+            if let Some(TnAsset::U32(chat_id)) = assets_guard.get("chat_id") {
+                *chat_id as i32
+            } else {
+                panic!("no chat id found")
+            }
+        };
+
+        let messages = get_messages(chat_id).await.unwrap_or_default();
+
+        {
+            let chat_textarea = comp_guard.get(AGENT_CHAT_TEXTAREA).unwrap();
+            chatbox::clean_chatbox_value(chat_textarea.clone()).await;
+            for (role, _m_type, content) in messages.into_iter() {
+                chatbox::append_chatbox_value(chat_textarea.clone(), (role, content)).await;
+            }
+        }
+
+        let chat_textarea_html = comp_guard
+            .get(AGENT_CHAT_TEXTAREA)
+            .unwrap()
+            .read()
+            .await
+            .initial_render()
+            .await;
+
         self.html = AgentWorkspaceTemplate {
             agent_name,
             chat_textarea: chat_textarea_html,
@@ -199,7 +221,7 @@ async fn insert_message(
     role: &str,
     message_type: &str,
 ) -> Result<i32, sqlx::Error> {
-    println!("XXX insert_message: chat:{}", chat_id);
+    println!("insert_message: chat:{}", chat_id);
 
     let pool = DB_POOL.clone();
     let result = sqlx::query!(
@@ -217,11 +239,66 @@ async fn insert_message(
     )
     .fetch_one(&pool)
     .await?;
-    println!("XXX message_id: {}", result.message_id);
+    println!("message_id: {}", result.message_id);
 
     Ok(result.message_id)
 }
 
+async fn get_messages(chat_id: i32) -> Result<Vec<(String, String, String)>, sqlx::Error> {
+    println!("insert_message: chat:{}", chat_id);
+
+    let pool = DB_POOL.clone();
+    let results = sqlx::query!(
+        r#"
+        SELECT role, message_type, content
+        FROM messages
+        WHERE chat_id = $1 
+        "#,
+        chat_id
+    )
+    .fetch_all(&pool)
+    .await?;
+
+    let messages: Vec<(String, String, String)> = results
+        .into_iter()
+        .map(|row| (row.role.unwrap_or_default(), row.message_type, row.content))
+        .collect::<Vec<_>>();
+    println!("messages: {:?}", messages);
+    Ok(messages)
+}
+
+async fn get_chat_summary(chat_id: i32) -> Result<String, sqlx::Error> {
+    println!("update_chat_summary: chat:{}", chat_id);
+
+    let pool = DB_POOL.clone();
+    let result = sqlx::query!(r#" SELECT summary FROM chats WHERE chat_id = $1 "#, chat_id)
+        .fetch_one(&pool)
+        .await?;
+    let summary = result.summary.unwrap_or_default();
+
+    Ok(summary)
+}
+
+async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::Error> {
+    println!("update_chat_summary: chat:{}", chat_id);
+
+    let pool = DB_POOL.clone();
+    let result = sqlx::query!(
+        r#"
+        UPDATE chats 
+        SET summary = $1, updated_at = CURRENT_TIMESTAMP 
+        WHERE chat_id = $2 
+        RETURNING chat_id
+        "#,
+        summary,
+        chat_id
+    )
+    .fetch_one(&pool)
+    .await?;
+    println!("updated chat_id: {}", result.chat_id);
+
+    Ok(result.chat_id)
+}
 
 const FSM_PROMPT: &str = include_str!("../dev_config/fsm_prompt"); // this should be generated from fsm_agent_config
 const SUMMARY_PROMPT: &str = include_str!("../dev_config/summary_prompt");
@@ -230,6 +307,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         if event.e_trigger != AGENT_QUERY_BUTTON {
             return None;
         };
+
+
         let asset_ref = context.get_asset_ref().await;
         let asset_guarad = asset_ref.read().await;
         let fsm_agent_config;
@@ -261,6 +340,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             panic!("chat_id not found");
         };
 
+
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
         let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config).unwrap().build().unwrap();
@@ -269,6 +349,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let llm_client = OAI_LLMClient {};
         let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config.sys_prompt, FSM_PROMPT, SUMMARY_PROMPT);
+
+        agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
 
         // let mut options = Options::empty();
         // options.insert(Options::ENABLE_STRIKETHROUGH);
@@ -288,32 +370,40 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         });
 
         if let TnComponentValue::String(s) = query_text {
+                context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
+                text::clean_textarea_with_context(
+                    &context,
+                    AGENT_QUERY_TEXT_INPUT,
+                )
+                .await;
                 let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
                 let query = s.replace('\n', "<br>");
                 chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.clone())).await;
-                insert_message(chat_id, user_id, agent_id, &query, "user", "text").await;
+                let _ = insert_message(chat_id, user_id, agent_id, &query, "user", "text").await;
                 context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
                 match agent.process_input(&query, Some(tx)).await {
                     Ok(res) => {
                         println!("Response: {}", res);
                         let parser = Parser::new_ext(&res, Options::all());
                         let mut html_output = String::new();
+                        // TODO: the markdown to HTML seems to be very slow
                         html::push_html(&mut html_output, parser);
                         chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
-                        insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
+                        let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
+                        let _ = update_chat_summary(chat_id, &agent.summary).await;
                     },
                     Err(err) => println!("LLM error, please retry your question. {:?}", err),
-                }
+                };
         }
 
-        context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
         handle.abort();
-
+        context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
         text::clean_stream_textarea_with_context(
             &context,
             AGENT_STREAM_OUTPUT,
         )
         .await;
+
         None
     }
 }
