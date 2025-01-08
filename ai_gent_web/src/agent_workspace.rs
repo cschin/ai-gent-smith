@@ -2,7 +2,7 @@ use ai_gent_lib::fsm::FSMBuilder;
 use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use askama::Template;
-use axum::async_trait;
+use async_trait::async_trait;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;

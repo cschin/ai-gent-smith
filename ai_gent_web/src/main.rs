@@ -113,12 +113,12 @@ async fn main() {
     let ui_action_routes = Router::<Arc<AppData>>::new()
         .route("/agent/create", post(create_basic_agent))
         .route("/agent/create_adv", post(create_adv_agent))
-        .route("/agent/:id/update", post(update_basic_agent))
-        .route("/agent/:id/update_adv", post(update_adv_agent))
-        .route("/agent/:id/use", get(use_agent))
-        .route("/agent/:id/show", get(show_agent_setting))
-        .route("/chat/:id/delete", get(delete_chat))
-        .route("/chat/:id/show", get(show_chat))
+        .route("/agent/{id}/update", post(update_basic_agent))
+        .route("/agent/{id}/update_adv", post(update_adv_agent))
+        .route("/agent/{id}/use", get(use_agent))
+        .route("/agent/{id}/show", get(show_agent_setting))
+        .route("/chat/{id}/delete", get(delete_chat))
+        .route("/chat/{id}/show", get(show_chat))
         .route("/check_user", get(check_user));
 
     let app_config = tron_app::AppConfigure {
@@ -373,8 +373,8 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
             SHOW_ALL_SESSION_BTN => {
                 let context_guard = context.read().await;
                 let mut assets_guard = context_guard.assets.write().await;
-                assets_guard.remove("since_then_in_days");
-                //assets_guard.insert("since_then_in_days".into(), TnAsset::U32(3650));
+                //assets_guard.remove("since_then_in_days");
+                assets_guard.insert("since_then_in_days".into(), TnAsset::U32(3650));
                 let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
                 Some(cards)
             },

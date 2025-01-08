@@ -1,5 +1,5 @@
 use askama::Template;
-use axum::async_trait;
+use async_trait::async_trait;
 use chrono::DateTime;
 use sqlx::query;
 use sqlx::Acquire;

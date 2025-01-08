@@ -1,4 +1,4 @@
-use axum::async_trait;
+use async_trait::async_trait;
 
 use ai_gent_lib::fsm::FSMBuilder;
 
