@@ -1,0 +1,44 @@
+{
+  "states": [
+    "StandBy",
+    "InitialResponse",
+    "AskFollowUpQuestion"
+  ],
+  "transitions": [
+    [
+      "StandBy",
+      "StandBy"
+    ],
+    [
+      "StandBy",
+      "InitialResponse"
+    ],
+    [
+      "StandBy",
+      "AskFollowUpQuestion"
+    ],
+    [
+      "InitialResponse",
+      "AskFollowUpQuestion"
+    ],
+    [
+      "InitialResponse",
+      "StandBy"
+    ],
+    [
+      "AskFollowUpQuestion",
+      "AskFollowUpQuestion"
+    ],
+    [
+      "AskFollowUpQuestion",
+      "StandBy"
+    ]
+  ],
+  "initial_state": "StandBy",
+  "prompts": {
+    "InitialResponse": "Your goal to start to response to the user and determine if the question from the conversation is clear or you need to ask some follow up questions to gain additional information.",
+    "StandBy": "Your goal to let the user know that you are ready to take a new question. You should welcome the user and encourage the user to ask new question.",
+    "AskFollowUpQuestion": "Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need."
+  },
+  "sys_prompt": "You are a helpful agent to help a programmer figuring out the correction command line tools to use based the current summary of the previous conversation and new user message. Output your response in the markdown format."
+}
