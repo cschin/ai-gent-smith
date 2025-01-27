@@ -205,11 +205,11 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
 
-    TnButton::builder()
-        .init(SEARCH_AGENT_BTN.into(), "Search Agents".into())
-        .update_attrs(attrs.clone())
-        .set_action(TnActionExecutionMethod::Await, change_workspace)
-        .add_to_context(ctx);
+    // TnButton::builder()
+    //     .init(SEARCH_AGENT_BTN.into(), "Search Agents".into())
+    //     .update_attrs(attrs.clone())
+    //     .set_action(TnActionExecutionMethod::Await, change_workspace)
+    //     .add_to_context(ctx);
 
     TnButton::builder()
         .init(
@@ -259,7 +259,7 @@ fn layout(context: TnContext) -> TnFutureString {
         let library_cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
         let mut agent_buttons = Vec::<String>::new();
         for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN,
-                    SEARCH_AGENT_BTN, BASIC_AGENT_DESIGN_BTN,
+                    BASIC_AGENT_DESIGN_BTN,
                     ADV_AGENT_DESIGN_BTN] {
             agent_buttons.push(context_guard.get_rendered_string(btn).await);
         };
