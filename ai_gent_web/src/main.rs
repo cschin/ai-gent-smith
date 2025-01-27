@@ -117,6 +117,7 @@ async fn main() {
         .route("/agent/{id}/update_adv", post(update_adv_agent))
         .route("/agent/{id}/use", get(use_agent))
         .route("/agent/{id}/show", get(show_agent_setting))
+        .route("/agent/{id}/deactivate", post(deactivate_agent))
         .route("/chat/{id}/delete", get(delete_chat))
         .route("/chat/{id}/show", get(show_chat))
         .route("/check_user", get(check_user));
@@ -289,7 +290,6 @@ struct UpdateBasicAgentTemplate {
     follow_up_prompt: String,
 }
 
-
 #[derive(Template)]
 #[template(path = "update_fsm_agent.html")]
 struct UpdateAdvAgentTemplate {
@@ -300,11 +300,9 @@ struct UpdateAdvAgentTemplate {
     agent_config: String,
 }
 
-
 #[derive(Template)]
 #[template(path = "create_fsm_agent.html")]
 struct SetupAdvAgentTemplate {}
-
 
 #[derive(Template)]
 #[template(path = "user_settings.html")]
@@ -517,7 +515,6 @@ fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap
     (h, Html::from(out_html))
 }
 
-
 fn show_adv_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, Html<String>) {
     let name: String = row.name.clone();
     let description: String = if let Some(d) = row.description.clone() {
@@ -532,7 +529,7 @@ fn show_adv_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, 
 
     let model_name = agent_setting.model_name;
     let fsm_agent_config = agent_setting.fsm_agent_config;
-    
+
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
@@ -554,7 +551,6 @@ fn show_adv_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, 
 
     (h, Html::from(out_html))
 }
-
 
 async fn use_agent(
     _method: Method,
@@ -729,8 +725,6 @@ async fn create_basic_agent(
     ))
 }
 
-
-
 async fn create_adv_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
@@ -842,7 +836,6 @@ async fn update_basic_agent(
     ))
 }
 
-
 async fn update_adv_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
@@ -898,6 +891,43 @@ async fn update_adv_agent(
         agent_setting_form.name
     ))
 }
+
+async fn deactivate_agent(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    session: Session,
+    Path(agent_id): Path<i32>,
+    Json(payload): Json<Value>,
+) -> impl IntoResponse {
+    println!("in  deactivate_agent   payload: {}", payload);
+    let _agent_configuration = payload.to_string();
+
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let ctx_guard = ctx.read().await;
+    let user_data = ctx_guard
+        .get_user_data()
+        .await
+        .expect("database error! can't get user data");
+    let db_pool = DB_POOL.clone();
+    let row = sqlx::query!(
+        r#"UPDATE agents SET status = $3
+           WHERE agent_id = $2 AND user_id = (SELECT user_id FROM users WHERE username = $1)
+           RETURNING name"#,
+        user_data.username,
+        agent_id,
+        "inactive"
+    )
+    .fetch_one(&db_pool)
+    .await
+    .expect("sql query error");
+
+    Html::from(format!(
+        r#"<p class="py-4">The agent "{}" is deactivated"#,
+        row.name
+    ))
+}
+
 
 async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, session: Session) {
     // let user_data = session
