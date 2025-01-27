@@ -300,14 +300,13 @@ async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::E
     Ok(result.chat_id)
 }
 
-const FSM_PROMPT: &str = include_str!("../dev_config/fsm_prompt"); // this should be generated from fsm_agent_config
-const SUMMARY_PROMPT: &str = include_str!("../dev_config/summary_prompt");
+//const FSM_PROMPT: &str = include_str!("../dev_config/fsm_prompt"); // this should be generated from fsm_agent_config
+//const SUMMARY_PROMPT: &str = include_str!("../dev_config/summary_prompt");
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
     tn_future! {
         if event.e_trigger != AGENT_QUERY_BUTTON {
             return None;
         };
-
 
         let asset_ref = context.get_asset_ref().await;
         let asset_guarad = asset_ref.read().await;
@@ -348,7 +347,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let fsm = FSMBuilder::from_config(&fsm_config).unwrap().build().unwrap();
 
         let llm_client = OAI_LLMClient {};
-        let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config.sys_prompt, FSM_PROMPT, SUMMARY_PROMPT);
+        let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 
         agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
 

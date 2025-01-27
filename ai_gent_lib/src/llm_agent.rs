@@ -16,6 +16,8 @@ pub struct FSMAgentConfig {
     pub initial_state: String,
     pub prompts: HashMap<String, String>,
     pub sys_prompt: String,
+    pub summary_prompt: String,
+    pub fsm_prompt: String,
 }
 
 impl FSMAgentConfig {
@@ -38,6 +40,8 @@ pub struct FSMAgentConfigBuilder {
     transitions: Vec<(String, String)>,
     initial_state: Option<String>,
     prompts: HashMap<String, String>,
+    fsm_prompt: String,
+    summary_prompt: String,
     sys_prompt: String,
 }
 
@@ -71,6 +75,16 @@ impl FSMAgentConfigBuilder {
         self
     }
 
+    pub fn set_fsm_prompt(mut self, prompt: String) -> Self {
+        self.fsm_prompt = prompt;
+        self
+    }
+
+    pub fn set_summary_prompt(mut self, prompt: String) -> Self {
+        self.summary_prompt = prompt;
+        self
+    }
+
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         let config: FSMAgentConfig = serde_json::from_str(json_str)?;
         Ok(Self {
@@ -78,7 +92,9 @@ impl FSMAgentConfigBuilder {
             transitions: config.transitions,
             initial_state: Some(config.initial_state),
             prompts: config.prompts,
+            fsm_prompt: config.fsm_prompt,
             sys_prompt: config.sys_prompt,
+            summary_prompt: config.summary_prompt
         })
     }
 
@@ -95,7 +111,9 @@ impl FSMAgentConfigBuilder {
             transitions: self.transitions,
             initial_state: self.initial_state.unwrap(),
             prompts: self.prompts,
+            fsm_prompt: self.fsm_prompt,
             sys_prompt: self.sys_prompt,
+            summary_prompt: self.summary_prompt
         })
     }
 }
@@ -132,18 +150,16 @@ impl<C: LLMClient> LLMAgent<C> {
     pub fn new(
         fsm: FSM,
         llm_client: C,
-        sys_prompt: &str,
-        fsm_prompt: &str,
-        summary_prompt: &str,
+        fsm_config: &FSMAgentConfig,
     ) -> Self {
         // Initialize prompts for each state here
         Self {
             fsm,
             llm_client,
             summary: String::default(),
-            sys_prompt: sys_prompt.into(),
-            fsm_prompt: fsm_prompt.into(),
-            summary_prompt: summary_prompt.into(),
+            sys_prompt: fsm_config.sys_prompt.clone(),
+            fsm_prompt: fsm_config.fsm_prompt.clone(),
+            summary_prompt: fsm_config.summary_prompt.clone(),
             messages: Vec::default(),
         }
     }
@@ -364,7 +380,9 @@ mod tests {
             .unwrap();
         let llm_client = MockLLMClient;
 
-        let mut agent = LLMAgent::new(fsm, llm_client, "", "", "");
+        let fsm_config = FSMAgentConfigBuilder::from_json("").unwrap().build().unwrap();
+
+        let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 
         let result = agent.process_input("Test input", None).await;
         assert!(result.is_ok());

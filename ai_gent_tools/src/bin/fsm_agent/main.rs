@@ -51,7 +51,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fsm = FSMBuilder::from_config(&fsm_config)?.build()?;
 
     let llm_client = TestLLMClient {};
-    let mut agent = LLMAgent::new(fsm, llm_client, SYS_PROMPT, FSM_PROMPT, SUMMARY_PROMPT);
+    let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG).unwrap().build().unwrap();
+    let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 
     tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
 
