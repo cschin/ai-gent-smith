@@ -1065,14 +1065,14 @@ async fn delete_chat(
     //let user_id: i32;
     //let agent_id: i32;
     //let agent_name: String;
-    let user_data;
+    //let user_data;
     //let configuration: String;
     {
         let ctx_guard = ctx.read().await;
-        user_data = ctx_guard
-            .get_user_data()
-            .await
-            .expect("database error! can't get user data");
+        // user_data = ctx_guard
+        //     .get_user_data()
+        //     .await
+        //     .expect("database error! can't get user data");
 
         let db_pool = DB_POOL.clone();
         let row = sqlx::query!(
