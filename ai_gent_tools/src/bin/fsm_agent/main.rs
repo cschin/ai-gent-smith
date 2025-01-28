@@ -12,9 +12,9 @@ use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 use ai_gent_lib::llm_service::{openai_service, openai_stream_service, LLMStreamOut};
 struct TestLLMClient {}
 
-const SYS_PROMPT: &str = include_str!("../../../dev_config/sys_prompt");
-const FSM_PROMPT: &str = include_str!("../../../dev_config/fsm_prompt");
-const SUMMARY_PROMPT: &str = include_str!("../../../dev_config/summary_prompt");
+//const SYS_PROMPT: &str = include_str!("../../../dev_config/sys_prompt");
+//const FSM_PROMPT: &str = include_str!("../../../dev_config/fsm_prompt");
+//const SUMMARY_PROMPT: &str = include_str!("../../../dev_config/summary_prompt");
 
 #[async_trait]
 impl LLMClient for TestLLMClient {
