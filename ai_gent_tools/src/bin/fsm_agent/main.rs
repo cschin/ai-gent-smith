@@ -60,7 +60,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
-    let (tx, mut rx) = mpsc::channel::<String>(8);
+    let (tx, mut rx) = mpsc::channel::<(String,String)>(8);
 
     let t = tokio::spawn(async move {
         while let Some(_message) = rx.recv().await {
@@ -79,7 +79,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let _ = rl.add_history_entry(line.as_str());
 
-                match agent.process_input(&line, Some(tx.clone())).await {
+                match agent.process_message(&line, Some(tx.clone())).await {
                     Ok(res) => println!("\nResponse: {}", res),
                     Err(err) => println!("LLM error, please retry your question. {:?}", err),
                 }

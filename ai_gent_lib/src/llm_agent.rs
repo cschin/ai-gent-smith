@@ -94,7 +94,7 @@ impl FSMAgentConfigBuilder {
             prompts: config.prompts,
             fsm_prompt: config.fsm_prompt,
             sys_prompt: config.sys_prompt,
-            summary_prompt: config.summary_prompt
+            summary_prompt: config.summary_prompt,
         })
     }
 
@@ -113,7 +113,7 @@ impl FSMAgentConfigBuilder {
             prompts: self.prompts,
             fsm_prompt: self.fsm_prompt,
             sys_prompt: self.sys_prompt,
-            summary_prompt: self.summary_prompt
+            summary_prompt: self.summary_prompt,
         })
     }
 }
@@ -136,22 +136,18 @@ pub struct LLMAgent<C: LLMClient> {
     pub fsm_prompt: String,
     pub summary_prompt: String,
     pub summary: String,
+    pub context: Option<String>,
     pub messages: Vec<(String, String)>, // (role, message)
 }
 
 #[async_trait]
 pub trait LLMClient {
     async fn generate(&self, prompt: &str, msg: &[(String, String)]) -> String;
-
     async fn generate_stream(&self, prompt: &str, msg: &[(String, String)]) -> LLMStreamOut;
 }
 
 impl<C: LLMClient> LLMAgent<C> {
-    pub fn new(
-        fsm: FSM,
-        llm_client: C,
-        fsm_config: &FSMAgentConfig,
-    ) -> Self {
+    pub fn new(fsm: FSM, llm_client: C, fsm_config: &FSMAgentConfig) -> Self {
         // Initialize prompts for each state here
         Self {
             fsm,
@@ -161,13 +157,18 @@ impl<C: LLMClient> LLMAgent<C> {
             fsm_prompt: fsm_config.fsm_prompt.clone(),
             summary_prompt: fsm_config.summary_prompt.clone(),
             messages: Vec::default(),
+            context: None,
         }
     }
 
-    pub async fn process_input(
+    pub fn set_context(mut self, context: &str) {
+        self.context = Some(context.to_string());
+    }
+
+    pub async fn process_message(
         &mut self,
         user_input: &str,
-        tx: Option<Sender<String>>,
+        tx: Option<Sender<(String, String)>>,
     ) -> Result<String, String> {
         let mut last_message = Vec::<(String, String)>::new();
 
@@ -186,17 +187,31 @@ impl<C: LLMClient> LLMAgent<C> {
 
             let fsm_prompt = [self.fsm_prompt.as_str(), msg.as_str()].join("\n");
 
-            let prompt = [
-                self.sys_prompt.as_str(),
-                prompt.as_str(),
-                "\nHere is the current summary:\n",
-                &self.summary,
-            ]
+            let prompt = if let Some(context) = self.context.as_ref() {
+                [
+                    self.sys_prompt.as_str(),
+                    prompt.as_str(),
+                    "\nHere is the current summary:\n",
+                    &self.summary,
+                    "\nHere is the current reference context:\n",
+                    context,
+                ]
+            } else {
+                [
+                    self.sys_prompt.as_str(),
+                    prompt.as_str(),
+                    "\nHere is the current summary:\n",
+                    &self.summary,
+                    "",
+                    "",
+                ]
+            }
             .join("\n");
 
             let summary_prompt = [self.summary_prompt.as_str(), self.summary.as_str()].join("\n");
 
-            tracing::info!("summary prompt: {}\n\n", summary_prompt);
+            tracing::info!(target: "tron_app", "summary prompt: {}\n\n", summary_prompt);
+            tracing::info!(target: "tron_app", "prompt: {}\n\n", prompt);
 
             let llm_output = if let Some(tx) = tx {
                 let mut llm_output = String::default();
@@ -208,9 +223,10 @@ impl<C: LLMClient> LLMAgent<C> {
                 while let Some(result) = llm_stream.next().await {
                     if let Some(output) = result {
                         llm_output.push_str(&output);
-                        let _ = tx.send(output).await; 
+                        let _ = tx.send(("token".into(), output)).await;
                     };
-                };
+                }
+                let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
                 llm_output
             } else {
                 self.llm_client.generate(&prompt, &self.messages).await
@@ -380,11 +396,14 @@ mod tests {
             .unwrap();
         let llm_client = MockLLMClient;
 
-        let fsm_config = FSMAgentConfigBuilder::from_json("").unwrap().build().unwrap();
+        let fsm_config = FSMAgentConfigBuilder::from_json("")
+            .unwrap()
+            .build()
+            .unwrap();
 
         let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 
-        let result = agent.process_input("Test input", None).await;
+        let result = agent.process_message("Test input", None).await;
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),

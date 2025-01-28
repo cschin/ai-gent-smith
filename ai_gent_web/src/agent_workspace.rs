@@ -5,13 +5,13 @@ use askama::Template;
 use async_trait::async_trait;
 use ordered_float::OrderedFloat;
 use serde_json::Value;
-use tron_app::tron_components::text::append_textarea_value;
-use tron_app::tron_components::text::update_and_send_textarea_with_context;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
+use tron_app::tron_components::text::append_textarea_value;
+use tron_app::tron_components::text::update_and_send_textarea_with_context;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
@@ -30,8 +30,10 @@ use sqlx::Postgres;
 use sqlx::{any::AnyRow, prelude::FromRow, query as sqlx_query};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
+use crate::embedding_service::{
+    EmbeddingChunk, EmbeddingService, DOCUMENT_CHUNKS, EMBEDDING_SERVICE,
+};
 use pulldown_cmark::{html, Options, Parser};
-use crate::embedding_service::{EmbeddingChunk, EmbeddingService, EMBEDDING_SERVICE, DOCUMENT_CHUNKS};
 
 pub const AGENT_CHAT_TEXTAREA: &str = "agent_chat_textarea";
 pub const AGENT_STREAM_OUTPUT: &str = "agent_stream_output";
@@ -40,7 +42,6 @@ pub const AGENT_QUERY_BUTTON: &str = "agent_query_button";
 pub const ASSET_SEARCH_BUTTON: &str = "asset_search_button";
 pub const ASSET_SEARCH_OUTPUT: &str = "asset_search_output";
 //pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
-
 
 /// Represents a button component in a Tron application.
 #[non_exhaustive]
@@ -60,8 +61,7 @@ struct AgentWorkspaceTemplate {
     stream_output: String,
     query_button: String,
     asset_search_button: String,
-    asset_search_output: String
-    //new_session_button: String,
+    asset_search_output: String, //new_session_button: String,
 }
 
 impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
@@ -83,7 +83,10 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let mut query_text_input = TnTextArea::builder()
             .init(AGENT_QUERY_TEXT_INPUT.into(), "".into())
-            .set_attr("class", "flex-1 w-5/6 p-1 border-2 mb-1 border-gray-600 rounded-lg bg-gray-400 text-black")
+            .set_attr(
+                "class",
+                "flex-1 w-5/6 p-1 border-2 mb-1 border-gray-600 rounded-lg bg-gray-400 text-black",
+            )
             .set_attr("style", "resize:none")
             .set_attr("hx-trigger", "change, server_event")
             .set_attr("hx-vals", r##"js:{event_data:get_input_event(event)}"##)
@@ -92,7 +95,10 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let agent_stream_output = TnStreamTextArea::builder()
             .init(AGENT_STREAM_OUTPUT.into(), Vec::new())
-            .set_attr("class", "flex-1 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400 text-black")
+            .set_attr(
+                "class",
+                "flex-1 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400 text-black",
+            )
             .set_attr("style", r#"resize:none"#)
             .build();
 
@@ -106,23 +112,18 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .build();
 
         let asset_search_button = TnButton::builder()
-            .init(
-                ASSET_SEARCH_BUTTON.into(),
-                "Search Asset".into(),
-            )
+            .init(ASSET_SEARCH_BUTTON.into(), "Search Asset".into())
             .set_attr(
                 "class",
                 "btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item",
             )
-            .set_action(TnActionExecutionMethod::Await, search_asset)
+            .set_action(TnActionExecutionMethod::Await, search_asset_clicked)
             .build();
 
         let asset_search_output = text::TnTextArea::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
         .set_attr("class", "flex-1 border-2 mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[70svh]")
         .build();
-
-
 
         // let new_session_button = TnButton::builder()
         //     .init(
@@ -144,7 +145,6 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
         context.add_component(asset_search_output);
         //context.add_component(new_session_button);
 
-        
         self
     }
 }
@@ -416,52 +416,69 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
 
+
+
         // let mut options = Options::empty();
         // options.insert(Options::ENABLE_STRIKETHROUGH);
 
-        let (tx, mut rx) = mpsc::channel::<String>(8);
+        let (tx, mut rx) = mpsc::channel::<(String, String)>(8);
         let context_cloned = context.clone();
         let handle = tokio::spawn(async move {
-            while let Some(token) = rx.recv().await {
-                println!("stream out: {}", token);
-                text::append_and_update_stream_textarea_with_context(
-                    &context_cloned,
-                    AGENT_STREAM_OUTPUT,
-                    &token,
-                )
-                .await;
+            while let Some((t, r)) = rx.recv().await {
+                match t.as_str() {
+                    "token" =>  {
+                    println!("stream out: {}", r);
+                    text::append_and_update_stream_textarea_with_context(
+                        &context_cloned,
+                        AGENT_STREAM_OUTPUT,
+                        &r,
+                    )
+                    .await},
+                    "llm_output" => {
+                        println!("Response: {}", r);
+                        let parser = Parser::new_ext(&r, Options::all());
+                        let mut html_output = String::new();
+                        // TODO: the markdown to HTML seems to be very slow
+                        html::push_html(&mut html_output, parser);
+                        let query_result_area = context_cloned.get_component(AGENT_CHAT_TEXTAREA).await;
+                        chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
+                        context_cloned.set_ready_for(AGENT_CHAT_TEXTAREA).await;
+                    },
+                    _ => {}
+                }
             }
         });
 
         if let TnComponentValue::String(s) = query_text {
-                context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
-                text::clean_textarea_with_context(
-                    &context,
-                    AGENT_QUERY_TEXT_INPUT,
-                )
-                .await;
-                let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
-                let query = s.replace('\n', "<br>");
-                chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.clone())).await;
-                let _ = insert_message(chat_id, user_id, agent_id, &query, "user", "text").await;
-                context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
-                match agent.process_input(&query, Some(tx)).await {
-                    Ok(res) => {
-                        println!("Response: {}", res);
-                        let parser = Parser::new_ext(&res, Options::all());
-                        let mut html_output = String::new();
-                        // TODO: the markdown to HTML seems to be very slow
-                        html::push_html(&mut html_output, parser);
-                        chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
-                        let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
-                        let _ = update_chat_summary(chat_id, &agent.summary).await;
-                    },
-                    Err(err) => println!("LLM error, please retry your question. {:?}", err),
-                };
+            let query_context = search_asset(&s).await;
+            text::clean_textarea_with_context(
+                &context,
+                ASSET_SEARCH_OUTPUT,
+            ).await;
+            update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &query_context).await;
+            agent.context = Some(query_context);
+
+            context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
+            text::clean_textarea_with_context(
+                &context,
+                AGENT_QUERY_TEXT_INPUT,
+            )
+            .await;
+            let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
+            let query = s.replace('\n', "<br>");
+            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.clone())).await;
+            context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
+            let _ = insert_message(chat_id, user_id, agent_id, &query, "user", "text").await;
+            match agent.process_message(&query, Some(tx)).await {
+                Ok(res) => {
+                    let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
+                    let _ = update_chat_summary(chat_id, &agent.summary).await;
+                },
+                Err(err) => println!("LLM error, please retry your question. {:?}", err),
+            };
         }
 
         handle.abort();
-        context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
         text::clean_stream_textarea_with_context(
             &context,
             AGENT_STREAM_OUTPUT,
@@ -472,8 +489,51 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
     }
 }
 
+async fn search_asset(query: &str) -> String {
+    let tk_service = TextChunkingService::new(None, 128, 0, 4096);
 
-fn search_asset(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
+    let mut chunks = tk_service.text_to_chunks(&query);
+
+    tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
+    EMBEDDING_SERVICE
+        .get()
+        .unwrap()
+        .get_embedding_for_chunks(&mut chunks)
+        .expect("Failed to get embeddings");
+    let mut ref_vec = Vec::<f32>::new();
+    let mut min_d = OrderedFloat::from(f64::MAX);
+    let mut best_sorted_points = Vec::<TwoDPoint>::new();
+    chunks.into_iter().for_each(|c| {
+        let ev = c.embedding_vec.unwrap().clone();
+        let sorted_points = sort_points(&ev);
+        let d = sorted_points.first().unwrap().d;
+        if d < min_d {
+            ref_vec = ev;
+            min_d = d;
+            best_sorted_points = sorted_points;
+        }
+    });
+
+    let top_5: Vec<TwoDPoint> = best_sorted_points[..5].into();
+    let out = top_5
+        .iter()
+        .map(|p| {
+            format!(
+                "DOCUMET TITLE:\n{}\n\nCONTEXT:\n{}",
+                p.chunk.title, p.chunk.text
+            )
+        })
+        .collect::<Vec<String>>()
+        .join("\n===================\n");
+
+    out
+}
+
+fn search_asset_clicked(
+    context: TnContext,
+    event: TnEvent,
+    _payload: Value,
+) -> TnFutureHTMLResponse {
     tn_future! {
         // if event.e_trigger != SEARCH_AGENT_BTN {
         //     return None;
@@ -481,7 +541,7 @@ fn search_asset(context: TnContext, event: TnEvent, _payload: Value) -> TnFuture
 
         let asset_ref = context.get_asset_ref().await;
         let asset_guarad = asset_ref.read().await;
-       
+
 
         let user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
             *user_id as i32
@@ -520,44 +580,8 @@ fn search_asset(context: TnContext, event: TnEvent, _payload: Value) -> TnFuture
         };
 
         tracing::info!(target:"tron_app", "query_text: {}", query_text);
-
-        {
-            let tk_service = TextChunkingService::new(None, 128, 0, 4096);
-
-            let mut chunks = tk_service.text_to_chunks(&query_text);
-
-            tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
-            EMBEDDING_SERVICE
-                .get()
-                .unwrap()
-                .get_embedding_for_chunks(&mut chunks)
-                .expect("Failed to get embeddings");
-            let mut ref_vec = Vec::<f32>::new();
-            let mut min_d = OrderedFloat::from(f64::MAX);
-            let mut best_sorted_points = Vec::<TwoDPoint>::new();
-            chunks.into_iter().for_each(|c| {
-                let ev = c.embedding_vec.unwrap().clone();
-                let sorted_points = sort_points(&ev);
-                let d = sorted_points.first().unwrap().d;
-                if d < min_d {
-                    ref_vec = ev;
-                    min_d = d;
-                    best_sorted_points = sorted_points;
-                }
-            });
-
-            let top_5: Vec<TwoDPoint> = best_sorted_points[..5].into();
-            let out = top_5.iter().map(
-                |p| format!("DOCUMET TITLE:\n{}\n\nCONTEXT:\n{}", p.chunk.title, p.chunk.text )
-            ).collect::<Vec<String>>().join("\n===================\n");
-
-            update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &out).await;
-
-        }
-
+        let out = search_asset(&query_text).await;
+        update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &out).await;
         None
     }
 }
-
-
-
