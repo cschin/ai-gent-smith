@@ -438,7 +438,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         println!("Response: {}", r);
                         let parser = Parser::new_ext(&r, Options::all());
                         let mut html_output = String::new();
-                        // TODO: the markdown to HTML seems to be very slow
                         html::push_html(&mut html_output, parser);
                         let query_result_area = context_cloned.get_component(AGENT_CHAT_TEXTAREA).await;
                         chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
