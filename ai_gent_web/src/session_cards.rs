@@ -79,10 +79,11 @@ where
              FROM chats c
              JOIN agents a ON c.agent_id = a.agent_id
              JOIN users u ON c.user_id = u.user_id
-             WHERE u.username = $1 AND c.updated_at > $2 AND c.status = $3 
+             WHERE u.username = $1 AND c.updated_at > $2 AND c.status = $3 AND a.status = $4 
              ORDER BY c.updated_at DESC",
             self.username,
             since_then,
+            "active",
             "active"
         )
         .fetch_all(pool)
