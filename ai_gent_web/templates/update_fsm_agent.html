@@ -45,13 +45,14 @@
                     <span class="label-text">Configuration JSON:</span>
                 </label>
                 <textarea name="agent_config" id="agent_config" class="textarea textarea-bordered" rows="5" required
-                    placeholder="Please Fill in The Finite State Agent Configuration in the JSON Format"></textarea>
+                    placeholder="Please Fill in The Finite State Agent Configuration in the JSON Format">{{ agent_config }}</textarea>
             </div>
 
             <button type="submit" class="btn btn-primary w-full">Update Agent</button>
             <div class="container flex mt-4 mx-auto w-full space-x-4 justify-end">
-                <button type="button" class="btn btn-secondary w-1/4">Deactive Agent</button>
-                <button type="button" class="btn btn-secondary w-1/4">Delete Agent</button>
+                <button type="button" class="btn btn-secondary w-1/4" hx-post="/api/agent/{{ agent_id }}/deactivate"
+                    hx-ext="json-enc" hx-swap="innerHTML" hx-target="#update_agent_notification_msg"
+                    hx-on::after-request="update_agent_notification.showModal()">Deactivate Agent</button>
             </div>
         </form>
     </div>
