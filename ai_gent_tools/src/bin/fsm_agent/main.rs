@@ -9,8 +9,11 @@ use tokio::sync::mpsc;
 use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 
 // use futures::StreamExt;
-use ai_gent_lib::llm_service::{openai_service, openai_stream_service, LLMStreamOut};
-struct TestLLMClient {}
+use ai_gent_lib::llm_service::{genai_service, genai_stream_service, LLMStreamOut};
+struct TestLLMClient {
+    model: String,
+    api_key: String,
+}
 
 //const SYS_PROMPT: &str = include_str!("../../../dev_config/sys_prompt");
 //const FSM_PROMPT: &str = include_str!("../../../dev_config/fsm_prompt");
@@ -21,11 +24,11 @@ impl LLMClient for TestLLMClient {
     async fn generate(&self, prompt: &str, msgs: &[(String, String)]) -> String {
         // r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
         //     .to_string()
-        openai_service(prompt, msgs).await
+        genai_service(prompt, msgs, &self.model, &self.api_key).await
     }
 
     async fn generate_stream(&self, prompt: &str, msgs: &[(String, String)]) -> LLMStreamOut {
-        openai_stream_service(prompt, msgs).await
+        genai_stream_service(prompt, msgs, &self.model, &self.api_key).await
     }
 }
 
@@ -50,7 +53,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let fsm = FSMBuilder::from_config(&fsm_config)?.build()?;
 
-    let llm_client = TestLLMClient {};
+    let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+        env_name: "OPENAI_API_KEY".to_string()}).unwrap();
+
+    let llm_client = TestLLMClient {
+        model: "gpt-4o".into(),
+        api_key
+    };
     let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG).unwrap().build().unwrap();
     let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 

@@ -376,12 +376,18 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let asset_ref = context.get_asset_ref().await;
         let asset_guarad = asset_ref.read().await;
         let fsm_agent_config;
+        let llm_name;
+        //let provider;
         let _agent_config = if let TnAsset::String(agent_config) = asset_guarad.get("agent_configuration").unwrap() {
             let model_setting: AgentSetting =
                 serde_json::from_str::<AgentSetting>(agent_config).unwrap();
+                llm_name = model_setting.model_name;
+                //provider = model_setting.provider;
                 fsm_agent_config = model_setting.fsm_agent_config;
             agent_config
         } else {
+            llm_name = "gpt-4o".into();
+            //provider = "OpenAI".into();
             fsm_agent_config = "".into();
             &"".into()
         };
@@ -411,7 +417,23 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let fsm = FSMBuilder::from_config(&fsm_config).unwrap().build().unwrap();
 
-        let llm_client = OAI_LLMClient {};
+        let api_key = match llm_name.as_str() {
+            "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+                env_name: "OPENAI_API_KEY".to_string()}).unwrap() },
+            "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => { std::env::var("ANTHROPIC_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+                env_name: "ANTHROPIC_API_KEY".to_string()}).unwrap() 
+            },
+            _ => {"".into()}
+
+        };
+            std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+            env_name: "OPENAI_API_KEY".to_string()}).unwrap();
+
+        let llm_client = GENAI_LLMClient {
+            model: llm_name,
+            api_key
+        };
+
         let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 
         agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();

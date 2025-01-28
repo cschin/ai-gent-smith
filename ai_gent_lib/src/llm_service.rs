@@ -3,13 +3,19 @@
 use std::pin::Pin;
 
 use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent, StreamChunk};
+use genai::resolver::{AuthData, AuthResolver};
 use genai::Client;
 
 use futures::{Stream, StreamExt};
 
 pub type LLMStreamOut = Pin<Box<dyn Stream<Item = Option<String>> + Send>>;
 
-pub async fn openai_stream_service(prompt: &str, msgs: &[(String, String)]) -> LLMStreamOut {
+pub async fn genai_stream_service(
+    prompt: &str,
+    msgs: &[(String, String)],
+    model: &str,
+    api_key: &str,
+) -> LLMStreamOut {
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
 
     msgs.iter().for_each(|(role, msg)| match role.as_str() {
@@ -24,10 +30,14 @@ pub async fn openai_stream_service(prompt: &str, msgs: &[(String, String)]) -> L
 
     let chat_req = ChatRequest::new(messages);
 
-    let client = Client::default();
+    let api_key = api_key.to_string();
+    let auth_resolver =
+        AuthResolver::from_resolver_fn(|_| Ok(Some(AuthData::from_single(api_key))));
+
+    let client = Client::builder().with_auth_resolver(auth_resolver).build();
 
     let llm_stream = client
-        .exec_chat_stream("gpt-4o", chat_req.clone(), None)
+        .exec_chat_stream(model, chat_req.clone(), None)
         .await
         .unwrap()
         .stream;
@@ -56,7 +66,12 @@ pub async fn openai_stream_service(prompt: &str, msgs: &[(String, String)]) -> L
     Box::pin(llm_output)
 }
 
-pub async fn openai_service(prompt: &str, msgs: &[(String, String)]) -> String {
+pub async fn genai_service(
+    prompt: &str,
+    msgs: &[(String, String)],
+    model: &str,
+    api_key: &str,
+) -> String {
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
 
     msgs.iter().for_each(|(role, msg)| match role.as_str() {
@@ -71,12 +86,14 @@ pub async fn openai_service(prompt: &str, msgs: &[(String, String)]) -> String {
 
     let chat_req = ChatRequest::new(messages);
 
-    let client = Client::default();
+    let api_key = api_key.to_string();
+    let auth_resolver =
+        AuthResolver::from_resolver_fn(|_| Ok(Some(AuthData::from_single(api_key))));
 
-
+    let client = Client::builder().with_auth_resolver(auth_resolver).build();
 
     let llm_output = client
-        .exec_chat("gpt-4o", chat_req.clone(), None)
+        .exec_chat(model, chat_req.clone(), None)
         .await
         .unwrap()
         .content_text_into_string()

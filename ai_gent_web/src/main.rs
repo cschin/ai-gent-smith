@@ -73,7 +73,7 @@ struct SimpleAgentSettingForm {
 struct AdvAgentSettingForm {
     name: String,
     description: String,
-    provider: String,
+    // provider: String,
     model_name: String,
     agent_config: String,
 }
@@ -82,7 +82,7 @@ struct AdvAgentSettingForm {
 struct AgentSetting {
     name: String,
     description: String,
-    provider: String,
+    // provider: String,
     model_name: String,
     fsm_agent_config: String,
 }
@@ -262,7 +262,7 @@ fn layout(context: TnContext) -> TnFutureString {
         let context_guard = context.read().await;
         let library_cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
         let mut agent_buttons = Vec::<String>::new();
-        for btn in [USER_SETTING_BTN, SHOW_AGENT_LIB_BTN,
+        for btn in [SHOW_AGENT_LIB_BTN,
                     BASIC_AGENT_DESIGN_BTN,
                     ADV_AGENT_DESIGN_BTN] {
             agent_buttons.push(context_guard.get_rendered_string(btn).await);
@@ -700,7 +700,7 @@ async fn create_basic_agent(
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        provider: agent_setting_form.provider.clone(),
+        //provider: agent_setting_form.provider.clone(),
         fsm_agent_config: simple_agent_config,
     };
 
@@ -754,7 +754,7 @@ async fn create_adv_agent(
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        provider: agent_setting_form.provider.clone(),
+        // provider: agent_setting_form.provider.clone(),
         fsm_agent_config: agent_setting_form.agent_config,
     };
 
@@ -812,7 +812,7 @@ async fn update_basic_agent(
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        provider: agent_setting_form.provider.clone(),
+        //provider: agent_setting_form.provider.clone(),
         fsm_agent_config: simple_agent_config,
     };
 
@@ -868,7 +868,7 @@ async fn update_adv_agent(
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        provider: agent_setting_form.provider.clone(),
+        // provider: agent_setting_form.provider.clone(),
         fsm_agent_config: agent_setting_form.agent_config,
     };
 

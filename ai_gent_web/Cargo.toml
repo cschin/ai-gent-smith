@@ -42,3 +42,4 @@ candle-nn = { version = "0.8.1", features = ["metal"] }
 hf-hub = "0.4.1"
 flate2 = "1.0.35"
 ordered-float = { version = "4.6.0", default-features = false }
+genai = {workspace = true}
