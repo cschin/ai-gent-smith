@@ -30,4 +30,4 @@ lazy_static = { workspace = true }
 once_cell = { workspace = true }
 tokio-test = { workspace = true }
 rustyline = { workspace = true }
-async-openai = { workspace = true }
+genai = { workspace = true }

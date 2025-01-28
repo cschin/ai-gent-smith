@@ -2,75 +2,49 @@
 
 use std::pin::Pin;
 
-#[allow(unused_imports)]
-use async_openai::{
-    types::{
-        ChatCompletionRequestAssistantMessageArgs, ChatCompletionRequestMessage,
-        ChatCompletionRequestSystemMessageArgs, ChatCompletionRequestUserMessageArgs,
-        CreateChatCompletionRequestArgs,
-    },
-    Client,
-};
+use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent, StreamChunk};
+use genai::Client;
+
 use futures::{Stream, StreamExt};
 
 pub type LLMStreamOut = Pin<Box<dyn Stream<Item = Option<String>> + Send>>;
 
 pub async fn openai_stream_service(prompt: &str, msgs: &[(String, String)]) -> LLMStreamOut {
-    let mut messages: Vec<ChatCompletionRequestMessage> =
-        vec![ChatCompletionRequestSystemMessageArgs::default()
-            .content(prompt)
-            .build()
-            .expect("error")
-            .into()];
+    let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
 
-            msgs.iter().for_each(|(role, msg)| {
-                match role.as_str() {
-                    "user" => {
-                        messages.push(
-                            ChatCompletionRequestUserMessageArgs::default()
-                                .content(msg.as_str())
-                                .build()
-                                .expect("error")
-                                .into(),
-                        );
-                    },
-                    "assistant" => {
-                        messages.push(
-                            ChatCompletionRequestAssistantMessageArgs::default()
-                                .content(msg.as_str())
-                                .build()
-                                .expect("error")
-                                .into(),
-                        );
-                    },
-                    _ => {}
-                }
-            });
+    msgs.iter().for_each(|(role, msg)| match role.as_str() {
+        "user" => {
+            messages.push(ChatMessage::user(msg.clone()));
+        }
+        "assistant" => {
+            messages.push(ChatMessage::assistant(msg.clone()));
+        }
+        _ => {}
+    });
 
-    let client = Client::new();
+    let chat_req = ChatRequest::new(messages);
 
-    let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(4096u16)
-        //.model("gpt-4")
-        .model("gpt-4o")
-        .messages(messages)
-        .build()
-        .expect("error");
+    let client = Client::default();
 
     let llm_stream = client
-        .chat()
-        .create_stream(request)
+        .exec_chat_stream("gpt-4o", chat_req.clone(), None)
         .await
-        .expect("create stream fail for LLM API call");
+        .unwrap()
+        .stream;
 
     let llm_output = StreamExt::then(llm_stream, |result| async {
         match result {
             Ok(response) => {
-                if let Some(choice) = response.choices.first() {
-                    choice.delta.content.clone()
-                } else {
-                    None
+                match response {
+                    ChatStreamEvent::Start => Some("".to_string()),
+                    ChatStreamEvent::Chunk(StreamChunk { content }) => Some(content.to_string()),
+                    ChatStreamEvent::End(_end_event) => None,
                 }
+                // if let Some(choice) = response.choices.first() {
+                //     choice.delta.content.clone()
+                // } else {
+                //     None
+                // }
             }
             Err(_err) => {
                 tracing::info!(target: "log", "LLM stream error");
@@ -82,57 +56,31 @@ pub async fn openai_stream_service(prompt: &str, msgs: &[(String, String)]) -> L
     Box::pin(llm_output)
 }
 
+pub async fn openai_service(prompt: &str, msgs: &[(String, String)]) -> String {
+    let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
 
-pub async fn openai_service(prompt: &str, msgs: &[(String, String)]) -> String  {
-    let mut messages: Vec<ChatCompletionRequestMessage> =
-        vec![ChatCompletionRequestSystemMessageArgs::default()
-            .content(prompt)
-            .build()
-            .expect("error")
-            .into()];
-
-    msgs.iter().for_each(|(role, msg)| {
-        match role.as_str() {
-            "user" => {
-                messages.push(
-                    ChatCompletionRequestUserMessageArgs::default()
-                        .content(msg.as_str())
-                        .build()
-                        .expect("error")
-                        .into(),
-                );
-            },
-            "assistant" => {
-                messages.push(
-                    ChatCompletionRequestAssistantMessageArgs::default()
-                        .content(msg.as_str())
-                        .build()
-                        .expect("error")
-                        .into(),
-                );
-            },
-            _ => {}
+    msgs.iter().for_each(|(role, msg)| match role.as_str() {
+        "user" => {
+            messages.push(ChatMessage::user(msg.clone()));
         }
+        "assistant" => {
+            messages.push(ChatMessage::assistant(msg.clone()));
+        }
+        _ => {}
     });
 
+    let chat_req = ChatRequest::new(messages);
+
+    let client = Client::default();
 
 
-    let client = Client::new();
-
-    let request = CreateChatCompletionRequestArgs::default()
-        .max_tokens(2048u16)
-        //.model("gpt-4")
-        .model("gpt-4o")
-        .messages(messages)
-        .build()
-        .expect("error");
 
     let llm_output = client
-        .chat()
-        .create(request)
+        .exec_chat("gpt-4o", chat_req.clone(), None)
         .await
-        .expect("create stream fail for LLM API call");
+        .unwrap()
+        .content_text_into_string()
+        .unwrap();
 
-    llm_output.choices.first().unwrap().message.content.as_ref().unwrap().clone() //we will handle the exception later
-
+    llm_output
 }
