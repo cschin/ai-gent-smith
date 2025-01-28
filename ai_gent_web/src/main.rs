@@ -31,7 +31,7 @@ use tower_sessions::Session;
 use tracing::debug;
 use tron_app::{
     tron_components::{
-        self, button::TnButtonBuilder, chatbox, text, tn_future, TnActionExecutionMethod, TnAsset,
+        self, button::TnButtonBuilder, chatbox, text::{self, update_and_send_textarea_with_context}, tn_future, TnActionExecutionMethod, TnAsset,
         TnComponentBaseRenderTrait, TnComponentBaseTrait, TnFutureHTMLResponse, TnFutureString,
         TnHtmlResponse, TnServiceRequestMsg,
     },
@@ -650,6 +650,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         chatbox::clean_chatbox_with_context(ctx, AGENT_CHAT_TEXTAREA).await;
         text::clean_textarea_with_context(ctx, AGENT_QUERY_TEXT_INPUT).await;
     }
+    update_and_send_textarea_with_context(&ctx, ASSET_SEARCH_OUTPUT, "").await;
     let out_html = {
         let ctx_guard = ctx.read().await;
 

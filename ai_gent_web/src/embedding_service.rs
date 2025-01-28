@@ -14,6 +14,7 @@ use serde::{Deserialize, Serialize};
 use tokenizers::{Encoding, Tokenizer};
 use tokio::sync::OnceCell;
 
+use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
@@ -278,24 +279,24 @@ pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
 
 
 #[derive(Deserialize, Debug)]
-struct DocumentChunk {
-    text: String,
-    span: (usize, usize),
-    token_ids: Vec<u32>,
-    two_d_embedding: (f32, f32),
-    embedding_vec: Vec<f32>,
-    filename: String,
-    title: String,
+pub struct DocumentChunk {
+    pub text: String,
+    pub span: (usize, usize),
+    pub token_ids: Vec<u32>,
+    pub two_d_embedding: (f32, f32),
+    pub embedding_vec: Vec<f32>,
+    pub filename: String,
+    pub title: String,
 }
 
-struct DocumentChunks {
-    chunks: Vec<DocumentChunk>,
-    filename_to_id: HashMap<String, u32>,
+pub struct DocumentChunks {
+    pub chunks: Vec<DocumentChunk>,
+    pub filename_to_id: HashMap<String, u32>,
 }
 
-static EMBEDDING_SERVICE: OnceCell<EmbeddingService> = OnceCell::const_new();
+pub static EMBEDDING_SERVICE: OnceCell<EmbeddingService> = OnceCell::const_new();
 
-static DOCUMENT_CHUNKS: OnceCell<DocumentChunks> = OnceCell::const_new();
+pub static DOCUMENT_CHUNKS: OnceCell<DocumentChunks> = OnceCell::const_new();
 
 impl DocumentChunks {
     pub fn global() -> &'static DocumentChunks {
@@ -338,4 +339,80 @@ pub async fn setup_rag_data() {
     let _result = DOCUMENT_CHUNKS
     .get_or_init(|| async { DocumentChunks::from_file("data/all_embedding.jsonl.gz".into()) })
     .await;
+
+    let _result = EMBEDDING_SERVICE
+    .get_or_init(|| async {
+        println!("load embedding model");
+        let es = EmbeddingService::new(None);
+        println!("finish loading embedding model");
+        es
+    })
+    .await;
+}
+
+use ordered_float::OrderedFloat;
+use std::collections::BinaryHeap;
+
+#[derive(Debug, Clone)]
+pub struct TwoDPoint<'a> {
+    pub d: OrderedFloat<f64>,
+    pub point: (f64, f64),
+    pub chunk: &'a DocumentChunk,
+}
+
+impl Ord for TwoDPoint<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        // Notice that the we flip the ordering on costs.
+        // In case of a tie we compare positions - this step is necessary
+        // to make implementations of `PartialEq` and `Ord` consistent.
+        other.d.cmp(&self.d)
+    }
+}
+
+// `PartialOrd` needs to be implemented as well.
+impl PartialOrd for TwoDPoint<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for TwoDPoint<'_> {
+    fn eq(&self, other: &Self) -> bool {
+        self.d == other.d
+    }
+}
+
+impl Eq for TwoDPoint<'_> {}
+
+
+pub fn sort_points<'a>(ref_vec: &[f32]) -> Vec<TwoDPoint<'a>> {
+    //tracing::info!(target:"tron_app", "ref_vec:{:?}", ref_vec);
+    let mut all_points = Vec::new();
+    DOCUMENT_CHUNKS.get().unwrap().chunks.iter().for_each(|c| {
+        let x = c.two_d_embedding.0 as f64;
+        let y = c.two_d_embedding.1 as f64;
+        let x_len: f64 = (0..c.embedding_vec.len())
+            .map(|idx| c.embedding_vec[idx].powi(2))
+            .sum::<f32>() as f64;
+        let y_len: f64 = (0..ref_vec.len())
+            .map(|idx| ref_vec[idx].powi(2))
+            .sum::<f32>() as f64;
+        //let d = OrderedFloat::from((evt_x - x).powi(2) + (evt_y - y).powi(2));
+        let mut d: f64 = (0..c.embedding_vec.len())
+            .map(|idx| (c.embedding_vec[idx] * ref_vec[idx]))
+            .sum::<f32>() as f64;
+        d /= x_len.powf(0.5);
+        d /= y_len.powf(0.5);
+        d = 1.0 - d;
+        let d = OrderedFloat::from(d);
+        let point = TwoDPoint {
+            d,
+            point: (x, y),
+            chunk: c,
+        };
+        all_points.push(point);
+    });
+    all_points.sort();
+    all_points.reverse();
+    all_points
 }

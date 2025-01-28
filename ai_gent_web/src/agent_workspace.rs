@@ -3,8 +3,12 @@ use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use askama::Template;
 use async_trait::async_trait;
+use ordered_float::OrderedFloat;
 use serde_json::Value;
+use tron_app::tron_components::text::append_textarea_value;
+use tron_app::tron_components::text::update_and_send_textarea_with_context;
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
@@ -13,8 +17,12 @@ use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
 
 use super::DB_POOL;
+use crate::embedding_service::sort_points;
+use crate::embedding_service::TextChunkingService;
+use crate::embedding_service::TwoDPoint;
 use crate::llm_agent::*;
 use crate::AgentSetting;
+use crate::SEARCH_AGENT_BTN;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::Acquire;
@@ -23,12 +31,16 @@ use sqlx::{any::AnyRow, prelude::FromRow, query as sqlx_query};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
 use pulldown_cmark::{html, Options, Parser};
+use crate::embedding_service::{EmbeddingChunk, EmbeddingService, EMBEDDING_SERVICE, DOCUMENT_CHUNKS};
 
 pub const AGENT_CHAT_TEXTAREA: &str = "agent_chat_textarea";
 pub const AGENT_STREAM_OUTPUT: &str = "agent_stream_output";
 pub const AGENT_QUERY_TEXT_INPUT: &str = "agent_query_text_input";
 pub const AGENT_QUERY_BUTTON: &str = "agent_query_button";
-pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
+pub const ASSET_SEARCH_BUTTON: &str = "asset_search_button";
+pub const ASSET_SEARCH_OUTPUT: &str = "asset_search_output";
+//pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
+
 
 /// Represents a button component in a Tron application.
 #[non_exhaustive]
@@ -42,11 +54,14 @@ pub struct AgentWorkSpace<'a: 'static> {
 #[template(path = "agent_workspace.html", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct AgentWorkspaceTemplate {
     agent_name: String,
+    id: u32,
     chat_textarea: String,
     query_text_input: String,
     stream_output: String,
     query_button: String,
-    new_session_button: String,
+    asset_search_button: String,
+    asset_search_output: String
+    //new_session_button: String,
 }
 
 impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
@@ -62,13 +77,13 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(AGENT_CHAT_TEXTAREA.into(), vec![])
             .set_attr(
                 "class",
-                "min-h-[435px] max-h-[435px] overflow-auto flex-1 p-2",
+                "min-h-[435px] max-h-[435px] overflow-auto flex-1 p-2 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400",
             )
             .build();
 
         let mut query_text_input = TnTextArea::builder()
             .init(AGENT_QUERY_TEXT_INPUT.into(), "".into())
-            .set_attr("class", "min-h-32 w-full p-2")
+            .set_attr("class", "flex-1 w-5/6 p-1 border-2 mb-1 border-gray-600 rounded-lg bg-gray-400 text-black")
             .set_attr("style", "resize:none")
             .set_attr("hx-trigger", "change, server_event")
             .set_attr("hx-vals", r##"js:{event_data:get_input_event(event)}"##)
@@ -77,12 +92,12 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let agent_stream_output = TnStreamTextArea::builder()
             .init(AGENT_STREAM_OUTPUT.into(), Vec::new())
-            .set_attr("class", "min-h-20 w-full p-2")
+            .set_attr("class", "flex-1 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400 text-black")
             .set_attr("style", r#"resize:none"#)
             .build();
 
         let query_button = TnButton::builder()
-            .init(AGENT_QUERY_BUTTON.into(), "Submit Query".into())
+            .init(AGENT_QUERY_BUTTON.into(), "Send".into())
             .set_attr(
                 "class",
                 "btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item",
@@ -90,24 +105,46 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .set_action(TnActionExecutionMethod::Await, query)
             .build();
 
-        let new_session_button = TnButton::builder()
+        let asset_search_button = TnButton::builder()
             .init(
-                AGENT_NEW_SESSION_BUTTON.into(),
-                "Start A New Session".into(),
+                ASSET_SEARCH_BUTTON.into(),
+                "Search Asset".into(),
             )
             .set_attr(
                 "class",
                 "btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item",
             )
-            // .set_action(TnActionExecutionMethod::Await, query_with_hits)
+            .set_action(TnActionExecutionMethod::Await, search_asset)
             .build();
+
+        let asset_search_output = text::TnTextArea::builder()
+        .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
+        .set_attr("class", "flex-1 border-2 mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[70svh]")
+        .build();
+
+
+
+        // let new_session_button = TnButton::builder()
+        //     .init(
+        //         AGENT_NEW_SESSION_BUTTON.into(),
+        //         "Start A New Session".into(),
+        //     )
+        //     .set_attr(
+        //         "class",
+        //         "btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item",
+        //     )
+        //     // .set_action(TnActionExecutionMethod::Await, query_with_hits)
+        //     .build();
 
         context.add_component(chat_textarea);
         context.add_component(query_text_input);
         context.add_component(agent_stream_output);
         context.add_component(query_button);
-        context.add_component(new_session_button);
+        context.add_component(asset_search_button);
+        context.add_component(asset_search_output);
+        //context.add_component(new_session_button);
 
+        
         self
     }
 }
@@ -154,13 +191,21 @@ where
             .render()
             .await;
 
-        let new_session_button_html = comp_guard
-            .get(AGENT_NEW_SESSION_BUTTON)
+        let asset_search_button_html = comp_guard
+            .get(ASSET_SEARCH_BUTTON)
             .unwrap()
             .read()
             .await
             .render()
             .await;
+
+        // let new_session_button_html = comp_guard
+        //     .get(AGENT_NEW_SESSION_BUTTON)
+        //     .unwrap()
+        //     .read()
+        //     .await
+        //     .render()
+        //     .await;
 
         let agent_name = {
             let assets_guard = ctx.assets.read().await;
@@ -168,6 +213,15 @@ where
                 s.clone()
             } else {
                 "Chat".into()
+            }
+        };
+
+        let agent_id = {
+            let assets_guard = ctx.assets.read().await;
+            if let Some(TnAsset::U32(s)) = assets_guard.get("agent_id") {
+                *s
+            } else {
+                0
             }
         };
 
@@ -198,13 +252,24 @@ where
             .initial_render()
             .await;
 
+        let asset_search_output_html = comp_guard
+            .get(ASSET_SEARCH_OUTPUT)
+            .unwrap()
+            .read()
+            .await
+            .initial_render()
+            .await;
+
         self.html = AgentWorkspaceTemplate {
             agent_name,
+            id: agent_id,
             chat_textarea: chat_textarea_html,
             stream_output: stream_output_html,
             query_text_input: query_text_input_html,
+            asset_search_button: asset_search_button_html,
             query_button: query_button_html,
-            new_session_button: new_session_button_html,
+            asset_search_output: asset_search_output_html,
+            //new_session_button: new_session_button_html,
         }
         .render()
         .unwrap()
@@ -406,3 +471,93 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         None
     }
 }
+
+
+fn search_asset(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
+    tn_future! {
+        // if event.e_trigger != SEARCH_AGENT_BTN {
+        //     return None;
+        // };
+
+        let asset_ref = context.get_asset_ref().await;
+        let asset_guarad = asset_ref.read().await;
+       
+
+        let user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
+            *user_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
+
+        let agent_id = if let TnAsset::U32(agent_id) =  asset_guarad.get("agent_id").unwrap() {
+            *agent_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
+
+        let chat_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("chat_id").unwrap() {
+            *chat_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
+
+
+        let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
+
+
+        let query_text = if let TnComponentValue::String(s) = query_text {
+            s
+        } else {
+            unreachable!()
+        };
+
+        let query_text = {
+            if query_text.len() > 5 {
+                query_text.clone()
+            } else {
+                return None;
+            }
+        };
+
+        tracing::info!(target:"tron_app", "query_text: {}", query_text);
+
+        {
+            let tk_service = TextChunkingService::new(None, 128, 0, 4096);
+
+            let mut chunks = tk_service.text_to_chunks(&query_text);
+
+            tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
+            EMBEDDING_SERVICE
+                .get()
+                .unwrap()
+                .get_embedding_for_chunks(&mut chunks)
+                .expect("Failed to get embeddings");
+            let mut ref_vec = Vec::<f32>::new();
+            let mut min_d = OrderedFloat::from(f64::MAX);
+            let mut best_sorted_points = Vec::<TwoDPoint>::new();
+            chunks.into_iter().for_each(|c| {
+                let ev = c.embedding_vec.unwrap().clone();
+                let sorted_points = sort_points(&ev);
+                let d = sorted_points.first().unwrap().d;
+                if d < min_d {
+                    ref_vec = ev;
+                    min_d = d;
+                    best_sorted_points = sorted_points;
+                }
+            });
+
+            let top_5: Vec<TwoDPoint> = best_sorted_points[..5].into();
+            let out = top_5.iter().map(
+                |p| format!("DOCUMET TITLE:\n{}\n\nCONTEXT:\n{}", p.chunk.title, p.chunk.text )
+            ).collect::<Vec<String>>().join("\n===================\n");
+
+            update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &out).await;
+
+        }
+
+        None
+    }
+}
+
+
+
