@@ -231,13 +231,13 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(SHOW_YESTERDAY_SESSION_BTN.into(), "Yesterday's".into())
+        .init(SHOW_YESTERDAY_SESSION_BTN.into(), "Since Yesterday".into())
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(SHOW_LAST_WEEK_SESSION_BTN.into(), "Last Week".into())
+        .init(SHOW_LAST_WEEK_SESSION_BTN.into(), "Since The Last Week".into())
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
@@ -1055,8 +1055,47 @@ WHERE u.username = $1 AND c.chat_id = $2;",
 async fn delete_chat(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
-    Path(agent_id): Path<i32>,
+    Path(chat_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
-    todo!()
+    println!("in delete_chat: chat_id {}", chat_id);
+    //println!("payload: {:?}", payload);
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    //let user_id: i32;
+    //let agent_id: i32;
+    //let agent_name: String;
+    let user_data;
+    //let configuration: String;
+    {
+        let ctx_guard = ctx.read().await;
+        user_data = ctx_guard
+            .get_user_data()
+            .await
+            .expect("database error! can't get user data");
+
+        let db_pool = DB_POOL.clone();
+        let row = sqlx::query!(
+            r#"UPDATE chats SET status = $2
+               WHERE chat_id = $1 RETURNING chat_id"#,
+            chat_id,
+            "inactive"
+        )
+        .fetch_one(&db_pool)
+        .await
+        .expect("sql query error");
+
+    }
+    let mut h = HeaderMap::new();
+    h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
+    h.insert("Hx-Retarget", "#workspace".parse().unwrap());
+    let out_html = {
+        let ctx_guard = ctx.read().await;
+
+        let component_guard = ctx_guard.components.read().await;
+        let mut agent_ws = component_guard.get(SESSION_CARDS).unwrap().write().await;
+        agent_ws.pre_render(&ctx_guard).await;
+        agent_ws.render().await
+    };
+    (h, Html::from(out_html))
 }
