@@ -5,6 +5,7 @@ mod agent_workspace;
 mod library_cards;
 mod llm_agent;
 mod session_cards;
+mod embedding_service;
 
 use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
@@ -44,9 +45,9 @@ use tron_components::{
 use sqlx::Postgres;
 use sqlx::{any::AnyRow, prelude::FromRow, query::Query, Acquire};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
-use std::{collections::HashMap, default, pin::Pin, sync::Arc, task::Context};
+use std::{collections::HashMap, default, fs::File, pin::Pin, sync::Arc, task::Context};
 
-use lazy_static::lazy_static;
+
 use once_cell::sync::Lazy;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
@@ -110,6 +111,9 @@ pub static DB_POOL: Lazy<PgPool> = Lazy::new(|| {
 // and then starts the application by calling tron_app::run
 #[tokio::main]
 async fn main() {
+
+    embedding_service::setup_rag_data().await;
+
     let ui_action_routes = Router::<Arc<AppData>>::new()
         .route("/agent/create", post(create_basic_agent))
         .route("/agent/create_adv", post(create_adv_agent))
