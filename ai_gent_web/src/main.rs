@@ -204,7 +204,7 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(BASIC_AGENT_DESIGN_BTN.into(), "Basic Agent Designer".into())
+        .init(BASIC_AGENT_DESIGN_BTN.into(), "Create A Basic Agent".into())
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
@@ -218,7 +218,7 @@ fn build_left_panel(ctx: &mut TnContextBase) {
     TnButton::builder()
         .init(
             ADV_AGENT_DESIGN_BTN.into(),
-            "Advanced Agent Designer".into(),
+            "Create An Advanced Agent".into(),
         )
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
