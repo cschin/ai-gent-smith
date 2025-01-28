@@ -36,3 +36,10 @@ rustyline = { workspace = true }
 async-openai = { workspace = true }
 ai_gent_lib = {path = "../ai_gent_lib" }
 pulldown-cmark = "0.12.1"
+candle-transformers = "0.8.1"
+candle-core = "0.8.1"
+tokenizers = "0.21.0"
+candle-nn = { version = "0.8.1", features = ["metal"] }
+hf-hub = "0.4.1"
+flate2 = "1.0.35"
+ordered-float = { version = "4.6.0", default-features = false }
