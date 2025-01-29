@@ -238,7 +238,17 @@ where
             let chat_textarea = comp_guard.get(AGENT_CHAT_TEXTAREA).unwrap();
             chatbox::clean_chatbox_value(chat_textarea.clone()).await;
             for (role, _m_type, content) in messages.into_iter() {
-                chatbox::append_chatbox_value(chat_textarea.clone(), (role, content)).await;
+                match role.as_str() {
+                    "bot" => {
+                        let parser = Parser::new_ext(&content, Options::all());
+                        let mut html_output = String::new();
+                        html::push_html(&mut html_output, parser);
+                        chatbox::append_chatbox_value(chat_textarea.clone(), (role, html_output)).await;
+                    },
+                    _ => {
+                        chatbox::append_chatbox_value(chat_textarea.clone(), (role, content)).await;
+                    }
+                }
             }
         }
 
@@ -317,6 +327,7 @@ async fn get_messages(chat_id: i32) -> Result<Vec<(String, String, String)>, sql
         SELECT role, message_type, content
         FROM messages
         WHERE chat_id = $1 
+        ORDER BY timestamp ASC
         "#,
         chat_id
     )
@@ -448,7 +459,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             while let Some((t, r)) = rx.recv().await {
                 match t.as_str() {
                     "token" =>  {
-                    println!("stream out: {}", r);
+                    tracing::info!(target: "tron_app", "streaming token: {}", r);
                     text::append_and_update_stream_textarea_with_context(
                         &context_cloned,
                         AGENT_STREAM_OUTPUT,
@@ -456,7 +467,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     )
                     .await},
                     "llm_output" => {
-                        println!("Response: {}", r);
+                        tracing::info!(target: "tron_app", "LLM Response: {}", r);
                         let parser = Parser::new_ext(&r, Options::all());
                         let mut html_output = String::new();
                         html::push_html(&mut html_output, parser);
