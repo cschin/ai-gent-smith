@@ -7,10 +7,25 @@
                 <p>{{description}}</p>
             </div>
             <div class="card-actions justify-end">
-                <button class="btn btn-xs" hx-get="/api/chat/{{id}}/delete" hx-swap="none" hx-trigger="click">Delete</button>
+                <!-- <button class="btn btn-xs" hx-get="/api/chat/{{id}}/delete" hx-swap="none" hx-trigger="click">Delete</button> -->
+                <button class="btn btn-xs" onclick='document.getElementById("session_deletion_confirm_{{id}}").showModal()'>Delete</button>
                 <button class="btn btn-xs" hx-get="/api/chat/{{id}}/show" hx-swap="none" hx-trigger="click">Continue</button>
             </div>
         </div>
     </div>
+    <dialog id="session_deletion_confirm_{{id}}" class="modal">
+        <div class="modal-box">
+            <div id="session_deletion_confirm_msg">
+                <p class="py-4">Are you sure to delete the chat session?</p>
+            </div>
+            <div class="modal-action">
+                <button class="btn btn-sm" hx-get="/api/chat/{{id}}/delete" hx-swap="none" hx-trigger="click">Delete</button>
+                <form method="dialog">
+                    <!-- if there is a button in form, it will close the modal -->
+                    <button class="btn btn-sm">Cancel</button>
+                </form>
+            </div>
+        </div>
+    </dialog>
     {% endfor %}
 </div>
