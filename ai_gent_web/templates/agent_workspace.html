@@ -1,6 +1,6 @@
 <div id="workspace" class="container mx-auto px-4">
     <div class="flex flex-row p-1 w-full">
-        <div class="basis-3/4 flex flex-col p-1 w-full min-h-[80svh]">
+        <div class="basis-3/4 flex flex-col p-1 w-full max-w-3/4 min-h-[80svh]">
             <label class="text-xl text-black"> {{ agent_name }} </label>
             {{ chat_textarea }}
             {{ stream_output }}
@@ -36,3 +36,9 @@
         </div>
     </div>
 </div>
+
+<style>
+pre {
+    white-space: pre-wrap;
+}
+</style>
