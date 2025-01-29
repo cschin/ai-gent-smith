@@ -7,7 +7,7 @@ use serde_json::Value;
 use tron_app::{
     send_sse_msg_to_client,
     tron_components::{
-        d3_plot::SseD3PlotTriggerMsg, div::update_and_send_div_with_context, tn_future, TnAsset,
+        d3_plot::SseD3PlotTriggerMsg, div::{clean_div_with_context, update_and_send_div_with_context}, tn_future, TnAsset,
         TnComponentBase, TnContext, TnEvent, TnFutureHTMLResponse,
     },
     tron_macro::ComponentBase,
@@ -361,6 +361,7 @@ fn reset_button_clicked(
                 };
                 send_sse_msg_to_client(&sse_tx, msg).await;
             }
+            clean_div_with_context(&context, TOP_HIT_DIV).await;
 
 
             None
