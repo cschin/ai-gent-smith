@@ -2,11 +2,8 @@
 <div id="workspace">
     <div class="container mx-auto max-w-4xl px-4 py-8">
         <h1 class="text-3xl font-bold mb-6">Create A New AI Agent</h1>
-        <form hx-post="/api/agent/create" 
-              hx-ext="json-enc" 
-              hx-swap="innerHTML" 
-              hx-target="#update_agent_notification_msg" 
-              hx-on::after-request="update_agent_notification.showModal()">
+        <form hx-post="/api/agent/create" hx-ext="json-enc" hx-swap="innerHTML"
+            hx-target="#update_agent_notification_msg" hx-on::after-request="update_agent_notification.showModal()">
             <div class="form-control mb-4">
                 <label for="name" class="label">
                     <span class="label-text">Agent Name:</span>
@@ -35,8 +32,13 @@
                 <label for="model_name" class="label">
                     <span class="label-text">Model Name:</span>
                 </label>
-                <input type="text" name="model_name" id="model_name" class="input input-bordered" required
-                    placeholder="Enter the model name (e.g., gpt-3.5-turbo)">
+                <select name="model_name" id="model_name" class="select select-bordered" required>
+                    {% for option in model_options %}
+                    {{ option }}
+                    {% endfor %}
+                </select>
+                <!-- <input type="text" name="model_name" id="model_name" class="input input-bordered" required
+                    placeholder="Enter the model name (e.g., gpt-3.5-turbo)"> -->
             </div>
 
             <div class="form-control mb-4">

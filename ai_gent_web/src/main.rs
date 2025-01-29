@@ -2,10 +2,10 @@
 #![allow(unused_imports)]
 
 mod agent_workspace;
+mod embedding_service;
 mod library_cards;
 mod llm_agent;
 mod session_cards;
-mod embedding_service;
 
 use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
@@ -31,9 +31,13 @@ use tower_sessions::Session;
 use tracing::debug;
 use tron_app::{
     tron_components::{
-        self, button::TnButtonBuilder, chatbox, text::{self, update_and_send_textarea_with_context}, tn_future, TnActionExecutionMethod, TnAsset,
-        TnComponentBaseRenderTrait, TnComponentBaseTrait, TnFutureHTMLResponse, TnFutureString,
-        TnHtmlResponse, TnServiceRequestMsg,
+        self,
+        button::TnButtonBuilder,
+        chatbox,
+        text::{self, update_and_send_textarea_with_context},
+        tn_future, TnActionExecutionMethod, TnAsset, TnComponentBaseRenderTrait,
+        TnComponentBaseTrait, TnFutureHTMLResponse, TnFutureString, TnHtmlResponse,
+        TnServiceRequestMsg,
     },
     AppData, HtmlAttributes,
 };
@@ -46,7 +50,6 @@ use sqlx::Postgres;
 use sqlx::{any::AnyRow, prelude::FromRow, query::Query, Acquire};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 use std::{collections::HashMap, default, fs::File, pin::Pin, sync::Arc, task::Context};
-
 
 use once_cell::sync::Lazy;
 use sqlx::postgres::{PgPool, PgPoolOptions};
@@ -106,12 +109,19 @@ pub static DB_POOL: Lazy<PgPool> = Lazy::new(|| {
         .expect("Failed to create database connection pool")
 });
 
+pub static SUPPORTED_MODELS: &[(&str, &str)] = &[
+    ("gpt-3.5-turbo", "OPENAI_API_KEY"),
+    ("gpt-4o", "OPENAI_API_KEY"),
+    ("gpt-4o-mini", "OPENAI_API_KEY"),
+    ("claude-3-haiku-20240307", "ANTHROPIC_API_KEY"),
+    ("claude-3-5-sonnet-20241022", "ANTHROPIC_API_KEY"),
+];
+
 // This is the main entry point of the application
 // It sets up the application configuration and state
 // and then starts the application by calling tron_app::run
 #[tokio::main]
 async fn main() {
-
     embedding_service::setup_rag_data().await;
 
     let ui_action_routes = Router::<Arc<AppData>>::new()
@@ -237,7 +247,10 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(SHOW_LAST_WEEK_SESSION_BTN.into(), "Since The Last Week".into())
+        .init(
+            SHOW_LAST_WEEK_SESSION_BTN.into(),
+            "Since The Last Week".into(),
+        )
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
@@ -280,33 +293,37 @@ fn layout(context: TnContext) -> TnFutureString {
 }
 
 #[derive(Template)]
-#[template(path = "create_basic_agent.html")]
-struct SetupAgentTemplate {}
+#[template(path = "create_basic_agent.html", escape = "none")]
+struct SetupAgentTemplate {
+    model_options: Vec<String>,
+}
 
 #[derive(Template)]
-#[template(path = "update_basic_agent.html")]
+#[template(path = "update_basic_agent.html", escape = "none")]
 struct UpdateBasicAgentTemplate {
     agent_id: i32,
     name: String,
     description: String,
-    model_name: String,
+    model_options: Vec<String>,
     prompt: String,
     follow_up_prompt: String,
 }
 
 #[derive(Template)]
-#[template(path = "update_fsm_agent.html")]
+#[template(path = "update_fsm_agent.html", escape = "none")]
 struct UpdateAdvAgentTemplate {
     agent_id: i32,
     name: String,
     description: String,
-    model_name: String,
+    model_options: Vec<String>,
     agent_config: String,
 }
 
 #[derive(Template)]
-#[template(path = "create_fsm_agent.html")]
-struct SetupAdvAgentTemplate {}
+#[template(path = "create_fsm_agent.html", escape = "none")]
+struct SetupAdvAgentTemplate {
+    model_options: Vec<String>,
+}
 
 #[derive(Template)]
 #[template(path = "user_settings.html")]
@@ -331,12 +348,18 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
             },
 
             BASIC_AGENT_DESIGN_BTN => {
-                let template = SetupAgentTemplate {};
+
+                let model_options = SUPPORTED_MODELS.iter().map( | (model_name, _) |
+                    format!(r#" <option value="{}">{}</option>"#, model_name, model_name) ).collect::<Vec<String>>();
+
+                let template = SetupAgentTemplate { model_options };
                 Some(template.render().unwrap())
             },
 
             ADV_AGENT_DESIGN_BTN => {
-                let template = SetupAdvAgentTemplate {};
+                let model_options = SUPPORTED_MODELS.iter().map( | (model_name, _) |
+                    format!(r#" <option value="{}">{}</option>"#, model_name, model_name) ).collect::<Vec<String>>();
+                let template = SetupAdvAgentTemplate { model_options };
                 Some(template.render().unwrap())
             },
 
@@ -500,12 +523,29 @@ fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
 
+    let model_options = SUPPORTED_MODELS
+        .iter()
+        .map(|(this_model_name, _)| {
+            if this_model_name == &model_name {
+                format!(
+                    r#" <option value="{}" selected>{}</option>"#,
+                    this_model_name, this_model_name
+                )
+            } else {
+                format!(
+                    r#" <option value="{}">{}</option>"#,
+                    this_model_name, this_model_name
+                )
+            }
+        })
+        .collect::<Vec<String>>();
+
     let out_html = if let Some(out_html) = {
         let template = UpdateBasicAgentTemplate {
             agent_id,
             name,
             description,
-            model_name,
+            model_options,
             prompt,
             follow_up_prompt,
         };
@@ -538,12 +578,29 @@ fn show_adv_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, 
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
 
+    let model_options = SUPPORTED_MODELS
+        .iter()
+        .map(|(this_model_name, _)| {
+            if this_model_name == &model_name {
+                format!(
+                    r#" <option value="{}" selected>{}</option>"#,
+                    this_model_name, this_model_name
+                )
+            } else {
+                format!(
+                    r#" <option value="{}">{}</option>"#,
+                    this_model_name, this_model_name
+                )
+            }
+        })
+        .collect::<Vec<String>>();
+
     let out_html = if let Some(out_html) = {
         let template = UpdateAdvAgentTemplate {
             agent_id,
             name,
             description,
-            model_name,
+            model_options,
             agent_config: fsm_agent_config,
         };
         Some(template.render().unwrap())
@@ -933,7 +990,6 @@ async fn deactivate_agent(
     ))
 }
 
-
 async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, session: Session) {
     // let user_data = session
     // .get::<String>("user_data")
@@ -1084,7 +1140,6 @@ async fn delete_chat(
         .fetch_one(&db_pool)
         .await
         .expect("sql query error");
-
     }
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());

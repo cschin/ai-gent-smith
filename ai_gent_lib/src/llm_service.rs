@@ -72,6 +72,12 @@ pub async fn genai_service(
     model: &str,
     api_key: &str,
 ) -> String {
+
+    tracing::info!(target: "tron_app", "in genai_service, prompt: {}", prompt );
+    tracing::info!(target: "tron_app", "in genai_service, msg: {:?}", msgs );
+    tracing::info!(target: "tron_app", "in genai_service, model: {}", model );
+
+
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
 
     msgs.iter().for_each(|(role, msg)| match role.as_str() {
@@ -94,10 +100,8 @@ pub async fn genai_service(
 
     let llm_output = client
         .exec_chat(model, chat_req.clone(), None)
-        .await
-        .unwrap()
-        .content_text_into_string()
-        .unwrap();
+        .await;
+    tracing::info!(target: "tron_app", "in genai_service, llm_output: {:?}", llm_output );
 
-    llm_output
+    llm_output.unwrap().content_text_into_string().unwrap()
 }

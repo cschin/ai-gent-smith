@@ -235,7 +235,7 @@ impl<C: LLMClient> LLMAgent<C> {
             self.messages.push(("assistant".into(), llm_output.clone()));
             last_message.push(("assistant".into(), llm_output.clone()));
 
-            tracing::info!("raw output: {}\n", llm_output);
+            tracing::info!(target: "tron_app", "raw output: {}\n", llm_output);
 
             let next_state = self.llm_client.generate(&fsm_prompt, &self.messages).await;
 
@@ -243,9 +243,10 @@ impl<C: LLMClient> LLMAgent<C> {
                 .llm_client
                 .generate(&summary_prompt, &last_message)
                 .await;
-
-            tracing::info!("summary: {}", self.summary);
-            tracing::info!("next_state raw: {}", next_state);
+            tracing::info!(target: "tron_app", "summary_prompt: {}", summary_prompt);
+            tracing::info!(target: "tron_app", "last_message: {:?}", last_message);
+            tracing::info!(target: "tron_app", "summary: {}", self.summary);
+            tracing::info!(target: "tron_app", "next_state raw: {}", next_state);
 
             let mut response: LLMResponse = serde_json::from_str(&next_state)
                 .map_err(|e| format!("Failed to parse LLM output: {e}, {}", next_state))?;

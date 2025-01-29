@@ -32,14 +32,19 @@
                 <label for="model_name" class="label">
                     <span class="label-text">Model Name:</span>
                 </label>
-                <input type="text" name="model_name" id="model_name" class="input input-bordered" required
-                    value="{{ model_name }}">
+                <select name="model_name" id="model_name" class="select select-bordered" required>
+                    {% for option in model_options %}
+                    {{ option }}
+                    {% endfor %}
+                </select>
+
             </div>
 
             <div class="form-control mb-4">
                 <label for="prompt" class="label">
                     <span class="label-text">Initial Prompt:</span>
                 </label>
+
                 <textarea name="prompt" id="prompt" class="textarea textarea-bordered" rows="5" required
                     placeholder="Enter the initial system prompt for your AI agent">{{ prompt }}</textarea>
             </div>
