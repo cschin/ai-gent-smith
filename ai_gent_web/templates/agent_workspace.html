@@ -17,8 +17,13 @@
                             {{asset_search_button}}
                         </div>
                         <div class="p-1">
+                            <a href="/api/chat/{{chat_id}}/download" download="chat.json">
+                                <button class="btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item"> Download </button>
+                            </a>
+                        </div>
+                        <div class="p-1">
                             <button class="btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item"
-                                hx-get="/api/agent/{{id}}/use" hx-swap="none" hx-trigger="click"> New Session </button>
+                                hx-get="/api/agent/{{agent_id}}/use" hx-swap="none" hx-trigger="click"> New Session </button>
                         </div>
                     </div>
                 </div>

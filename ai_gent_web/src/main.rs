@@ -137,6 +137,7 @@ async fn main() {
         .route("/agent/{id}/deactivate", post(deactivate_agent))
         .route("/chat/{id}/delete", get(delete_chat))
         .route("/chat/{id}/show", get(show_chat))
+        .route("/chat/{id}/download", get( download_chat))
         .route("/asset/{id}/show", get(show_asset))
         .route("/check_user", get(check_user));
 
@@ -734,7 +735,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
 use uuid::{timestamp::context, Uuid};
 
 #[derive(Template)] // this will generate the code...
-#[template(path = "simple_agent_config.json", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
+#[template(path = "simple_agent_config.json.template", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct SimpleAgentConfigTemplate {
     prompt: String,
     follow_up: String,
@@ -1126,6 +1127,68 @@ WHERE u.username = $1 AND c.chat_id = $2;",
         agent_ws.render().await
     };
     (h, Html::from(out_html))
+}
+
+
+#[derive(Serialize)]
+struct SingleChatMessage {
+    time_stamp: String,
+    role: String,
+    content: String,
+}
+
+async fn download_chat(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    Path(chat_id): Path<i32>,
+    session: Session,
+) -> impl IntoResponse {
+    println!("in download_chat: chat_id {}", chat_id);
+    //println!("payload: {:?}", payload);
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    //let user_id;
+    //let agent_id;
+    //let agent_name;
+    let user_data;
+    //let configuration;
+    {
+        let ctx_guard = ctx.read().await;
+        user_data = ctx_guard
+            .get_user_data()
+            .await
+            .expect("database error! can't get user data");
+
+    }
+    let pool = DB_POOL.clone();
+    let results = sqlx::query!(
+        r#"
+        SELECT m.timestamp, m.role, content
+        FROM messages m 
+        JOIN chats c ON c.chat_id = m.chat_id 
+        JOIN users u ON c.user_id = u.user_id
+        WHERE m.chat_id = $1 AND c.status = $2 AND u.username = $3
+        "#,
+        chat_id,
+        "active",
+        user_data.username
+    )
+    .fetch_all(&pool)
+    .await.unwrap();
+
+    let messages = results
+        .into_iter()
+        .map(|row| SingleChatMessage { time_stamp: row.timestamp.unwrap_or_default().to_string(), 
+             role: row.role.unwrap_or_default(), content: row.content})
+        .collect::<Vec<_>>();
+
+    let messages = serde_json::to_string_pretty(&messages).unwrap();
+    println!("messages: {}", messages);
+    
+    axum::response::Response::builder()
+    .header("Content-Type", "text/plain; charset=utf-8")
+    .body(messages)
+    .unwrap()
 }
 
 async fn delete_chat(

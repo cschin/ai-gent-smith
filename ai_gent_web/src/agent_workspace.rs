@@ -52,7 +52,8 @@ pub struct AgentWorkSpace<'a: 'static> {
 #[template(path = "agent_workspace.html", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct AgentWorkspaceTemplate {
     agent_name: String,
-    id: u32,
+    agent_id: u32,
+    chat_id: i32,
     chat_textarea: String,
     query_text_input: String,
     stream_output: String,
@@ -259,7 +260,8 @@ where
 
         self.html = AgentWorkspaceTemplate {
             agent_name,
-            id: agent_id,
+            agent_id,
+            chat_id,
             chat_textarea: chat_textarea_html,
             stream_output: stream_output_html,
             query_text_input: query_text_input_html,
