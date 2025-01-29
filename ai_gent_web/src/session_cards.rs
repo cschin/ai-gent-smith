@@ -16,7 +16,6 @@ use sqlx::{Column, Row, TypeInfo, ValueRef};
 use super::DB_POOL;
 use chrono::Utc;
 
-/// Represents a button component in a Tron application.
 #[non_exhaustive]
 #[derive(ComponentBase)]
 pub struct SessionCards<'a: 'static> {

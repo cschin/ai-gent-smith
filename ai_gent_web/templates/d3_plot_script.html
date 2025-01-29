@@ -1,0 +1,129 @@
+<script>
+
+  window.process_special_events["d3_plot"] = (target, state, event_data) => {
+    const plot_spec = get_plot_spec();
+    if ("d3_plot" in event_data && event_data["d3_plot"] == "re-plot") {
+      d3.csv("/tron_streaming/plot_data").then(function (data) {
+        console.log("data len:", data.length);
+        const x = plot_spec.x_scale;
+        const y = plot_spec.y_scale;
+        // recreate the plot, this is faster than using d3 update()
+        d3.select("#" + target + ">svg > g").select("#dots").remove();
+        svg = d3.select("#" + target + ">svg > g");
+        svg.append('g')
+          .attr("id", "dots")
+          .selectAll("circle")
+          .data(data)
+          .join("circle")
+          .attr("cx", function (d) { return x(d.x); })
+          .attr("cy", function (d) { return y(d.y); })
+          .attr("r", 1.5)
+          .style("fill", function (d) { return d.c; })
+          .style("fill-opacity", function (d) { return d.o; })
+
+      })
+      //d3_plot(target);
+    };
+  }
+
+  function get_plot_spec() {
+
+    const margin = { top: 10, right: 30, bottom: 30, left: 60 };
+    const width = 520 - margin.left - margin.right;
+    const height = 450 - margin.top - margin.bottom;
+
+    const x_scale = d3.scaleLinear()
+      //.domain([0, 8])
+      .domain([-1.05, 1.05])
+      .range([0, width]);
+
+    const y_scale = d3.scaleLinear()
+      //.domain([-12, 12])
+      .domain([-1.05, 1.05])
+      .range([height, 0]);
+
+    return {
+      margin: margin,
+      width: width,
+      height: height,
+      x_scale: x_scale,
+      y_scale: y_scale,
+    }
+  }
+
+
+  function get_event_with_transformed_coordinate(event) {
+    if (event == null || event.type == "load" || event.type != "click") { // htxm may evaluate "load" event that does not has "getAttribute" 
+      return {}
+    } else {
+      const plot_spec = get_plot_spec();
+
+      const rect = event.currentTarget.getBoundingClientRect();
+      const svg = document.querySelector("#" + event.currentTarget.id + '> svg');
+      var [e_x, e_y] = d3.pointer(event, svg);
+      e_x = plot_spec.x_scale.invert(e_x - plot_spec.margin.left);
+      e_y = plot_spec.y_scale.invert(e_y - plot_spec.margin.top);
+      return {
+        "tn_event":
+        {
+          "e_trigger": event.currentTarget.id,
+          "e_type": event.type,
+          "e_state": event.currentTarget.getAttribute('state'),
+          "e_target": event.currentTarget.getAttribute('hx-target')
+        },
+        "e_x": e_x,
+        "e_y": e_y
+      };
+    };
+  };
+
+  function d3_plot(target) {
+    // set the dimensions and margins of the graph
+
+    const plot_spec = get_plot_spec();
+
+    const margin = plot_spec.margin;
+    const width = plot_spec.width;
+    const height = plot_spec.height;
+
+    // append the svg object to the body of the page
+    d3.select("#" + target + ">svg").remove();
+    const svg = d3.select("#" + target)
+      .append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+      .append("g")
+      .attr("transform", `translate(${margin.left}, ${margin.top})`);
+
+    //Read the data
+    d3.csv("/tron_streaming/plot_data").then(function (data) {
+      console.log("data len:", data.length);
+
+      // Add X axis
+      const x = plot_spec.x_scale;
+      svg.append("g")
+        .attr("transform", `translate(0, ${height})`)
+        .call(d3.axisBottom(x));
+
+      // Add Y axis
+      const y = plot_spec.y_scale;
+      svg.append("g")
+        .call(d3.axisLeft(y));
+
+      // Add dots
+      svg.append('g')
+        .attr("id", "dots")
+        .selectAll("circle")
+        .data(data)
+        .enter()
+        .append("circle")
+        .attr("cx", function (d) { return x(d.x); })
+        .attr("cy", function (d) { return y(d.y); })
+        .attr("r", 1.5)
+        .style("fill", function (d) { return d.c; })
+        .style("fill-opacity", function (d) { return d.o; })
+
+    })
+
+  }
+</script>

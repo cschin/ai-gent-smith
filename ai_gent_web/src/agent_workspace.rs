@@ -41,7 +41,6 @@ pub const ASSET_SEARCH_BUTTON: &str = "asset_search_button";
 pub const ASSET_SEARCH_OUTPUT: &str = "asset_search_output";
 //pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
 
-/// Represents a button component in a Tron application.
 #[non_exhaustive]
 #[derive(ComponentBase)]
 pub struct AgentWorkSpace<'a: 'static> {
@@ -386,7 +385,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         } else {
             llm_name = "gpt-4o".into();
             //provider = "OpenAI".into();
-            fsm_agent_config = "".into();
+            fsm_agent_config = "{}".into();
             &"".into()
         };
 

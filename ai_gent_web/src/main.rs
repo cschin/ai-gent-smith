@@ -6,10 +6,12 @@ mod embedding_service;
 mod library_cards;
 mod llm_agent;
 mod session_cards;
+mod asset_space_plot;
 
 use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
 use askama::Template;
+use asset_space_plot::AssetSpacePlot;
 use futures_util::Future;
 use library_cards::{LibraryCards, LibraryCardsBuilder};
 use session_cards::{SessionCards, SessionCardsBuilder};
@@ -66,7 +68,7 @@ pub(crate) struct AgentConfiguration {
 struct SimpleAgentSettingForm {
     name: String,
     description: String,
-    provider: String,
+    // provider: String,
     model_name: String,
     prompt: String,
     follow_up_prompt: Option<String>,
@@ -94,6 +96,7 @@ static BUTTON: &str = "button";
 static LIBRARY_CARDS: &str = "lib_cards";
 static SESSION_CARDS: &str = "session_cards";
 static AGENT_WORKSPACE: &str = "agent_workspace";
+static ASSET_SPACE_PLOT: &str = "asset_space_plot";
 
 // Function to get the database URL
 fn get_database_url() -> String {
@@ -134,6 +137,7 @@ async fn main() {
         .route("/agent/{id}/deactivate", post(deactivate_agent))
         .route("/chat/{id}/delete", get(delete_chat))
         .route("/chat/{id}/show", get(show_chat))
+        .route("/asset/{id}/show", get(show_asset))
         .route("/check_user", get(check_user));
 
     let app_config = tron_app::AppConfigure {
@@ -169,6 +173,14 @@ fn build_context() -> TnContext {
         .init(
             AGENT_WORKSPACE.into(),
             "agent workspace".into(),
+            &mut context,
+        )
+        .add_to_context(&mut context);
+
+    AssetSpacePlot::builder()
+        .init(
+            ASSET_SPACE_PLOT.into(),
+            "asset_space_plot".into(),
             &mut context,
         )
         .add_to_context(&mut context);
@@ -748,10 +760,12 @@ async fn create_basic_agent(
         .await
         .expect("database error! can't get user data");
 
-    let simple_agent_config = SimpleAgentConfigTemplate {
-        prompt: agent_setting_form.prompt,
-        follow_up: agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())
-    }.render().unwrap();
+        let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap(); 
+        let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap(); 
+        let simple_agent_config = SimpleAgentConfigTemplate {
+            prompt,
+            follow_up
+        }.render().unwrap();
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
@@ -861,10 +875,16 @@ async fn update_basic_agent(
         .get_user_data()
         .await
         .expect("database error! can't get user data");
+    let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap(); 
+    let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap(); 
+    tracing::info!(target: "tron_app", "prompt: {}", prompt);
+    tracing::info!(target: "tron_app", "follow_up: {}", follow_up);
     let simple_agent_config = SimpleAgentConfigTemplate {
-        prompt: agent_setting_form.prompt,
-        follow_up: agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())
+        prompt,
+        follow_up
     }.render().unwrap();
+
+
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
@@ -890,7 +910,7 @@ async fn update_basic_agent(
     .fetch_one(&db_pool)
     .await;
 
-    println!("query rtn: {:?}", _query);
+    // println!("query rtn: {:?}", _query);
     //let uuid = Uuid::new_v4();
     Html::from(format!(
         r#"<p class="py-4">The agent "{}" is updated "#,
@@ -1151,6 +1171,41 @@ async fn delete_chat(
         let mut agent_ws = component_guard.get(SESSION_CARDS).unwrap().write().await;
         agent_ws.pre_render(&ctx_guard).await;
         agent_ws.render().await
+    };
+    (h, Html::from(out_html))
+}
+
+
+
+async fn show_asset(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    Path(chat_id): Path<i32>,
+    session: Session,
+) -> impl IntoResponse {
+    println!("in show_asset: asset_id {}", chat_id);
+    //println!("payload: {:?}", payload);
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let user_data;
+    {
+        let ctx_guard = ctx.read().await;
+        user_data = ctx_guard
+            .get_user_data()
+            .await
+            .expect("database error! can't get user data");
+    }
+    let mut h = HeaderMap::new();
+    h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
+    h.insert("Hx-Retarget", "#workspace".parse().unwrap());
+
+    let out_html = {
+        let ctx_guard = ctx.read().await;
+
+        let component_guard = ctx_guard.components.read().await;
+        let mut asset_space_plot = component_guard.get(ASSET_SPACE_PLOT).unwrap().write().await;
+        asset_space_plot.pre_render(&ctx_guard).await;
+        asset_space_plot.render().await
     };
     (h, Html::from(out_html))
 }

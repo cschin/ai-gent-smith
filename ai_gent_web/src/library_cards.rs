@@ -13,7 +13,6 @@ use sqlx::postgres::PgPool;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 use super::DB_POOL;
 
-/// Represents a button component in a Tron application.
 #[non_exhaustive]
 #[derive(ComponentBase)]
 pub struct LibraryCards<'a: 'static> {
