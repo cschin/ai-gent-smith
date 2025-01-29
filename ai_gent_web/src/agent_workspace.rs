@@ -30,9 +30,7 @@ use sqlx::Postgres;
 use sqlx::{any::AnyRow, prelude::FromRow, query as sqlx_query};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
-use crate::embedding_service::{
-    EmbeddingChunk, EmbeddingService, DOCUMENT_CHUNKS, EMBEDDING_SERVICE,
-};
+use crate::embedding_service::EMBEDDING_SERVICE;
 use pulldown_cmark::{html, Options, Parser};
 
 pub const AGENT_CHAT_TEXTAREA: &str = "agent_chat_textarea";
@@ -545,7 +543,7 @@ async fn search_asset(query: &str) -> String {
             )
         })
         .collect::<Vec<String>>()
-        .join("\n===================\n");
+        .join("\n========================\n\n");
 
     out
 }
