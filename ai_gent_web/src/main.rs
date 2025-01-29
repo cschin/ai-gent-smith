@@ -1137,6 +1137,12 @@ struct SingleChatMessage {
     content: String,
 }
 
+#[derive(Serialize)]
+struct ChatDownload {
+    messages: Vec<SingleChatMessage>,
+    summary: String
+}
+
 async fn download_chat(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
@@ -1163,11 +1169,12 @@ async fn download_chat(
     let pool = DB_POOL.clone();
     let results = sqlx::query!(
         r#"
-        SELECT m.timestamp, m.role, content
+        SELECT m.timestamp, m.role, m.content
         FROM messages m 
         JOIN chats c ON c.chat_id = m.chat_id 
         JOIN users u ON c.user_id = u.user_id
         WHERE m.chat_id = $1 AND c.status = $2 AND u.username = $3
+        ORDER BY m.timestamp ASC
         "#,
         chat_id,
         "active",
@@ -1182,12 +1189,26 @@ async fn download_chat(
              role: row.role.unwrap_or_default(), content: row.content})
         .collect::<Vec<_>>();
 
-    let messages = serde_json::to_string_pretty(&messages).unwrap();
-    println!("messages: {}", messages);
+    let result = sqlx::query!(r#" 
+        SELECT summary FROM chats c
+        JOIN users u on c.user_id = u.user_id 
+        WHERE c.chat_id = $1 AND c.status = $2 AND u.username = $3"#,
+         chat_id,
+        "active",
+    user_data.username)
+        .fetch_one(&pool)
+        .await.unwrap();
+
+    let summary = result.summary.unwrap_or_default();
+    let chat_download = ChatDownload {
+        messages,
+        summary
+    };
+    let chat_download= serde_json::to_string_pretty(&chat_download).unwrap();
     
     axum::response::Response::builder()
     .header("Content-Type", "text/plain; charset=utf-8")
-    .body(messages)
+    .body(chat_download)
     .unwrap()
 }
 
