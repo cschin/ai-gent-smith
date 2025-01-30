@@ -2,5 +2,5 @@
 sqlx database create
 sqlx migrate run
 
-psql -d ai_gent -a -f boostraping.sql
+# psql -d ai_gent -a -f boostraping.sql
 
