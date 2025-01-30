@@ -41,7 +41,7 @@ use tron_app::{
         TnComponentBaseTrait, TnFutureHTMLResponse, TnFutureString, TnHtmlResponse,
         TnServiceRequestMsg, UserData,
     },
-    AppData, HtmlAttributes,
+    AppData, HtmlAttributes, Ports,
 };
 use tron_components::{
     text::TnTextInput, TnButton, TnComponentState, TnComponentValue, TnContext, TnContextBase,
@@ -148,7 +148,8 @@ async fn main() {
 
     let app_config = tron_app::AppConfigure {
         cognito_login: false,
-        http_only: false,
+        http_only: true,
+        ports: Ports {https: 3001, http:8080},
         api_router: Some(ui_action_routes),
         ..Default::default()
     };
