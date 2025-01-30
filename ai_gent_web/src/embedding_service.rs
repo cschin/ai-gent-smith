@@ -337,7 +337,7 @@ impl DocumentChunks {
 
 pub async fn setup_rag_data() {
     let _result = DOCUMENT_CHUNKS
-    .get_or_init(|| async { DocumentChunks::from_file("data/all_embedding.jsonl.gz".into()) })
+    .get_or_init(|| async { DocumentChunks::from_file("/opt/data/all_embedding.jsonl.gz".into()) })
     .await;
 
     let _result = EMBEDDING_SERVICE
