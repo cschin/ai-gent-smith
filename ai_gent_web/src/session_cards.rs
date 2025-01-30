@@ -124,7 +124,6 @@ where
         if self.db_pool.as_mut().is_none() {
             self.init_db_pool().await;
         }
-        //println!("userdata {:?}", ctx.user_data);
         let user_data = ctx.user_data.read().await;
         let json_str = user_data.as_ref().unwrap().clone();
         let user_data: UserData = serde_json::from_str(&json_str).unwrap();

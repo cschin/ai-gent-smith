@@ -295,7 +295,6 @@ async fn insert_message(
     role: &str,
     message_type: &str,
 ) -> Result<i32, sqlx::Error> {
-    println!("insert_message: chat:{}", chat_id);
 
     let pool = DB_POOL.clone();
     let result = sqlx::query!(
@@ -313,13 +312,11 @@ async fn insert_message(
     )
     .fetch_one(&pool)
     .await?;
-    println!("message_id: {}", result.message_id);
 
     Ok(result.message_id)
 }
 
 async fn get_messages(chat_id: i32) -> Result<Vec<(String, String, String)>, sqlx::Error> {
-    println!("insert_message: chat:{}", chat_id);
 
     let pool = DB_POOL.clone();
     let results = sqlx::query!(
@@ -338,12 +335,10 @@ async fn get_messages(chat_id: i32) -> Result<Vec<(String, String, String)>, sql
         .into_iter()
         .map(|row| (row.role.unwrap_or_default(), row.message_type, row.content))
         .collect::<Vec<_>>();
-    println!("messages: {:?}", messages);
     Ok(messages)
 }
 
 async fn get_chat_summary(chat_id: i32) -> Result<String, sqlx::Error> {
-    println!("update_chat_summary: chat:{}", chat_id);
 
     let pool = DB_POOL.clone();
     let result = sqlx::query!(r#" SELECT summary FROM chats WHERE chat_id = $1 "#, chat_id)
@@ -355,7 +350,6 @@ async fn get_chat_summary(chat_id: i32) -> Result<String, sqlx::Error> {
 }
 
 async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::Error> {
-    println!("update_chat_summary: chat:{}", chat_id);
 
     let pool = DB_POOL.clone();
     let result = sqlx::query!(
@@ -370,7 +364,6 @@ async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::E
     )
     .fetch_one(&pool)
     .await?;
-    println!("updated chat_id: {}", result.chat_id);
 
     Ok(result.chat_id)
 }
@@ -505,7 +498,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
                     let _ = update_chat_summary(chat_id, &agent.summary).await;
                 },
-                Err(err) => println!("LLM error, please retry your question. {:?}", err),
+                Err(err) => tracing::info!(target: "tron_app", "LLM error, please retry your question. {:?}", err),
             };
         }
 

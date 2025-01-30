@@ -142,7 +142,7 @@ async fn main() {
         .route("/check_user", get(check_user));
 
     let app_config = tron_app::AppConfigure {
-        cognito_login: true,
+        cognito_login: false,
         http_only: false,
         api_router: Some(ui_action_routes),
         ..Default::default()
@@ -300,7 +300,6 @@ fn layout(context: TnContext) -> TnFutureString {
         }
         let html = AppPageTemplate { library_cards, agent_buttons, sessions_buttons };
         let s = html.render().unwrap();
-        println!("{}", s);
         s
     }
 }
@@ -472,8 +471,7 @@ async fn show_agent_setting(
     Path(agent_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
-    println!("in show_agent: agent_id {}", agent_id);
-    //println!("payload: {:?}", payload);
+    tracing::info!(target: "tron_app", "in show_agent: agent_id {}", agent_id);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
@@ -527,7 +525,8 @@ fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap
         .get("AskFollowUpQuestion")
         .unwrap_or(&"".to_string())
         .clone();
-    println!(
+    tracing::info!(
+        target: "tron_app",
         "agent: {}:{} // {} // {}",
         agent_id, name, description, configuration
     );
@@ -632,8 +631,6 @@ async fn use_agent(
     Path(agent_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
-    println!("in use_agent: agent_id {}", agent_id);
-    //println!("payload: {:?}", payload);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let name;
@@ -679,7 +676,8 @@ WHERE u.username = $1 AND a.agent_id = $2;",
             "".into()
         };
 
-        println!(
+        tracing::info!(
+            target: "tron_app",
             "agent: {}:{} // {} // {} // {}",
             agent_id, name, description, model_name, configuration
         );
@@ -747,7 +745,6 @@ async fn create_basic_agent(
     session: Session,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    println!("payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
     let agent_setting_form: SimpleAgentSettingForm =
@@ -808,7 +805,6 @@ async fn create_adv_agent(
     session: Session,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    println!("payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
     let agent_setting_form: AdvAgentSettingForm =
@@ -863,7 +859,6 @@ async fn update_basic_agent(
     Path(agent_id): Path<i32>,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    println!("in update_agent   payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
     let agent_setting_form: SimpleAgentSettingForm =
@@ -911,8 +906,6 @@ async fn update_basic_agent(
     .fetch_one(&db_pool)
     .await;
 
-    // println!("query rtn: {:?}", _query);
-    //let uuid = Uuid::new_v4();
     Html::from(format!(
         r#"<p class="py-4">The agent "{}" is updated "#,
         agent_setting_form.name
@@ -926,7 +919,6 @@ async fn update_adv_agent(
     Path(agent_id): Path<i32>,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    println!("in update_agent   payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
     let agent_setting_form: AdvAgentSettingForm =
@@ -967,7 +959,6 @@ async fn update_adv_agent(
     .fetch_one(&db_pool)
     .await;
 
-    println!("query rtn: {:?}", _query);
     //let uuid = Uuid::new_v4();
     Html::from(format!(
         r#"<p class="py-4">The agent "{}" is updated "#,
@@ -982,7 +973,6 @@ async fn deactivate_agent(
     Path(agent_id): Path<i32>,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    println!("in  deactivate_agent   payload: {}", payload);
     let _agent_configuration = payload.to_string();
 
     let ctx_store_guard = appdata.context_store.read().await;
@@ -1053,7 +1043,7 @@ RETURNING user_id"#,
     } else {
         res.unwrap().user_id
     };
-    println!("check_user: {:?} id: {}", user_data, user_id);
+    tracing::info!(target: "tron_app", "check_user: {:?} id: {}", user_data, user_id);
 }
 
 async fn show_chat(
@@ -1062,8 +1052,6 @@ async fn show_chat(
     Path(chat_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
-    println!("in show_chat: chat_id {}", chat_id);
-    //println!("payload: {:?}", payload);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let user_id;
@@ -1149,15 +1137,9 @@ async fn download_chat(
     Path(chat_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
-    println!("in download_chat: chat_id {}", chat_id);
-    //println!("payload: {:?}", payload);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
-    //let user_id;
-    //let agent_id;
-    //let agent_name;
     let user_data;
-    //let configuration;
     {
         let ctx_guard = ctx.read().await;
         user_data = ctx_guard
@@ -1218,24 +1200,13 @@ async fn delete_chat(
     Path(chat_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
-    println!("in delete_chat: chat_id {}", chat_id);
-    //println!("payload: {:?}", payload);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
-    //let user_id: i32;
-    //let agent_id: i32;
-    //let agent_name: String;
-    //let user_data;
-    //let configuration: String;
     {
-        let ctx_guard = ctx.read().await;
-        // user_data = ctx_guard
-        //     .get_user_data()
-        //     .await
-        //     .expect("database error! can't get user data");
+      
 
         let db_pool = DB_POOL.clone();
-        let row = sqlx::query!(
+        let _row = sqlx::query!(
             r#"UPDATE chats SET status = $2
                WHERE chat_id = $1 RETURNING chat_id"#,
             chat_id,
@@ -1267,18 +1238,10 @@ async fn show_asset(
     Path(chat_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
-    println!("in show_asset: asset_id {}", chat_id);
     //println!("payload: {:?}", payload);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
-    let user_data;
-    {
-        let ctx_guard = ctx.read().await;
-        user_data = ctx_guard
-            .get_user_data()
-            .await
-            .expect("database error! can't get user data");
-    }
+
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
