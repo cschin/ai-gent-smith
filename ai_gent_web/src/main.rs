@@ -149,6 +149,7 @@ async fn main() {
     let app_config = tron_app::AppConfigure {
         cognito_login: false,
         http_only: true,
+        address: [0, 0, 0, 0],
         ports: Ports {https: 3001, http:8080},
         api_router: Some(ui_action_routes),
         ..Default::default()
