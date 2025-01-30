@@ -211,7 +211,8 @@ impl EmbeddingService {
             };
 
             //let device = Device::new_cuda(0)?;
-            let device = Device::new_metal(0).unwrap();
+            //let device = Device::new_metal(0).unwrap();
+            let device = Device::Cpu;
             let config = Config::v2_base();
 
             let vb = unsafe { VarBuilder::from_mmaped_safetensors(&[model], DType::F32, &device)? };
