@@ -7,14 +7,14 @@ use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
 // use futures::StreamExt;
 use ai_gent_lib::llm_service::{genai_service, genai_stream_service, LLMStreamOut};
 
-pub struct GENAI_LLMClient {
+pub struct GenaiLlmclient {
     pub model: String,
     pub api_key: String,
 }
 
 
 #[async_trait]
-impl LLMClient for GENAI_LLMClient {
+impl LLMClient for GenaiLlmclient {
     async fn generate(&self, prompt: &str, msgs: &[(String, String)]) -> String {
         // r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
         //     .to_string()

@@ -432,7 +432,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
             env_name: "OPENAI_API_KEY".to_string()}).unwrap();
 
-        let llm_client = GENAI_LLMClient {
+        let llm_client = GenaiLlmclient {
             model: llm_name,
             api_key
         };
@@ -516,7 +516,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 async fn search_asset(query: &str) -> String {
     let tk_service = TextChunkingService::new(None, 128, 0, 4096);
 
-    let mut chunks = tk_service.text_to_chunks(&query);
+    let mut chunks = tk_service.text_to_chunks(query);
 
     tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
     EMBEDDING_SERVICE
@@ -559,31 +559,31 @@ fn search_asset_clicked(
     _payload: Value,
 ) -> TnFutureHTMLResponse {
     tn_future! {
-        // if event.e_trigger != SEARCH_AGENT_BTN {
-        //     return None;
+        if event.e_trigger != SEARCH_AGENT_BTN {
+            return None;
+        };
+
+        // let asset_ref = context.get_asset_ref().await;
+        // let asset_guarad = asset_ref.read().await;
+
+
+        // let _user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
+        //     *user_id as i32
+        // } else {
+        //     panic!("chat_id not found");
         // };
 
-        let asset_ref = context.get_asset_ref().await;
-        let asset_guarad = asset_ref.read().await;
+        // let _agent_id = if let TnAsset::U32(agent_id) =  asset_guarad.get("agent_id").unwrap() {
+        //     *agent_id as i32
+        // } else {
+        //     panic!("chat_id not found");
+        // };
 
-
-        let user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
-            *user_id as i32
-        } else {
-            panic!("chat_id not found");
-        };
-
-        let agent_id = if let TnAsset::U32(agent_id) =  asset_guarad.get("agent_id").unwrap() {
-            *agent_id as i32
-        } else {
-            panic!("chat_id not found");
-        };
-
-        let chat_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("chat_id").unwrap() {
-            *chat_id as i32
-        } else {
-            panic!("chat_id not found");
-        };
+        // let _chat_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("chat_id").unwrap() {
+        //     *chat_id as i32
+        // } else {
+        //     panic!("chat_id not found");
+        // };
 
 
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;

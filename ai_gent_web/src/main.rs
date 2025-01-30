@@ -306,8 +306,7 @@ fn layout(context: TnContext) -> TnFutureString {
             sessions_buttons.push(context_guard.get_rendered_string(btn).await);
         }
         let html = AppPageTemplate { library_cards, agent_buttons, sessions_buttons };
-        let s = html.render().unwrap();
-        s
+        html.render().unwrap()
     }
 }
 
@@ -726,7 +725,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         chatbox::clean_chatbox_with_context(ctx, AGENT_CHAT_TEXTAREA).await;
         text::clean_textarea_with_context(ctx, AGENT_QUERY_TEXT_INPUT).await;
     }
-    update_and_send_textarea_with_context(&ctx, ASSET_SEARCH_OUTPUT, "").await;
+    update_and_send_textarea_with_context(ctx, ASSET_SEARCH_OUTPUT, "").await;
     let out_html = {
         let ctx_guard = ctx.read().await;
 
@@ -1243,7 +1242,7 @@ async fn delete_chat(
 async fn show_asset(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
-    Path(chat_id): Path<i32>,
+    Path(_asset_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
     //println!("payload: {:?}", payload);

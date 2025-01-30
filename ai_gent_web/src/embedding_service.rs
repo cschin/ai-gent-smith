@@ -1,9 +1,3 @@
-#[cfg(feature = "mkl")]
-extern crate intel_mkl_src;
-
-#[cfg(feature = "accelerate")]
-extern crate accelerate_src;
-
 use candle_transformers::models::jina_bert::{BertModel, Config};
 
 use anyhow::Error as E;
