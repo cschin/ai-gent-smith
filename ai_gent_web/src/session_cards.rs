@@ -13,6 +13,8 @@ use tron_app::HtmlAttributes;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
+use crate::MOCK_USER;
+
 use super::DB_POOL;
 use chrono::Utc;
 
@@ -124,10 +126,9 @@ where
         if self.db_pool.as_mut().is_none() {
             self.init_db_pool().await;
         }
-        let user_data = ctx.user_data.read().await;
-        let json_str = user_data.as_ref().unwrap().clone();
-        let user_data: UserData = serde_json::from_str(&json_str).unwrap();
+        let user_data = ctx.get_user_data().await.unwrap_or(MOCK_USER.clone());
         self.username = user_data.username;
+
         let assets_guard = ctx.assets.read().await;
         if let Some(TnAsset::U32(since_then_in_days)) = assets_guard.get("since_then_in_days") {
             self.since_then =  Some(Utc::now() - chrono::Duration::days(*since_then_in_days as i64));
