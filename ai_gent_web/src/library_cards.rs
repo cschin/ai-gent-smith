@@ -11,6 +11,8 @@ use tron_app::HtmlAttributes;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
+use crate::MOCK_USER;
+
 use super::DB_POOL;
 
 #[non_exhaustive]
@@ -108,9 +110,7 @@ where
         if self.db_pool.as_mut().is_none() {
             self.init_db_pool().await;
         }
-        let user_data = ctx.user_data.read().await;
-        let json_str = user_data.as_ref().unwrap().clone();
-        let user_data: UserData = serde_json::from_str(&json_str).unwrap();
+        let user_data = ctx.get_user_data().await.unwrap_or(MOCK_USER.clone());
         self.user_data = user_data.username;
     }
 

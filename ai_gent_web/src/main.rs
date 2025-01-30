@@ -39,7 +39,7 @@ use tron_app::{
         text::{self, update_and_send_textarea_with_context},
         tn_future, TnActionExecutionMethod, TnAsset, TnComponentBaseRenderTrait,
         TnComponentBaseTrait, TnFutureHTMLResponse, TnFutureString, TnHtmlResponse,
-        TnServiceRequestMsg,
+        TnServiceRequestMsg, UserData,
     },
     AppData, HtmlAttributes,
 };
@@ -119,6 +119,11 @@ pub static SUPPORTED_MODELS: &[(&str, &str)] = &[
     ("claude-3-haiku-20240307", "ANTHROPIC_API_KEY"),
     ("claude-3-5-sonnet-20241022", "ANTHROPIC_API_KEY"),
 ];
+
+static MOCK_USER: Lazy<UserData> = Lazy::new(|| UserData {
+    username: "user".into(),
+    email: "user@test.com".into(),
+});
 
 // This is the main entry point of the application
 // It sets up the application configuration and state
@@ -478,7 +483,8 @@ async fn show_agent_setting(
     let user_data = ctx_guard
         .get_user_data()
         .await
-        .expect("database error! can't get user data");
+        .unwrap_or(MOCK_USER.clone());
+
 
     let db_pool = DB_POOL.clone();
 
@@ -642,7 +648,7 @@ async fn use_agent(
         user_data = ctx_guard
             .get_user_data()
             .await
-            .expect("database error! can't get user data");
+            .unwrap_or(MOCK_USER.clone());
 
         let db_pool = DB_POOL.clone();
 
@@ -756,7 +762,7 @@ async fn create_basic_agent(
     let user_data = ctx_guard
         .get_user_data()
         .await
-        .expect("database error! can't get user data");
+        .unwrap_or(MOCK_USER.clone());
 
         let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap(); 
         let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap(); 
@@ -816,7 +822,7 @@ async fn create_adv_agent(
     let user_data = ctx_guard
         .get_user_data()
         .await
-        .expect("database error! can't get user data");
+        .unwrap_or(MOCK_USER.clone());
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
@@ -870,7 +876,7 @@ async fn update_basic_agent(
     let user_data = ctx_guard
         .get_user_data()
         .await
-        .expect("database error! can't get user data");
+        .unwrap_or(MOCK_USER.clone());
     let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap(); 
     let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap(); 
     tracing::info!(target: "tron_app", "prompt: {}", prompt);
@@ -930,7 +936,7 @@ async fn update_adv_agent(
     let user_data = ctx_guard
         .get_user_data()
         .await
-        .expect("database error! can't get user data");
+        .unwrap_or(MOCK_USER.clone());
 
     // TODO: validate agent_config
 
@@ -981,7 +987,7 @@ async fn deactivate_agent(
     let user_data = ctx_guard
         .get_user_data()
         .await
-        .expect("database error! can't get user data");
+        .unwrap_or(MOCK_USER.clone());
     let db_pool = DB_POOL.clone();
     let row = sqlx::query!(
         r#"UPDATE agents SET status = $3
@@ -1013,7 +1019,7 @@ async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, sessio
     let user_data = ctx_guard
         .get_user_data()
         .await
-        .expect("database error! can't get user data");
+        .unwrap_or(MOCK_USER.clone());
 
     let db_pool = DB_POOL.clone();
     let res = sqlx::query!(
@@ -1064,7 +1070,7 @@ async fn show_chat(
         user_data = ctx_guard
             .get_user_data()
             .await
-            .expect("database error! can't get user data");
+            .unwrap_or(MOCK_USER.clone());
 
         let db_pool = DB_POOL.clone();
 
@@ -1145,7 +1151,7 @@ async fn download_chat(
         user_data = ctx_guard
             .get_user_data()
             .await
-            .expect("database error! can't get user data");
+            .unwrap_or(MOCK_USER.clone());
 
     }
     let pool = DB_POOL.clone();
