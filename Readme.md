@@ -1,5 +1,7 @@
 # AI-Gent Smith
 
+![AI-Gent Smith](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/ai_gent_web.png?raw=true)
+
 "AI-Gent Smith" is a simple project demonstrating the use of Rust and various LLM libraries to build a web-based LLM agent library for users. A user can create a simple agent by providing prompts and selecting a backend model. However, it is designed to support LLM agents with "state," allowing the agent to use different prompts or take different actions depending on the current state of the dialogue.
 
 A user can define a finite state machine for state transitions and specify the prompts (or actions) that determine how the agent responds in a given state. State transitions can also be determined using an LLM. I have not fully tested it with more complex scenarios yet, but it works well for simple Q&A cases.
@@ -54,7 +56,6 @@ cargo run --release
 9. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
 10. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
-![AI-Gent Smith](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/ai_gent_web.png?raw=true)
 
 ### For Mac ARM64 (Apple Silicon M1/M2/M3/M4) Docker Users
 
