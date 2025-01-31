@@ -144,11 +144,14 @@ Brief overview of the main directories and their purposes:
 - `/misc`: Miscellaneous 
 
 ## Supported LLM Vendors and Models
+
 - OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo
 - Anthropic: claude-3-haiku-20240307, claude-3-5-sonnet-20241022"
+
 It can support [Ollama](https://ollama.com) too but you need to modify a few lines of the source code.
 
 ## License
+
 ```
 Copyright (c) <2025> <copyright Jason Chin>
 
