@@ -243,8 +243,9 @@ where
                         let parser = Parser::new_ext(&content, Options::all());
                         let mut html_output = String::new();
                         html::push_html(&mut html_output, parser);
-                        chatbox::append_chatbox_value(chat_textarea.clone(), (role, html_output)).await;
-                    },
+                        chatbox::append_chatbox_value(chat_textarea.clone(), (role, html_output))
+                            .await;
+                    }
                     _ => {
                         chatbox::append_chatbox_value(chat_textarea.clone(), (role, content)).await;
                     }
@@ -295,7 +296,6 @@ async fn insert_message(
     role: &str,
     message_type: &str,
 ) -> Result<i32, sqlx::Error> {
-
     let pool = DB_POOL.clone();
     let result = sqlx::query!(
         r#"
@@ -317,7 +317,6 @@ async fn insert_message(
 }
 
 async fn get_messages(chat_id: i32) -> Result<Vec<(String, String, String)>, sqlx::Error> {
-
     let pool = DB_POOL.clone();
     let results = sqlx::query!(
         r#"
@@ -339,7 +338,6 @@ async fn get_messages(chat_id: i32) -> Result<Vec<(String, String, String)>, sql
 }
 
 async fn get_chat_summary(chat_id: i32) -> Result<String, sqlx::Error> {
-
     let pool = DB_POOL.clone();
     let result = sqlx::query!(r#" SELECT summary FROM chats WHERE chat_id = $1 "#, chat_id)
         .fetch_one(&pool)
@@ -350,7 +348,6 @@ async fn get_chat_summary(chat_id: i32) -> Result<String, sqlx::Error> {
 }
 
 async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::Error> {
-
     let pool = DB_POOL.clone();
     let result = sqlx::query!(
         r#"
@@ -421,10 +418,10 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let fsm = FSMBuilder::from_config(&fsm_config).unwrap().build().unwrap();
 
         let api_key = match llm_name.as_str() {
-            "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+            "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
                 env_name: "OPENAI_API_KEY".to_string()}).unwrap() },
             "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => { std::env::var("ANTHROPIC_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
-                env_name: "ANTHROPIC_API_KEY".to_string()}).unwrap() 
+                env_name: "ANTHROPIC_API_KEY".to_string()}).unwrap()
             },
             _ => {"".into()}
 

@@ -2,9 +2,10 @@
 
 use std::pin::Pin;
 
+use genai::adapter::AdapterKind;
 use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent, StreamChunk};
-use genai::resolver::{AuthData, AuthResolver};
-use genai::Client;
+use genai::resolver::{AuthData, AuthResolver, ModelMapper};
+use genai::{Client, ModelIden};
 
 use futures::{Stream, StreamExt};
 
@@ -30,11 +31,22 @@ pub async fn genai_stream_service(
 
     let chat_req = ChatRequest::new(messages);
 
+    let model_mapper = ModelMapper::from_mapper_fn(|model_iden: ModelIden| {
+        if model_iden.model_name.starts_with("o3-mini") {
+            Ok(ModelIden::new(AdapterKind::OpenAI, "o3-mini"))
+        } else {
+            Ok(model_iden)
+        }
+    });
+
     let api_key = api_key.to_string();
     let auth_resolver =
         AuthResolver::from_resolver_fn(|_| Ok(Some(AuthData::from_single(api_key))));
 
-    let client = Client::builder().with_auth_resolver(auth_resolver).build();
+    let client = Client::builder()
+        .with_auth_resolver(auth_resolver)
+        .with_model_mapper(model_mapper)
+        .build();
 
     let llm_stream = client
         .exec_chat_stream(model, chat_req.clone(), None)
@@ -50,11 +62,6 @@ pub async fn genai_stream_service(
                     ChatStreamEvent::Chunk(StreamChunk { content }) => Some(content.to_string()),
                     ChatStreamEvent::End(_end_event) => None,
                 }
-                // if let Some(choice) = response.choices.first() {
-                //     choice.delta.content.clone()
-                // } else {
-                //     None
-                // }
             }
             Err(_err) => {
                 tracing::info!(target: "log", "LLM stream error");
@@ -72,11 +79,9 @@ pub async fn genai_service(
     model: &str,
     api_key: &str,
 ) -> String {
-
     tracing::info!(target: "tron_app", "in genai_service, prompt: {}", prompt );
     tracing::info!(target: "tron_app", "in genai_service, msg: {:?}", msgs );
     tracing::info!(target: "tron_app", "in genai_service, model: {}", model );
-
 
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
 
@@ -92,15 +97,24 @@ pub async fn genai_service(
 
     let chat_req = ChatRequest::new(messages);
 
+    let model_mapper = ModelMapper::from_mapper_fn(|model_iden: ModelIden| {
+        if model_iden.model_name.starts_with("o3-mini") {
+            Ok(ModelIden::new(AdapterKind::OpenAI, "o3-mini"))
+        } else {
+            Ok(model_iden)
+        }
+    });
+
     let api_key = api_key.to_string();
     let auth_resolver =
         AuthResolver::from_resolver_fn(|_| Ok(Some(AuthData::from_single(api_key))));
 
-    let client = Client::builder().with_auth_resolver(auth_resolver).build();
+    let client = Client::builder()
+        .with_auth_resolver(auth_resolver)
+        .with_model_mapper(model_mapper)
+        .build();
 
-    let llm_output = client
-        .exec_chat(model, chat_req.clone(), None)
-        .await;
+    let llm_output = client.exec_chat(model, chat_req.clone(), None).await;
     tracing::info!(target: "tron_app", "in genai_service, llm_output: {:?}", llm_output );
 
     llm_output.unwrap().content_text_into_string().unwrap()

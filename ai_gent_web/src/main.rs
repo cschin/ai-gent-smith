@@ -116,6 +116,7 @@ pub static SUPPORTED_MODELS: &[(&str, &str)] = &[
     ("gpt-3.5-turbo", "OPENAI_API_KEY"),
     ("gpt-4o", "OPENAI_API_KEY"),
     ("gpt-4o-mini", "OPENAI_API_KEY"),
+    ("o3-mini", "OPENAI_API_KEY"),
     ("claude-3-haiku-20240307", "ANTHROPIC_API_KEY"),
     ("claude-3-5-sonnet-20241022", "ANTHROPIC_API_KEY"),
 ];
