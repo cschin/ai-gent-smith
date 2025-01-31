@@ -25,7 +25,7 @@ Currently, we provide a small document dataset from an precision FDA challenge: 
 ```
 cargo install sqlx-cli
 ```
-3. Install `postgresql` (version 14+) for your system and create a database user `db_user` which with permission to create a database. (see `ai-gent-smith/ai_gent_web/docker/setup_db.sh` for an example). 
+3. Install `postgresql` (version 14+) for your system and create a database user with the permission to create a database in your development environment. (see `ai-gent-smith/ai_gent_web/docker/setup_db.sh` for an example). 
 4. Clone the repository: 
 ```
 git clone https://github.com/cschin/ai-gent-smith
@@ -39,11 +39,13 @@ cd ai-gent-smith/
 ```
 cp data/all_embedding.jsonl.gz /opt/data/all_embedding.jsonl.gz
 ```
+If you don't have access to `/opt`, you can modify the source to a place where you have
+permission for the data file.
 8. Set up the environment variables: 
     - `OPENAI_API_KEY` for OpenAI APIs
     - `ANTHROPIC_API_KEY` for Anthropic APIs
     - `DATABASE_URL` for AI-Gent Smith to accese the postgresql database, for example if your
-    user name is `db_user`, you can do `expose DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt.
+    user name is `db_user`, you can do `expose DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt if your postgresql user name is `db_user`.
 8. Build the project: 
 ```
 cd ai_gent_web
@@ -55,6 +57,9 @@ cargo run --release
 ![AI-Gent Smith](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/ai_gent_web.png?raw=true)
 
 ### For Mac ARM64 (Apple Silicon M1/M2/M3/M4) Docker Users
+
+If you are not an experienced developer of Rust and PostgreSQL, you should just try it out
+using docker as the database installation is taken care of. 
 
 1. Install Docker Desktop for Mac from [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/)
 2. Run the prebuilt docker container: 
@@ -68,7 +73,10 @@ You can add `ANTHROPIC_API_KEY` too.
 
 ### For Intel/AMD64 architecture Docker Users
 
-1. Install Docker Desktop for Mac from [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/)
+If you are not an experienced developer of Rust and PostgreSQL, you should just try it out
+using docker as the database installation is taken care of. 
+
+1. Install Docker Desktop from [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/) or from [CLI] (https://docs.docker.com/engine/install/)
 2. Run the prebuilt docker container: 
 ```
 docker run -p 8080:8080 -e OPENAI_API_KEY=$OPENAI_API_KEY cschin/ai_gent_web-amd64
