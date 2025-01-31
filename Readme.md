@@ -14,6 +14,7 @@ Currently, we provide a small document dataset from an precision FDA challenge: 
 ## Table of Contents
 
 - [Installation](#installation)
+- [Embedding Map](#embedding-map)
 - [Chat Examples](#chat-examples)
 - [Technologies Used](#technologies-used)
 - [Project Structure](#project-structure)
@@ -112,7 +113,14 @@ You can add `ANTHROPIC_API_KEY` too.
 
 4. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
-# Chat Examples
+## Embedding Map
+
+For each set of asset (collections of documents), we can generate an interactive map so a user
+can explore the relation between the documents.
+
+![embedding map](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/embedding_map.png?raw=true)
+
+## Chat Examples
 
 - [With gpt-4o](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o.json)
 - [With gpt-3.5-turbo](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-3.5-turbo.json)
