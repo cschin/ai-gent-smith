@@ -23,38 +23,52 @@ Currently, we provide a small document dataset from an precision FDA challenge: 
 ### For Rust Developers
 
 1. Ensure you have Rust installed on your system. If not, install it from [https://www.rust-lang.org/tools/install](https://www.rust-lang.org/tools/install)
+
 2. Install `sqlx-cli` with `cargo`, 
 ```
 cargo install sqlx-cli
 ```
+
 3. Install `postgresql` (version 14+) for your system and create a database user with the permission to create a database in your development environment. (see `ai-gent-smith/ai_gent_web/docker/setup_db.sh` for an example). 
+
 4. Clone the repository: 
+
 ```
 git clone https://github.com/cschin/ai-gent-smith
 ```
+
 5. Navigate to the project directory: 
+
 ```
 cd ai-gent-smith/
 ```
+
 6. create the database: `pushd database; bash bootstraping.sh; popd`, you may need to setup the correct `PGUSER` and `PGPASSWORD` for authentication to create the database with `sqlx` (see `ai-gent-smith/ai_gent_web/docker/load_db.sh` for example). 
+
 7. Copy the data file: 
+
 ```
 cp data/all_embedding.jsonl.gz /opt/data/all_embedding.jsonl.gz
 ```
+
 If you don't have access to `/opt`, you can modify the source to a place where you have
 permission for the data file.
+
 8. Set up the environment variables: 
     - `OPENAI_API_KEY` for OpenAI APIs
     - `ANTHROPIC_API_KEY` for Anthropic APIs
     - `DATABASE_URL` for AI-Gent Smith to accese the postgresql database, for example if your
     user name is `db_user`, you can do `expose DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt if your postgresql user name is `db_user`.
-8. Build the project: 
+9. Build the project: 
+
 ```
 cd ai_gent_web
 cargo run --release
 ```
-9. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
-10. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
+
+10. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
+
+11. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
 ![Chat Interface](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/chat_interface.png?raw=true)
 
@@ -64,12 +78,17 @@ If you are not an experienced developer of Rust and PostgreSQL, you should just 
 using docker as the database installation is taken care of. 
 
 1. Install Docker Desktop for Mac from [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/)
+
 2. Run the prebuilt docker container: 
+
 ```
 docker run -p 8080:8080 -e OPENAI_API_KEY=$OPENAI_API_KEY cschin/ai_gent_web-arm64
 ```
+
 You can add `ANTHROPIC_API_KEY` too.
+
 3. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
+
 4. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
 
@@ -79,14 +98,17 @@ If you are not an experienced developer of Rust and PostgreSQL, you should just 
 using docker as the database installation is taken care of. 
 
 1. Install Docker Desktop from [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/) or from [CLI] (https://docs.docker.com/engine/install/)
+
 2. Run the prebuilt docker container: 
+
 ```
 docker run -p 8080:8080 -e OPENAI_API_KEY=$OPENAI_API_KEY cschin/ai_gent_web-amd64
 ```
 You can add `ANTHROPIC_API_KEY` too.
-3. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
-4. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
+3. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
+
+4. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
 ## Technologies Used
 
@@ -115,7 +137,3 @@ The above copyright notice and this permission notice shall be included in all c
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
-
-
-
-
