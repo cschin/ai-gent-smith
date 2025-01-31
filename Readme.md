@@ -6,7 +6,7 @@
 
 A user can define a finite state machine for state transitions and specify the prompts (or actions) that determine how the agent responds in a given state. State transitions can also be determined using an LLM. I have not fully tested it with more complex scenarios yet, but it works well for simple Q&A cases.
 
-A user can create multiple agents, which can be updated or deleted through a web UI. Conversations can be saved and browsed. The project supports retrieval-augmented generation (RAG), and in the future, we plan to add support for "asset" creation and management.
+A user can create multiple agents, which can be updated or deleted through a web UI. Conversations are saved automatics and can browsed. A user can download JSON output of the chats as well. The project supports retrieval-augmented generation (RAG), and in the future, we plan to add support for "asset" creation and management.
 
 Currently, we provide a small document dataset from an precision FDA challenge: [PrecisionFDA Generative Artificial Intelligence (GenAI) Community Challenge: Democratizing and Demystifying AI as the default dataset](https://precision.fda.gov/challenges/34/intro), with pre-configured agents allowing users to query related documents to answer a set of questions for the challenge.
 
@@ -14,8 +14,10 @@ Currently, we provide a small document dataset from an precision FDA challenge: 
 ## Table of Contents
 
 - [Installation](#installation)
+- [Chat Examples](#chat-examples)
 - [Technologies Used](#technologies-used)
 - [Project Structure](#project-structure)
+- [Supported LLM Vendors and Models](#supported-LLM-vendors-and-models)
 - [License](#license)
 
 ## Installation
@@ -110,6 +112,12 @@ You can add `ANTHROPIC_API_KEY` too.
 
 4. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
+# Chat Examples
+
+- [With gpt-4o] (https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o.json)
+- [With gpt-3.5-turbo](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-3.5-turbo.json)
+- [With gpt-4o and a party goer personality](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o-party-mode.json)
+
 ## Technologies Used
 
 - [Rust](https://www.rust-lang.org)
@@ -126,6 +134,11 @@ Brief overview of the main directories and their purposes:
 - `/ai_gent_web`: The web UI application
 - `/database`: For database support
 - `/misc`: Miscellaneous 
+
+## Supported LLM Vendors and Models
+- OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo
+- Anthropic: claude-3-haiku-20240307, claude-3-5-sonnet-20241022"
+It can support [Ollama](https://ollama.com) too but you need to modify a few lines of the source code.
 
 ## License
 ```
