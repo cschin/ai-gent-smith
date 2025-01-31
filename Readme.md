@@ -56,6 +56,7 @@ cargo run --release
 9. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
 10. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
+![Chat Interface](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/chat_interface.png?raw=true)
 
 ### For Mac ARM64 (Apple Silicon M1/M2/M3/M4) Docker Users
 
