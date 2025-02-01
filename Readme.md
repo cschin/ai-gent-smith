@@ -124,6 +124,7 @@ can explore the relation between the documents.
 
 - [With gpt-4o](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o.json)
 - [With gpt-3.5-turbo](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-3.5-turbo.json)
+- [With gpt-o3-mini](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-o3-mini.json)
 - [With gpt-4o and a party goer personality](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o-party-mode.json)
 
 ## Technologies Used
@@ -145,8 +146,8 @@ Brief overview of the main directories and their purposes:
 
 ## Supported LLM Vendors and Models
 
-- OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo
-- Anthropic: claude-3-haiku-20240307, claude-3-5-sonnet-20241022"
+- OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo, o3-mini
+- Anthropic: claude-3-haiku-20240307, claude-3-5-sonnet-20241022
 
 It can support [Ollama](https://ollama.com) too but you need to modify a few lines of the source code.
 
