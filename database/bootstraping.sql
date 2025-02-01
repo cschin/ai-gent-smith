@@ -21,7 +21,7 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
--- Name: _sqlx_migrations; Type: TABLE; Schema: public; Owner: cschin
+-- Name: _sqlx_migrations; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public._sqlx_migrations (
@@ -34,10 +34,8 @@ CREATE TABLE public._sqlx_migrations (
 );
 
 
-ALTER TABLE public._sqlx_migrations OWNER TO cschin;
-
 --
--- Name: agent_tools; Type: TABLE; Schema: public; Owner: cschin
+-- Name: agent_tools; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.agent_tools (
@@ -46,10 +44,8 @@ CREATE TABLE public.agent_tools (
 );
 
 
-ALTER TABLE public.agent_tools OWNER TO cschin;
-
 --
--- Name: agents; Type: TABLE; Schema: public; Owner: cschin
+-- Name: agents; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.agents (
@@ -67,10 +63,8 @@ CREATE TABLE public.agents (
 );
 
 
-ALTER TABLE public.agents OWNER TO cschin;
-
 --
--- Name: agents_agent_id_seq; Type: SEQUENCE; Schema: public; Owner: cschin
+-- Name: agents_agent_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.agents_agent_id_seq
@@ -82,17 +76,15 @@ CREATE SEQUENCE public.agents_agent_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.agents_agent_id_seq OWNER TO cschin;
-
 --
--- Name: agents_agent_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: cschin
+-- Name: agents_agent_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.agents_agent_id_seq OWNED BY public.agents.agent_id;
 
 
 --
--- Name: chats; Type: TABLE; Schema: public; Owner: cschin
+-- Name: chats; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.chats (
@@ -108,10 +100,8 @@ CREATE TABLE public.chats (
 );
 
 
-ALTER TABLE public.chats OWNER TO cschin;
-
 --
--- Name: chats_chat_id_seq; Type: SEQUENCE; Schema: public; Owner: cschin
+-- Name: chats_chat_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.chats_chat_id_seq
@@ -123,17 +113,15 @@ CREATE SEQUENCE public.chats_chat_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.chats_chat_id_seq OWNER TO cschin;
-
 --
--- Name: chats_chat_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: cschin
+-- Name: chats_chat_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.chats_chat_id_seq OWNED BY public.chats.chat_id;
 
 
 --
--- Name: messages; Type: TABLE; Schema: public; Owner: cschin
+-- Name: messages; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.messages (
@@ -149,10 +137,8 @@ CREATE TABLE public.messages (
 );
 
 
-ALTER TABLE public.messages OWNER TO cschin;
-
 --
--- Name: messages_message_id_seq; Type: SEQUENCE; Schema: public; Owner: cschin
+-- Name: messages_message_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.messages_message_id_seq
@@ -164,17 +150,15 @@ CREATE SEQUENCE public.messages_message_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.messages_message_id_seq OWNER TO cschin;
-
 --
--- Name: messages_message_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: cschin
+-- Name: messages_message_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.messages_message_id_seq OWNED BY public.messages.message_id;
 
 
 --
--- Name: tool_usage; Type: TABLE; Schema: public; Owner: cschin
+-- Name: tool_usage; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.tool_usage (
@@ -187,10 +171,8 @@ CREATE TABLE public.tool_usage (
 );
 
 
-ALTER TABLE public.tool_usage OWNER TO cschin;
-
 --
--- Name: tool_usage_usage_id_seq; Type: SEQUENCE; Schema: public; Owner: cschin
+-- Name: tool_usage_usage_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.tool_usage_usage_id_seq
@@ -202,17 +184,15 @@ CREATE SEQUENCE public.tool_usage_usage_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.tool_usage_usage_id_seq OWNER TO cschin;
-
 --
--- Name: tool_usage_usage_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: cschin
+-- Name: tool_usage_usage_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.tool_usage_usage_id_seq OWNED BY public.tool_usage.usage_id;
 
 
 --
--- Name: tools; Type: TABLE; Schema: public; Owner: cschin
+-- Name: tools; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.tools (
@@ -223,10 +203,8 @@ CREATE TABLE public.tools (
 );
 
 
-ALTER TABLE public.tools OWNER TO cschin;
-
 --
--- Name: tools_tool_id_seq; Type: SEQUENCE; Schema: public; Owner: cschin
+-- Name: tools_tool_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.tools_tool_id_seq
@@ -238,17 +216,15 @@ CREATE SEQUENCE public.tools_tool_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.tools_tool_id_seq OWNER TO cschin;
-
 --
--- Name: tools_tool_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: cschin
+-- Name: tools_tool_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.tools_tool_id_seq OWNED BY public.tools.tool_id;
 
 
 --
--- Name: users; Type: TABLE; Schema: public; Owner: cschin
+-- Name: users; Type: TABLE; Schema: public; Owner: -
 --
 
 CREATE TABLE public.users (
@@ -263,10 +239,8 @@ CREATE TABLE public.users (
 );
 
 
-ALTER TABLE public.users OWNER TO cschin;
-
 --
--- Name: users_user_id_seq; Type: SEQUENCE; Schema: public; Owner: cschin
+-- Name: users_user_id_seq; Type: SEQUENCE; Schema: public; Owner: -
 --
 
 CREATE SEQUENCE public.users_user_id_seq
@@ -278,59 +252,57 @@ CREATE SEQUENCE public.users_user_id_seq
     CACHE 1;
 
 
-ALTER SEQUENCE public.users_user_id_seq OWNER TO cschin;
-
 --
--- Name: users_user_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: cschin
+-- Name: users_user_id_seq; Type: SEQUENCE OWNED BY; Schema: public; Owner: -
 --
 
 ALTER SEQUENCE public.users_user_id_seq OWNED BY public.users.user_id;
 
 
 --
--- Name: agents agent_id; Type: DEFAULT; Schema: public; Owner: cschin
+-- Name: agents agent_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agents ALTER COLUMN agent_id SET DEFAULT nextval('public.agents_agent_id_seq'::regclass);
 
 
 --
--- Name: chats chat_id; Type: DEFAULT; Schema: public; Owner: cschin
+-- Name: chats chat_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.chats ALTER COLUMN chat_id SET DEFAULT nextval('public.chats_chat_id_seq'::regclass);
 
 
 --
--- Name: messages message_id; Type: DEFAULT; Schema: public; Owner: cschin
+-- Name: messages message_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.messages ALTER COLUMN message_id SET DEFAULT nextval('public.messages_message_id_seq'::regclass);
 
 
 --
--- Name: tool_usage usage_id; Type: DEFAULT; Schema: public; Owner: cschin
+-- Name: tool_usage usage_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tool_usage ALTER COLUMN usage_id SET DEFAULT nextval('public.tool_usage_usage_id_seq'::regclass);
 
 
 --
--- Name: tools tool_id; Type: DEFAULT; Schema: public; Owner: cschin
+-- Name: tools tool_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tools ALTER COLUMN tool_id SET DEFAULT nextval('public.tools_tool_id_seq'::regclass);
 
 
 --
--- Name: users user_id; Type: DEFAULT; Schema: public; Owner: cschin
+-- Name: users user_id; Type: DEFAULT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users ALTER COLUMN user_id SET DEFAULT nextval('public.users_user_id_seq'::regclass);
 
 
 --
--- Data for Name: _sqlx_migrations; Type: TABLE DATA; Schema: public; Owner: cschin
+-- Data for Name: _sqlx_migrations; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public._sqlx_migrations (version, description, installed_on, success, checksum, execution_time) FROM stdin;
@@ -345,7 +317,7 @@ COPY public._sqlx_migrations (version, description, installed_on, success, check
 
 
 --
--- Data for Name: agent_tools; Type: TABLE DATA; Schema: public; Owner: cschin
+-- Data for Name: agent_tools; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.agent_tools (agent_id, tool_id) FROM stdin;
@@ -353,7 +325,7 @@ COPY public.agent_tools (agent_id, tool_id) FROM stdin;
 
 
 --
--- Data for Name: agents; Type: TABLE DATA; Schema: public; Owner: cschin
+-- Data for Name: agents; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.agents (agent_id, user_id, name, description, status, configuration, created_at, last_used, class) FROM stdin;
@@ -365,7 +337,7 @@ COPY public.agents (agent_id, user_id, name, description, status, configuration,
 
 
 --
--- Data for Name: chats; Type: TABLE DATA; Schema: public; Owner: cschin
+-- Data for Name: chats; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.chats (chat_id, user_id, title, created_at, updated_at, agent_id, summary, status) FROM stdin;
@@ -377,7 +349,7 @@ COPY public.chats (chat_id, user_id, title, created_at, updated_at, agent_id, su
 
 
 --
--- Data for Name: messages; Type: TABLE DATA; Schema: public; Owner: cschin
+-- Data for Name: messages; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.messages (message_id, chat_id, user_id, agent_id, content, message_type, "timestamp", role) FROM stdin;
@@ -623,7 +595,7 @@ COPY public.messages (message_id, chat_id, user_id, agent_id, content, message_t
 
 
 --
--- Data for Name: tool_usage; Type: TABLE DATA; Schema: public; Owner: cschin
+-- Data for Name: tool_usage; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.tool_usage (usage_id, agent_id, tool_id, chat_id, message_id, used_at) FROM stdin;
@@ -631,7 +603,7 @@ COPY public.tool_usage (usage_id, agent_id, tool_id, chat_id, message_id, used_a
 
 
 --
--- Data for Name: tools; Type: TABLE DATA; Schema: public; Owner: cschin
+-- Data for Name: tools; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.tools (tool_id, name, description, created_at) FROM stdin;
@@ -639,7 +611,7 @@ COPY public.tools (tool_id, name, description, created_at) FROM stdin;
 
 
 --
--- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: cschin
+-- Data for Name: users; Type: TABLE DATA; Schema: public; Owner: -
 --
 
 COPY public.users (user_id, username, email, password_hash, jwt_token, token_expiration, created_at, last_login) FROM stdin;
@@ -648,49 +620,49 @@ COPY public.users (user_id, username, email, password_hash, jwt_token, token_exp
 
 
 --
--- Name: agents_agent_id_seq; Type: SEQUENCE SET; Schema: public; Owner: cschin
+-- Name: agents_agent_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
 SELECT pg_catalog.setval('public.agents_agent_id_seq', 4, true);
 
 
 --
--- Name: chats_chat_id_seq; Type: SEQUENCE SET; Schema: public; Owner: cschin
+-- Name: chats_chat_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
 SELECT pg_catalog.setval('public.chats_chat_id_seq', 4, true);
 
 
 --
--- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: public; Owner: cschin
+-- Name: messages_message_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
 SELECT pg_catalog.setval('public.messages_message_id_seq', 238, true);
 
 
 --
--- Name: tool_usage_usage_id_seq; Type: SEQUENCE SET; Schema: public; Owner: cschin
+-- Name: tool_usage_usage_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
 SELECT pg_catalog.setval('public.tool_usage_usage_id_seq', 1, false);
 
 
 --
--- Name: tools_tool_id_seq; Type: SEQUENCE SET; Schema: public; Owner: cschin
+-- Name: tools_tool_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
 SELECT pg_catalog.setval('public.tools_tool_id_seq', 1, false);
 
 
 --
--- Name: users_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: cschin
+-- Name: users_user_id_seq; Type: SEQUENCE SET; Schema: public; Owner: -
 --
 
 SELECT pg_catalog.setval('public.users_user_id_seq', 1, true);
 
 
 --
--- Name: _sqlx_migrations _sqlx_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: _sqlx_migrations _sqlx_migrations_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public._sqlx_migrations
@@ -698,7 +670,7 @@ ALTER TABLE ONLY public._sqlx_migrations
 
 
 --
--- Name: agent_tools agent_tools_pkey; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: agent_tools agent_tools_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_tools
@@ -706,7 +678,7 @@ ALTER TABLE ONLY public.agent_tools
 
 
 --
--- Name: agents agents_pkey; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: agents agents_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agents
@@ -714,7 +686,7 @@ ALTER TABLE ONLY public.agents
 
 
 --
--- Name: chats chats_pkey; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: chats chats_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.chats
@@ -722,7 +694,7 @@ ALTER TABLE ONLY public.chats
 
 
 --
--- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.messages
@@ -730,7 +702,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- Name: tool_usage tool_usage_pkey; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: tool_usage tool_usage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tool_usage
@@ -738,7 +710,7 @@ ALTER TABLE ONLY public.tool_usage
 
 
 --
--- Name: tools tools_pkey; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: tools tools_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tools
@@ -746,7 +718,7 @@ ALTER TABLE ONLY public.tools
 
 
 --
--- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: users users_email_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -754,7 +726,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -762,7 +734,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: users users_username_key; Type: CONSTRAINT; Schema: public; Owner: cschin
+-- Name: users users_username_key; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.users
@@ -770,98 +742,98 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: idx_agents_status; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_agents_status; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_agents_status ON public.agents USING btree (status);
 
 
 --
--- Name: idx_agents_user_id; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_agents_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_agents_user_id ON public.agents USING btree (user_id);
 
 
 --
--- Name: idx_chats_user_id; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_chats_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_chats_user_id ON public.chats USING btree (user_id);
 
 
 --
--- Name: idx_messages_agent_id; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_messages_agent_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_messages_agent_id ON public.messages USING btree (agent_id);
 
 
 --
--- Name: idx_messages_chat_id; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_messages_chat_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_messages_chat_id ON public.messages USING btree (chat_id);
 
 
 --
--- Name: idx_messages_type; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_messages_type; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_messages_type ON public.messages USING btree (message_type);
 
 
 --
--- Name: idx_messages_user_id; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_messages_user_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_messages_user_id ON public.messages USING btree (user_id);
 
 
 --
--- Name: idx_tool_usage_agent_id; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_tool_usage_agent_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_tool_usage_agent_id ON public.tool_usage USING btree (agent_id);
 
 
 --
--- Name: idx_tool_usage_chat_id; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_tool_usage_chat_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_tool_usage_chat_id ON public.tool_usage USING btree (chat_id);
 
 
 --
--- Name: idx_tool_usage_tool_id; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_tool_usage_tool_id; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_tool_usage_tool_id ON public.tool_usage USING btree (tool_id);
 
 
 --
--- Name: idx_users_email; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_users_email; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_users_email ON public.users USING btree (email);
 
 
 --
--- Name: idx_users_token_expiration; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_users_token_expiration; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_users_token_expiration ON public.users USING btree (token_expiration);
 
 
 --
--- Name: idx_users_username; Type: INDEX; Schema: public; Owner: cschin
+-- Name: idx_users_username; Type: INDEX; Schema: public; Owner: -
 --
 
 CREATE INDEX idx_users_username ON public.users USING btree (username);
 
 
 --
--- Name: agent_tools agent_tools_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: agent_tools agent_tools_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_tools
@@ -869,7 +841,7 @@ ALTER TABLE ONLY public.agent_tools
 
 
 --
--- Name: agent_tools agent_tools_tool_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: agent_tools agent_tools_tool_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agent_tools
@@ -877,7 +849,7 @@ ALTER TABLE ONLY public.agent_tools
 
 
 --
--- Name: agents agents_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: agents agents_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.agents
@@ -885,7 +857,7 @@ ALTER TABLE ONLY public.agents
 
 
 --
--- Name: chats chats_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: chats chats_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.chats
@@ -893,7 +865,7 @@ ALTER TABLE ONLY public.chats
 
 
 --
--- Name: chats fk_chats_agent; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: chats fk_chats_agent; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.chats
@@ -901,7 +873,7 @@ ALTER TABLE ONLY public.chats
 
 
 --
--- Name: messages messages_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: messages messages_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.messages
@@ -909,7 +881,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- Name: messages messages_chat_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: messages messages_chat_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.messages
@@ -917,7 +889,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- Name: messages messages_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: messages messages_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.messages
@@ -925,7 +897,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- Name: tool_usage tool_usage_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: tool_usage tool_usage_agent_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tool_usage
@@ -933,7 +905,7 @@ ALTER TABLE ONLY public.tool_usage
 
 
 --
--- Name: tool_usage tool_usage_chat_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: tool_usage tool_usage_chat_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tool_usage
@@ -941,7 +913,7 @@ ALTER TABLE ONLY public.tool_usage
 
 
 --
--- Name: tool_usage tool_usage_message_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: tool_usage tool_usage_message_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tool_usage
@@ -949,7 +921,7 @@ ALTER TABLE ONLY public.tool_usage
 
 
 --
--- Name: tool_usage tool_usage_tool_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: cschin
+-- Name: tool_usage tool_usage_tool_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
 --
 
 ALTER TABLE ONLY public.tool_usage
