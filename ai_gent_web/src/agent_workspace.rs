@@ -17,7 +17,7 @@ use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
 
 use super::DB_POOL;
-use crate::embedding_service::sort_points;
+use crate::embedding_service::vector_query_and_sort_points;
 use crate::embedding_service::TextChunkingService;
 use crate::embedding_service::TwoDPoint;
 use crate::llm_agent::*;
@@ -521,19 +521,17 @@ async fn search_asset(query: &str) -> String {
         .unwrap()
         .get_embedding_for_chunks(&mut chunks)
         .expect("Failed to get embeddings");
-    let mut ref_vec = Vec::<f32>::new();
     let mut min_d = OrderedFloat::from(f64::MAX);
     let mut best_sorted_points = Vec::<TwoDPoint>::new();
-    chunks.into_iter().for_each(|c| {
+    for c in chunks.into_iter() { 
         let ev = c.embedding_vec.unwrap().clone();
-        let sorted_points = sort_points(&ev);
+        let sorted_points = vector_query_and_sort_points(1, &ev, None).await;
         let d = sorted_points.first().unwrap().d;
         if d < min_d {
-            ref_vec = ev;
             min_d = d;
             best_sorted_points = sorted_points;
         }
-    });
+    };
 
     let top_5: Vec<TwoDPoint> = best_sorted_points[..5].into();
     let out = top_5
@@ -556,7 +554,7 @@ fn search_asset_clicked(
     _payload: Value,
 ) -> TnFutureHTMLResponse {
     tn_future! {
-        if event.e_trigger != SEARCH_AGENT_BTN {
+        if event.e_trigger != ASSET_SEARCH_BUTTON {
             return None;
         };
 
@@ -585,7 +583,6 @@ fn search_asset_clicked(
 
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
-
         let query_text = if let TnComponentValue::String(s) = query_text {
             s
         } else {
@@ -602,6 +599,10 @@ fn search_asset_clicked(
 
         tracing::info!(target:"tron_app", "query_text: {}", query_text);
         let out = search_asset(&query_text).await;
+        text::clean_textarea_with_context(
+            &context,
+            ASSET_SEARCH_OUTPUT,
+        ).await;
         update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &out).await;
         None
     }

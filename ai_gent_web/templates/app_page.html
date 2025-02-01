@@ -42,13 +42,24 @@
                             </div>
                             <div class="collapse collapse-arrow">
                                 <input type="radio" name="side-accordion" />
+                                <div class="collapse-title text-xl font-medium">Assets</div>
+                                <div class="collapse-content">
+                                    <!-- <div class="container w-full flex flex-col my-1 mx-2 p-2"> -->
+                                    {% for value in assets_buttons %}
+                                    {{ value }}
+                                    {% endfor %}
+                                    <!-- </div> -->
+                                </div>
+                            </div>
+                            <!-- <div class="collapse collapse-arrow">
+                                <input type="radio" name="side-accordion" />
                                 <div class="collapse-title text-xl font-medium">Asset Collections</div>
                                 <div class="collapse-content">
                                     <ul>
                                         <li><div class="btn" hx-get="/api/asset/0/show" hx-swap="none" hx-trigger="click">FDA Cosmetic Guidance Collection</div></li>
                                     </ul>
                                 </div>
-                            </div>
+                            </div> -->
                             <!-- <div class="collapse collapse-arrow">
                                 <input type="radio" name="side-accordion" />
                                 <div class="collapse-title text-xl font-medium">Tools</div>

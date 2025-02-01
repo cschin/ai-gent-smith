@@ -2,15 +2,17 @@
 #![allow(unused_imports)]
 
 mod agent_workspace;
+mod asset_cards;
+mod asset_space_plot;
 mod embedding_service;
 mod library_cards;
 mod llm_agent;
 mod session_cards;
-mod asset_space_plot;
 
 use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
 use askama::Template;
+use asset_cards::{AssetCards, AssetCardsBuilder};
 use asset_space_plot::AssetSpacePlot;
 use futures_util::Future;
 use library_cards::{LibraryCards, LibraryCardsBuilder};
@@ -95,6 +97,7 @@ struct AgentSetting {
 static BUTTON: &str = "button";
 static LIBRARY_CARDS: &str = "lib_cards";
 static SESSION_CARDS: &str = "session_cards";
+static ASSET_CARDS: &str = "asset_cards";
 static AGENT_WORKSPACE: &str = "agent_workspace";
 static ASSET_SPACE_PLOT: &str = "asset_space_plot";
 
@@ -131,8 +134,7 @@ static MOCK_USER: Lazy<UserData> = Lazy::new(|| UserData {
 // and then starts the application by calling tron_app::run
 #[tokio::main]
 async fn main() {
-    embedding_service::setup_rag_data().await;
-
+    embedding_service::initialize_embedding_model().await;
     let ui_action_routes = Router::<Arc<AppData>>::new()
         .route("/agent/create", post(create_basic_agent))
         .route("/agent/create_adv", post(create_adv_agent))
@@ -143,7 +145,7 @@ async fn main() {
         .route("/agent/{id}/deactivate", post(deactivate_agent))
         .route("/chat/{id}/delete", get(delete_chat))
         .route("/chat/{id}/show", get(show_chat))
-        .route("/chat/{id}/download", get( download_chat))
+        .route("/chat/{id}/download", get(download_chat))
         .route("/asset/{id}/show", get(show_asset))
         .route("/check_user", get(check_user));
 
@@ -151,7 +153,10 @@ async fn main() {
         cognito_login: false,
         http_only: true,
         address: [0, 0, 0, 0],
-        ports: Ports {https: 3001, http:8080},
+        ports: Ports {
+            https: 3001,
+            http: 8080,
+        },
         api_router: Some(ui_action_routes),
         ..Default::default()
     };
@@ -175,6 +180,11 @@ fn build_context() -> TnContext {
 
     SessionCards::builder()
         .init(SESSION_CARDS.into(), "cards".into(), "active")
+        .set_attr("class", "btn btn-sm btn-outline btn-primary flex-1")
+        .add_to_context(&mut context);
+
+    AssetCards::builder()
+        .init(ASSET_CARDS.into(), "cards".into(), "active")
         .set_attr("class", "btn btn-sm btn-outline btn-primary flex-1")
         .add_to_context(&mut context);
 
@@ -212,6 +222,8 @@ const SHOW_TODAY_SESSION_BTN: &str = "show_today_sessions_btn";
 const SHOW_YESTERDAY_SESSION_BTN: &str = "show_yesterday_sessions_btn";
 const SHOW_LAST_WEEK_SESSION_BTN: &str = "show_lastweek_sessions_btn";
 const SHOW_ALL_SESSION_BTN: &str = "show_all_sessions_btn";
+
+const SHOW_ASSET_LIB_BTN: &str = "show_asst_btn";
 
 fn build_left_panel(ctx: &mut TnContextBase) {
     let attrs = HtmlAttributes::builder()
@@ -281,6 +293,12 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
+
+    TnButton::builder()
+        .init(SHOW_ASSET_LIB_BTN.into(), "Show Assets".into())
+        .update_attrs(attrs.clone())
+        .set_action(TnActionExecutionMethod::Await, change_workspace)
+        .add_to_context(ctx);
 }
 
 #[derive(Template)] // this will generate the code...
@@ -289,6 +307,7 @@ struct AppPageTemplate {
     library_cards: String,
     agent_buttons: Vec<String>,
     sessions_buttons: Vec<String>,
+    assets_buttons: Vec<String>,
 }
 
 fn layout(context: TnContext) -> TnFutureString {
@@ -306,7 +325,11 @@ fn layout(context: TnContext) -> TnFutureString {
         SHOW_LAST_WEEK_SESSION_BTN, SHOW_ALL_SESSION_BTN] {
             sessions_buttons.push(context_guard.get_rendered_string(btn).await);
         }
-        let html = AppPageTemplate { library_cards, agent_buttons, sessions_buttons };
+        let mut assets_buttons = Vec::<String>::new();
+        for btn in [SHOW_ASSET_LIB_BTN] {
+            assets_buttons.push(context_guard.get_rendered_string(btn).await);
+        }
+        let html = AppPageTemplate { library_cards, agent_buttons, sessions_buttons, assets_buttons };
         html.render().unwrap()
     }
 }
@@ -423,6 +446,12 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 Some(cards)
             },
 
+            SHOW_ASSET_LIB_BTN => {
+                let context_guard = context.read().await;
+                let cards = context_guard.get_initial_rendered_string(ASSET_CARDS).await;
+                Some(cards)
+            },
+
             USER_SETTING_BTN
                  => {
                     let context_guard = context.read().await;
@@ -482,11 +511,7 @@ async fn show_agent_setting(
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
-    let user_data = ctx_guard
-        .get_user_data()
-        .await
-        .unwrap_or(MOCK_USER.clone());
-
+    let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
     let db_pool = DB_POOL.clone();
 
@@ -647,10 +672,7 @@ async fn use_agent(
     let configuration;
     {
         let ctx_guard = ctx.read().await;
-        user_data = ctx_guard
-            .get_user_data()
-            .await
-            .unwrap_or(MOCK_USER.clone());
+        user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
         let db_pool = DB_POOL.clone();
 
@@ -761,17 +783,13 @@ async fn create_basic_agent(
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
-    let user_data = ctx_guard
-        .get_user_data()
-        .await
-        .unwrap_or(MOCK_USER.clone());
+    let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
-        let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap(); 
-        let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap(); 
-        let simple_agent_config = SimpleAgentConfigTemplate {
-            prompt,
-            follow_up
-        }.render().unwrap();
+    let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap();
+    let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap();
+    let simple_agent_config = SimpleAgentConfigTemplate { prompt, follow_up }
+        .render()
+        .unwrap();
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
@@ -821,10 +839,7 @@ async fn create_adv_agent(
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
-    let user_data = ctx_guard
-        .get_user_data()
-        .await
-        .unwrap_or(MOCK_USER.clone());
+    let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
@@ -875,19 +890,14 @@ async fn update_basic_agent(
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
-    let user_data = ctx_guard
-        .get_user_data()
-        .await
-        .unwrap_or(MOCK_USER.clone());
-    let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap(); 
-    let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap(); 
+    let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
+    let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap();
+    let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap();
     tracing::info!(target: "tron_app", "prompt: {}", prompt);
     tracing::info!(target: "tron_app", "follow_up: {}", follow_up);
-    let simple_agent_config = SimpleAgentConfigTemplate {
-        prompt,
-        follow_up
-    }.render().unwrap();
-
+    let simple_agent_config = SimpleAgentConfigTemplate { prompt, follow_up }
+        .render()
+        .unwrap();
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
@@ -935,10 +945,7 @@ async fn update_adv_agent(
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
-    let user_data = ctx_guard
-        .get_user_data()
-        .await
-        .unwrap_or(MOCK_USER.clone());
+    let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
     // TODO: validate agent_config
 
@@ -986,10 +993,7 @@ async fn deactivate_agent(
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
-    let user_data = ctx_guard
-        .get_user_data()
-        .await
-        .unwrap_or(MOCK_USER.clone());
+    let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
     let db_pool = DB_POOL.clone();
     let row = sqlx::query!(
         r#"UPDATE agents SET status = $3
@@ -1018,10 +1022,7 @@ async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, sessio
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
-    let user_data = ctx_guard
-        .get_user_data()
-        .await
-        .unwrap_or(MOCK_USER.clone());
+    let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
     let db_pool = DB_POOL.clone();
     let res = sqlx::query!(
@@ -1069,10 +1070,7 @@ async fn show_chat(
     let configuration;
     {
         let ctx_guard = ctx.read().await;
-        user_data = ctx_guard
-            .get_user_data()
-            .await
-            .unwrap_or(MOCK_USER.clone());
+        user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
         let db_pool = DB_POOL.clone();
 
@@ -1125,7 +1123,6 @@ WHERE u.username = $1 AND c.chat_id = $2;",
     (h, Html::from(out_html))
 }
 
-
 #[derive(Serialize)]
 struct SingleChatMessage {
     time_stamp: String,
@@ -1136,7 +1133,7 @@ struct SingleChatMessage {
 #[derive(Serialize)]
 struct ChatDownload {
     messages: Vec<SingleChatMessage>,
-    summary: String
+    summary: String,
 }
 
 async fn download_chat(
@@ -1150,11 +1147,7 @@ async fn download_chat(
     let user_data;
     {
         let ctx_guard = ctx.read().await;
-        user_data = ctx_guard
-            .get_user_data()
-            .await
-            .unwrap_or(MOCK_USER.clone());
-
+        user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
     }
     let pool = DB_POOL.clone();
     let results = sqlx::query!(
@@ -1171,35 +1164,39 @@ async fn download_chat(
         user_data.username
     )
     .fetch_all(&pool)
-    .await.unwrap();
+    .await
+    .unwrap();
 
     let messages = results
         .into_iter()
-        .map(|row| SingleChatMessage { time_stamp: row.timestamp.unwrap_or_default().to_string(), 
-             role: row.role.unwrap_or_default(), content: row.content})
+        .map(|row| SingleChatMessage {
+            time_stamp: row.timestamp.unwrap_or_default().to_string(),
+            role: row.role.unwrap_or_default(),
+            content: row.content,
+        })
         .collect::<Vec<_>>();
 
-    let result = sqlx::query!(r#" 
+    let result = sqlx::query!(
+        r#" 
         SELECT summary FROM chats c
         JOIN users u on c.user_id = u.user_id 
         WHERE c.chat_id = $1 AND c.status = $2 AND u.username = $3"#,
-         chat_id,
+        chat_id,
         "active",
-    user_data.username)
-        .fetch_one(&pool)
-        .await.unwrap();
+        user_data.username
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
 
     let summary = result.summary.unwrap_or_default();
-    let chat_download = ChatDownload {
-        messages,
-        summary
-    };
-    let chat_download= serde_json::to_string_pretty(&chat_download).unwrap();
-    
+    let chat_download = ChatDownload { messages, summary };
+    let chat_download = serde_json::to_string_pretty(&chat_download).unwrap();
+
     axum::response::Response::builder()
-    .header("Content-Type", "text/plain; charset=utf-8")
-    .body(chat_download)
-    .unwrap()
+        .header("Content-Type", "text/plain; charset=utf-8")
+        .body(chat_download)
+        .unwrap()
 }
 
 async fn delete_chat(
@@ -1211,8 +1208,6 @@ async fn delete_chat(
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     {
-      
-
         let db_pool = DB_POOL.clone();
         let _row = sqlx::query!(
             r#"UPDATE chats SET status = $2
@@ -1237,8 +1232,6 @@ async fn delete_chat(
     };
     (h, Html::from(out_html))
 }
-
-
 
 async fn show_asset(
     _method: Method,
