@@ -8,11 +8,12 @@ use serde::{Deserialize, Serialize};
 use sqlx::postgres::types::PgRange;
 use tokenizers::{Encoding, Tokenizer};
 use tokio::sync::OnceCell;
+use tron_app::TRON_APP;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Cursor, Write};
 use std::ops::Bound;
 
 use pgvector::Vector;
@@ -312,7 +313,7 @@ impl DocumentChunks {
             .expect("document chunks are not initialized")
     }
 
-    fn from_file(filename: String) -> DocumentChunks {
+    pub fn from_gz_file(filename: String) -> Option<DocumentChunks> {
         let mut chunks = Vec::new();
         let file = BufReader::new(File::open(filename).unwrap());
         let decoder = GzDecoder::new(file);
@@ -322,13 +323,71 @@ impl DocumentChunks {
         // Read the file line by line
         let mut count = 0;
         for line in reader.lines() {
-            let chunk: DocumentChunk = serde_json::from_str(&line.unwrap()).unwrap();
-            chunks.push(chunk);
-            count += 1;
+            if let Ok(line) = line {
+                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
+                chunks.push(chunk);
+                count += 1;
+                } else {
+                    return None
+                }
+            } else {
+                return None
+            }
         }
-        println!("{} records loaded", count);
+        tracing::info!(target: TRON_APP, "{} records loaded", count);
 
-        DocumentChunks { chunks }
+        Some(DocumentChunks { chunks })
+    }
+
+    pub fn from_gz_data(data: &[u8]) -> Option<DocumentChunks> {
+        let cursor = Cursor::new(data);
+        let mut chunks = Vec::new();
+        let decoder = GzDecoder::new(cursor);
+        let reader = BufReader::new(decoder);
+
+        tracing::info!(target: "tron_app", "loading embeding from upload data");
+        // Read the file line by line
+        let mut count = 0;
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
+                chunks.push(chunk);
+                count += 1;
+                } else {
+                    return None
+                }
+            } else {
+                return None
+            }
+        }
+        tracing::info!(target: TRON_APP, "{} records loaded", count);
+
+        Some (DocumentChunks { chunks })
+    }
+
+    pub fn from_data(data: &[u8]) -> Option<DocumentChunks> {
+        let cursor = Cursor::new(data);
+        let reader = BufReader::new(cursor);
+        let mut chunks = Vec::new();
+        
+        tracing::info!(target: "tron_app", "loading embeding from upload data");
+        // Read the file line by line
+        let mut count = 0;
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
+                chunks.push(chunk);
+                count += 1;
+                } else {
+                    return None
+                }
+            } else {
+                return None
+            }
+        }
+        tracing::info!(target: TRON_APP, "{} records loaded", count);
+
+        Some (DocumentChunks { chunks })
     }
 }
 

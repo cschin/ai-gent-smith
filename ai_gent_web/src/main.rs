@@ -14,8 +14,10 @@ use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
 use askama::Template;
 use asset_cards::{AssetCards, AssetCardsBuilder};
 use asset_space_plot::AssetSpacePlot;
+use embedding_service::{DocumentChunk, DocumentChunks};
 use futures_util::Future;
 use library_cards::{LibraryCards, LibraryCardsBuilder};
+use pgvector::Vector;
 use session_cards::{SessionCards, SessionCardsBuilder};
 
 use axum::{
@@ -40,20 +42,22 @@ use tron_app::{
         chatbox,
         text::{self, update_and_send_textarea_with_context},
         tn_future, TnActionExecutionMethod, TnAsset, TnComponentBaseRenderTrait,
-        TnComponentBaseTrait, TnFutureHTMLResponse, TnFutureString, TnHtmlResponse,
-        TnServiceRequestMsg, UserData,
+        TnComponentBaseTrait, TnDnDFileUpload, TnFutureHTMLResponse, TnFutureString,
+        TnHtmlResponse, TnServiceRequestMsg, UserData,
     },
-    AppData, HtmlAttributes, Ports,
+    AppData, HtmlAttributes, Ports, TRON_APP,
 };
 use tron_components::{
     text::TnTextInput, TnButton, TnComponentState, TnComponentValue, TnContext, TnContextBase,
     TnEvent, TnTextArea,
 };
 //use std::sync::Mutex;
-use sqlx::Postgres;
 use sqlx::{any::AnyRow, prelude::FromRow, query::Query, Acquire};
+use sqlx::{postgres::types::PgRange, Postgres};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
-use std::{collections::HashMap, default, fs::File, pin::Pin, sync::Arc, task::Context};
+use std::{
+    collections::HashMap, default, fs::File, ops::Bound, pin::Pin, sync::Arc, task::Context,
+};
 
 use once_cell::sync::Lazy;
 use sqlx::postgres::{PgPool, PgPoolOptions};
@@ -147,6 +151,8 @@ async fn main() {
         .route("/chat/{id}/show", get(show_chat))
         .route("/chat/{id}/download", get(download_chat))
         .route("/asset/{id}/show", get(show_asset))
+        .route("/asset/create", post(create_asset))
+        .route("/asset/{id}/delete", get(delete_asset))
         .route("/check_user", get(check_user));
 
     let app_config = tron_app::AppConfigure {
@@ -223,7 +229,10 @@ const SHOW_YESTERDAY_SESSION_BTN: &str = "show_yesterday_sessions_btn";
 const SHOW_LAST_WEEK_SESSION_BTN: &str = "show_lastweek_sessions_btn";
 const SHOW_ALL_SESSION_BTN: &str = "show_all_sessions_btn";
 
-const SHOW_ASSET_LIB_BTN: &str = "show_asst_btn";
+const SHOW_ASSET_LIB_BTN: &str = "show_asset_btn";
+const CREATE_ASSET_LIB_BTN: &str = "create_asset_btn";
+
+static DND_FILE_UPLOAD: &str = "dnd_file_upload";
 
 fn build_left_panel(ctx: &mut TnContextBase) {
     let attrs = HtmlAttributes::builder()
@@ -268,22 +277,19 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(SHOW_TODAY_SESSION_BTN.into(), "Today's".into())
+        .init(SHOW_TODAY_SESSION_BTN.into(), "Last 24 hours".into())
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(SHOW_YESTERDAY_SESSION_BTN.into(), "Since Yesterday".into())
+        .init(SHOW_YESTERDAY_SESSION_BTN.into(), "Last 48 hours".into())
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
 
     TnButton::builder()
-        .init(
-            SHOW_LAST_WEEK_SESSION_BTN.into(),
-            "Since The Last Week".into(),
-        )
+        .init(SHOW_LAST_WEEK_SESSION_BTN.into(), "Last Week".into())
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
@@ -299,6 +305,32 @@ fn build_left_panel(ctx: &mut TnContextBase) {
         .update_attrs(attrs.clone())
         .set_action(TnActionExecutionMethod::Await, change_workspace)
         .add_to_context(ctx);
+
+    TnButton::builder()
+        .init(CREATE_ASSET_LIB_BTN.into(), "Create Assets".into())
+        .update_attrs(attrs.clone())
+        .set_action(TnActionExecutionMethod::Await, change_workspace)
+        .add_to_context(ctx);
+
+    add_dnd_file_upload(ctx, DND_FILE_UPLOAD);
+}
+
+fn add_dnd_file_upload(context: &mut TnContextBase, tnid: &str) {
+    let button_attributes = vec![(
+        "class".into(),
+        "btn btn-sm btn-outline btn-primary flex-1".into(),
+    )]
+    .into_iter()
+    .collect::<HashMap<String, String>>();
+
+    TnDnDFileUpload::builder()
+        .init(
+            tnid.into(),
+            "Drop An Asset JSON File".into(),
+            button_attributes,
+        )
+        .set_action(TnActionExecutionMethod::Await, handle_file_upload)
+        .add_to_context(context);
 }
 
 #[derive(Template)] // this will generate the code...
@@ -326,7 +358,7 @@ fn layout(context: TnContext) -> TnFutureString {
             sessions_buttons.push(context_guard.get_rendered_string(btn).await);
         }
         let mut assets_buttons = Vec::<String>::new();
-        for btn in [SHOW_ASSET_LIB_BTN] {
+        for btn in [SHOW_ASSET_LIB_BTN, CREATE_ASSET_LIB_BTN] {
             assets_buttons.push(context_guard.get_rendered_string(btn).await);
         }
         let html = AppPageTemplate { library_cards, agent_buttons, sessions_buttons, assets_buttons };
@@ -374,6 +406,12 @@ struct UserSettingsTemplate {
     email: String,
     anthropic_api_key: String,
     openai_api_key: String,
+}
+
+#[derive(Template)]
+#[template(path = "create_asset.html", escape = "none")]
+struct CreateAgentTemplate {
+    dnd_file_upload_html: String,
 }
 
 fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
@@ -450,6 +488,25 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let context_guard = context.read().await;
                 let cards = context_guard.get_initial_rendered_string(ASSET_CARDS).await;
                 Some(cards)
+            },
+
+            CREATE_ASSET_LIB_BTN => {
+
+                // clear the upload buffer
+                {
+                    let asset_ref = context.get_asset_ref().await;
+                    let mut guard = asset_ref.write().await;
+                    if let Some(TnAsset::HashMapVecU8(h)) = guard.get_mut("upload") {
+                            h.clear();
+                    }
+                }
+
+                {
+                    let context_guard = context.read().await;
+                    let dnd_file_upload_html = context_guard.get_rendered_string(DND_FILE_UPLOAD).await;
+                    let template = CreateAgentTemplate {dnd_file_upload_html};
+                    Some(template.render().unwrap())
+                }
             },
 
             USER_SETTING_BTN
@@ -820,7 +877,7 @@ async fn create_basic_agent(
 
     //let uuid = Uuid::new_v4();
     Html::from(format!(
-        r#"<p class="py-4">An agent "{}" is created "#,
+        r#"<p class="py-4">An agent "{}" is created </p>"#,
         agent_setting_form.name
     ))
 }
@@ -870,7 +927,7 @@ async fn create_adv_agent(
 
     //let uuid = Uuid::new_v4();
     Html::from(format!(
-        r#"<p class="py-4">An agent "{}" is created "#,
+        r#"<p class="py-4">An agent "{}" is created </p>"#,
         agent_setting_form.name
     ))
 }
@@ -1256,4 +1313,218 @@ async fn show_asset(
         asset_space_plot.render().await
     };
     (h, Html::from(out_html))
+}
+
+async fn delete_asset(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    Path(asset_id): Path<i32>,
+    session: Session,
+) -> impl IntoResponse {
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    {
+        let db_pool = DB_POOL.clone();
+        let _row = sqlx::query!(
+            r#"UPDATE assets SET status = $2
+               WHERE asset_id = $1 RETURNING asset_id"#,
+            asset_id,
+            "inactive"
+        )
+        .fetch_one(&db_pool)
+        .await
+        .expect("sql query error");
+    }
+    let mut h = HeaderMap::new();
+    h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
+    h.insert("Hx-Retarget", "#workspace".parse().unwrap());
+    let out_html = {
+        let ctx_guard = ctx.read().await;
+
+        let component_guard = ctx_guard.components.read().await;
+        let mut agent_ws = component_guard.get(ASSET_CARDS).unwrap().write().await;
+        agent_ws.pre_render(&ctx_guard).await;
+        agent_ws.render().await
+    };
+    (h, Html::from(out_html))
+}
+
+#[derive(Debug, Default, Serialize, Deserialize)]
+struct AssetSettingForm {
+    name: String,
+    description: String,
+}
+
+async fn create_asset(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    session: Session,
+    Json(payload): Json<Value>,
+) -> impl IntoResponse {
+    tracing::info!(target: "app_tron", "payload create_asset {:?}", payload);
+
+    let asset_setting_form: AssetSettingForm =
+        serde_json::from_value::<AssetSettingForm>(payload.clone()).unwrap();
+
+    let ctx_store_guard = appdata.context_store.read().await;
+    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+
+    let document_chunks = {
+        let asset_ref = ctx.get_asset_ref().await;
+        let mut chunks = DocumentChunks { chunks: vec![] };
+        let guard = asset_ref.read().await;
+        if let Some(TnAsset::VecString2(asset_files)) = guard.get("asset_files") {
+            for (filename, t) in asset_files {
+                tracing::info!(target: TRON_APP, "process upload files {} {}", filename, t);
+                let asset = guard.get("upload").unwrap();
+                let file_data = if let TnAsset::HashMapVecU8(h) = asset {
+                    h.get(filename)
+                } else {
+                    None
+                };
+                if let Some(data) = file_data {
+                    let c = match t.as_str() {
+                        "application/x-gzip" => DocumentChunks::from_gz_data(data),
+                        "application/json" => DocumentChunks::from_data(data),
+                        _ => None,
+                    };
+                    if let Some(c) = c {
+                        chunks.chunks.extend(c.chunks);
+                    }
+                }
+            }
+        };
+        chunks
+    };
+
+    tracing::info!(target: TRON_APP, "number of chunks parsed: {}", document_chunks.chunks.len());
+    // clear the upload buffer
+    {
+        let asset_ref = ctx.get_asset_ref().await;
+        let mut guard = asset_ref.write().await;
+        if let Some(TnAsset::HashMapVecU8(h)) = guard.get_mut("upload") {
+            h.clear();
+        }
+    }
+
+    if !document_chunks.chunks.is_empty() {
+        let ctx_guard = ctx.read().await;
+        let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
+
+        let db_pool = DB_POOL.clone();
+        // TODO: make sure the string is proper avoiding SQL injection
+        let query_result = sqlx::query!(
+            r#"INSERT INTO assets (user_id, name, description, status)
+        SELECT user_id, $2, $3, $4
+        FROM users
+        WHERE username = $1
+        RETURNING asset_id"#,
+            user_data.username,
+            asset_setting_form.name,
+            asset_setting_form.description,
+            "active",
+        )
+        .fetch_one(&db_pool)
+        .await
+        .unwrap();
+
+        tracing::info!(target: "app_tron", "XXX {:?}", query_result);
+
+        for c in document_chunks.chunks.into_iter() {
+            let span = PgRange {
+                start: Bound::Included(c.span.0 as i32),
+                end: Bound::Excluded(c.span.1 as i32),
+            };
+            let embedding_vector = if let Some(v) = c.embedding_vec {
+                Vector::from(v)
+            } else {
+                Vector::from(vec![])
+            };
+            let two_d_embedding = if let Some(v) = c.two_d_embedding {
+                Vector::from(vec![v.0, v.1])
+            } else {
+                Vector::from(vec![])
+            };
+            let _res = sqlx::query(
+             r#"INSERT INTO text_embedding (asset_id, text, span, embedding_vector, two_d_embedding, filename, title)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             RETURNING id"#   
+            ).bind(query_result.asset_id)
+            .bind(&c.text)
+            .bind(span)
+            .bind(embedding_vector)
+            .bind(two_d_embedding)
+            .bind(&c.filename)
+            .bind(&c.title).fetch_one(&db_pool).await;
+            tracing::info!(target: TRON_APP, "insert embedding {:?}", _res);
+        }
+
+        //let uuid = Uuid::new_v4();
+        Html::from(format!(
+            r#"<p class="py-4">An Asset Collection "{}" is created </p>"#,
+            asset_setting_form.name
+        ))
+    } else {
+        Html::from(r#"<p class="py-4">No Valid Asset Data Uploaded</p>"#.to_string())
+    }
+}
+
+fn handle_file_upload(context: TnContext, _event: TnEvent, payload: Value) -> TnFutureHTMLResponse {
+    tn_future! {
+        // process the "finished" event
+
+        tracing::info!(target: TRON_APP, "process file_upload finish");
+        let file_list = payload["event_data"]["e_file_list"].as_array();
+
+        let file_list = if let Some(file_list) = file_list {
+            file_list
+                .iter()
+                .flat_map(|v| {
+                    if let Value::Array(v) = v {
+                        tracing::debug!(target: TRON_APP, "v:{:?}", v);
+                        let filename = v[0].as_str();
+                        let size = v[1].as_u64();
+                        let t = v[2].as_str();
+                        match (filename, size, t) {
+                            (Some(filename), Some(size), Some(t)) => Some((filename, size, t)),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        };
+
+        tracing::info!( target: TRON_APP, "{:?}", file_list);
+
+        if !file_list.is_empty() {
+            let mut v: Vec<(String, String)> = vec![];
+            for (filename, _size, t) in file_list {
+                    v.push( (filename.to_string(), t.to_string()) );
+                }
+            let asset_ref = context.get_asset_ref().await;
+            let mut guard = asset_ref.write().await;
+            guard.insert("asset_files".to_string(), TnAsset::VecString2(v));
+        }
+
+        // if !file_list.is_empty() {
+        //     for (filename, _size, t) in file_list {
+        //         tracing::info!(target: TRON_APP, "filename: {}, size:{}", filename, _size);
+        //         let asset_ref = context.get_asset_ref().await;
+        //         let guard = asset_ref.read().await;
+        //         let asset = guard.get("upload").unwrap();
+        //         let file_data = if let TnAsset::HashMapVecU8(h) = asset {
+        //             h.get(filename)
+        //         } else {
+        //             None
+        //         };
+        //     }
+        // }
+
+        let header = HeaderMap::new();
+        Some((header, Html::from("".to_string())))
+    }
 }
