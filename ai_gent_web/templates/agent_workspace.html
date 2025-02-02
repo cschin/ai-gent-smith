@@ -35,6 +35,29 @@
         </div>
     </div>
 </div>
+<script>
+    // this enable sending the query message by click "Enter"
+    let attach_event = function () {
+        document.getElementById("agent_query_text_input").addEventListener("keydown", 
+            function(event) {
+                if (event.key === "Enter"  && !event.shiftKey) {  // Check if Enter is pressed
+                    event.preventDefault();   // Prevent default behavior (e.g., newline in a textarea)
+                    // make sure the textarea updated its content to the server
+                    const change_event = new Event("change", { bubbles: true });
+                    document.getElementById("agent_query_text_input").dispatchEvent(change_event);
+                    htmx.trigger("#agent_query_button", "click");
+                }
+            });
+        };
+
+    attach_event();
+    document.body.addEventListener("htmx:afterSwap", function(event) {
+        // we do a outerHTML swap, so we need set up this hook every time the textarea is swapped in
+        if (event.detail.target.id === "agent_query_text_input") {
+            attach_event();
+        }
+    });
+</script>
 
 <style>
 pre {
