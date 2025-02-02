@@ -473,7 +473,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         if let TnComponentValue::String(s) = query_text {
             let s = encode_text(&s);
-            let query_context = search_asset(&s).await;
+            let query_context = encode_text(&search_asset(&s).await).to_string();
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
