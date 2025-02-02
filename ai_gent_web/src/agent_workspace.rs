@@ -514,7 +514,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         if let TnComponentValue::String(s) = query_text {
             let s = encode_text(&s);
-            let query_context = encode_text(&search_asset(&s, asset_id).await).to_string();
+            let query_context = encode_text(&search_asset(&s, asset_id, 8).await).to_string();
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
@@ -549,7 +549,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
     }
 }
 
-async fn search_asset(query: &str, asset_id: i32) -> String {
+async fn search_asset(query: &str, asset_id: i32, top_k: usize) -> String {
 
     if asset_id == 0 {
        return  "".to_string()
@@ -577,8 +577,9 @@ async fn search_asset(query: &str, asset_id: i32) -> String {
         }
     };
 
-    let top_5: Vec<TwoDPoint> = best_sorted_points[..5].into();
-    let out = top_5
+    let top_k = if top_k > best_sorted_points.len() { best_sorted_points.len() } else {top_k}; 
+    let top_hits: Vec<TwoDPoint> = best_sorted_points[..top_k].into();
+    let out = top_hits
         .iter()
         .map(|p| {
             let c= &p.chunk;
@@ -647,7 +648,7 @@ fn search_asset_clicked(
         };
 
         tracing::info!(target:"tron_app", "query_text: {}", query_text);
-        let out = search_asset(&query_text, asset_id).await;
+        let out = search_asset(&query_text, asset_id, 8).await;
         text::clean_textarea_with_context(
             &context,
             ASSET_SEARCH_OUTPUT,
