@@ -482,8 +482,15 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
                         context_cloned.set_ready_for(AGENT_CHAT_TEXTAREA).await;
                     },
+                    "clear" => {
+                        text::clean_stream_textarea_with_context(
+                            &context_cloned,
+                            AGENT_STREAM_OUTPUT,
+                        )
+                        .await;
+                    }
                     "message" => {
-                        let message = format!("\n\nLLM Engine Message: {}\n", r);
+                        let message = format!("\nLLM Engine Message: {}", r);
                         text::append_and_update_stream_textarea_with_context(
                             &context_cloned,
                             AGENT_STREAM_OUTPUT,
@@ -492,12 +499,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         .await
                     }
                     "fsm_state" => {
-                        text::clean_stream_textarea_with_context(
-                            &context_cloned,
-                            AGENT_STREAM_OUTPUT,
-                        )
-                        .await;
-                        let fsm_state = format!("\n\nFSM State: {}\n", r);
+                        let fsm_state = format!("\nFSM State: {}", r);
                         text::append_and_update_stream_textarea_with_context(
                             &context_cloned,
                             AGENT_STREAM_OUTPUT,
