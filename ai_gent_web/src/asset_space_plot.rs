@@ -12,7 +12,7 @@ use tron_app::{
         tn_future, TnAsset, TnComponentBase, TnContext, TnEvent, TnFutureHTMLResponse,
     },
     tron_macro::ComponentBase,
-    TnServerEventData,
+    TnServerEventData, TRON_APP,
 };
 
 use std::collections::HashMap;
@@ -160,7 +160,15 @@ where
 
         {
             let mut two_d_embeddding = "x,y,c,o\n".to_string();
-            let all_chunks = get_all_points(1).await.iter().map(|p| p.chunk.clone()).collect::<Vec<_>>();
+            let asset_id = {
+                let assets_guard = ctx.assets.read().await;
+                if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                    *chat_id as i32
+                } else {
+                    panic!("no chat id found")
+                }
+            };
+            let all_chunks = get_all_points(asset_id).await.iter().map(|p| p.chunk.clone()).collect::<Vec<_>>();
             two_d_embeddding.extend([all_chunks
                 .iter()
                 .map(|c| {
@@ -276,23 +284,23 @@ async fn update_plot_and_top_k(
     let top_doc = top_doc.join("\n\n");
     update_and_send_div_with_context(&context, TOP_HIT_DIV, &top_doc).await;
 
-    let top_chunk = top_k_points
-        .into_iter()
-        .map(|p| {
-            let mut text = String::new();
-            text.extend(format!("=== CHUNK BGN, TITLE: {}\n", p.chunk.title).chars());
-            text.push_str(&p.chunk.text);
-            text.push_str("\n=== CHUNK END \n");
-            text
-        })
-        .collect::<Vec<String>>();
-    let top_chunk = top_chunk.join("\n");
+    // let top_chunk = top_k_points
+    //     .into_iter()
+    //     .map(|p| {
+    //         let mut text = String::new();
+    //         text.extend(format!("=== CHUNK BGN, TITLE: {}\n", p.chunk.title).chars());
+    //         text.push_str(&p.chunk.text);
+    //         text.push_str("\n=== CHUNK END \n");
+    //         text
+    //     })
+    //     .collect::<Vec<String>>();
+    // let top_chunk = top_chunk.join("\n");
 
-    {
-        let context_guard = context.write().await;
-        let mut asset = context_guard.assets.write().await;
-        asset.insert("top_k_chunk".into(), TnAsset::String(top_chunk));
-    }
+    // {
+    //     let context_guard = context.write().await;
+    //     let mut asset = context_guard.assets.write().await;
+    //     asset.insert("top_k_chunk".into(), TnAsset::String(top_chunk));
+    // }
 }
 
 fn d3_plot_clicked(context: TnContext, event: TnEvent, payload: Value) -> TnFutureHTMLResponse {
@@ -305,7 +313,20 @@ fn d3_plot_clicked(context: TnContext, event: TnEvent, payload: Value) -> TnFutu
         tracing::info!(target: "tron_app", "e_x {:?}", evt_x);
         tracing::info!(target: "tron_app", "e_y {:?}", evt_y);
         //let filename_to_id = &DOCUMENT_CHUNKS.get().unwrap().filename_to_id;
-        let all_doc = get_all_points(1).await;
+        
+        let asset_id = {
+            let context_guard = context.read().await;
+            let assets_guard = context_guard.assets.read().await;
+            if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                *chat_id as i32
+            } else {
+                panic!("no asset id found")
+            }
+        };
+
+
+        let all_doc = get_all_points(asset_id).await;
+        tracing::info!(target: TRON_APP, "XXXX {} {}", asset_id, all_doc.len());
         all_doc.iter().for_each(|p| {
             let c = p.chunk.clone();
             let two_d_embedding = c.two_d_embedding.unwrap(); 
@@ -323,7 +344,7 @@ fn d3_plot_clicked(context: TnContext, event: TnEvent, payload: Value) -> TnFutu
         all_points.reverse();
 
         let ref_eb_vec = all_points.first().unwrap().chunk.embedding_vec.clone().unwrap();
-        let all_points_sorted = vector_query_and_sort_points(1, &ref_eb_vec, None).await;
+        let all_points_sorted = vector_query_and_sort_points(asset_id, &ref_eb_vec, None).await;
         let top_10: Vec<TwoDPoint> = all_points_sorted[..10].into();
 
         update_plot_and_top_k(context, all_points_sorted, top_10).await;
@@ -344,7 +365,17 @@ fn reset_button_clicked(
         } else {
             {
                 let mut two_d_embeddding = "x,y,c,o\n".to_string();
-                let all_chunks = get_all_points(1).await.iter().map(|p| p.chunk.clone()).collect::<Vec<_>>();
+                let asset_id = {
+                    let context_guard = context.read().await;
+                    let assets_guard = context_guard.assets.read().await;
+                    if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                        *chat_id as i32
+                    } else {
+                        panic!("no chat id found")
+                    }
+                };
+        
+                let all_chunks = get_all_points(asset_id).await.iter().map(|p| p.chunk.clone()).collect::<Vec<_>>();
                 two_d_embeddding.extend([all_chunks
                     .iter()
                     .map(|c| {

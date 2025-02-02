@@ -238,10 +238,10 @@ where
 
         let asset_id = {
             let assets_guard = ctx.assets.read().await;
-            if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
-                *chat_id as i32
+            if let Some(TnAsset::U32(asset_id)) = assets_guard.get("asset_id") {
+                *asset_id as i32
             } else {
-                panic!("no chat id found")
+                panic!("no asset id found")
             }
         };
 

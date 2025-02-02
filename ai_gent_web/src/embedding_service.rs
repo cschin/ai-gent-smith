@@ -513,7 +513,6 @@ pub async fn get_all_points(asset_id: i32) -> Vec<TwoDPoint> {
         .bind(asset_id)
     .fetch_all(&db_pool)
     .await;
-    tracing::info!(target: "tron_app", "XXX :{:?}", results);
 
     if let Ok(rows) = results {
         for r in rows {

@@ -1403,13 +1403,19 @@ async fn delete_chat(
 async fn show_asset(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
-    Path(_asset_id): Path<i32>,
+    Path(asset_id): Path<u32>,
     session: Session,
 ) -> impl IntoResponse {
     //println!("payload: {:?}", payload);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
 
+    {
+        let ctx_guard = ctx.read().await;
+        let mut assets_guard = ctx_guard.assets.write().await;
+        assets_guard.insert("asset_id".into(), TnAsset::U32(asset_id));
+    }
+    
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
