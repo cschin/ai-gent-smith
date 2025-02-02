@@ -1224,6 +1224,7 @@ async fn show_chat(
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let user_id;
     let agent_id;
+    let asset_id;
     let agent_name;
     let user_data;
     let configuration;
@@ -1234,10 +1235,10 @@ async fn show_chat(
         let db_pool = DB_POOL.clone();
 
         let row = sqlx::query!(
-            "SELECT c.agent_id, c.user_id, a.name, a.configuration FROM chats c
-JOIN users u ON c.user_id = u.user_id
-JOIN agents a ON c.agent_id = a.agent_id
-WHERE u.username = $1 AND c.chat_id = $2;",
+            "SELECT c.agent_id, c.user_id, a.name, a.configuration, a.asset_id FROM chats c
+            JOIN users u ON c.user_id = u.user_id
+            JOIN agents a ON c.agent_id = a.agent_id
+            WHERE u.username = $1 AND c.chat_id = $2;",
             user_data.username,
             chat_id
         )
@@ -1253,6 +1254,12 @@ WHERE u.username = $1 AND c.chat_id = $2;",
         } else {
             "".into()
         };
+        asset_id = if let Some(asset_id) = row.asset_id {
+            asset_id as u32
+        } else {
+            0_u32
+        };
+
     }
     {
         let ctx_guard = ctx.read().await;
@@ -1261,6 +1268,7 @@ WHERE u.username = $1 AND c.chat_id = $2;",
         assets_guard.insert("agent_name".into(), TnAsset::String(agent_name.clone()));
         assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
         assets_guard.insert("chat_id".into(), TnAsset::U32(chat_id as u32));
+        assets_guard.insert("asset_id".into(), TnAsset::U32(asset_id));
         assets_guard.insert("agent_configuration".into(), TnAsset::String(configuration));
     }
     let mut h = HeaderMap::new();
