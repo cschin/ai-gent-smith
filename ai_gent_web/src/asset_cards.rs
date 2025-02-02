@@ -1,5 +1,6 @@
 use askama::Template;
 use async_trait::async_trait;
+use html_escape::encode_text;
 use sqlx::Acquire;
 use sqlx::Postgres;
 use std::collections::HashMap;
@@ -80,8 +81,8 @@ where
             .iter()
             .map(|row| {
                 let id: i32 = row.try_get("asset_id").unwrap_or_default();
-                let name: String = row.try_get("name").unwrap_or_default();
-                let description: String = row.try_get("description").unwrap_or_default();
+                let name: String = encode_text::<&str>(&row.try_get("name").unwrap_or_default()).to_string();
+                let description: String =  encode_text::<&str>(&row.try_get("description").unwrap_or_default()).to_string();
                 (id, name, description)
             })
             .collect::<Vec<_>>();

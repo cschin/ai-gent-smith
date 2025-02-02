@@ -40,6 +40,16 @@
                 <!-- <input type="text" name="model_name" id="model_name" class="input input-bordered" required
                     placeholder="Enter the model name (e.g., gpt-3.5-turbo)"> -->
             </div>
+            <div class="form-control mb-4">
+                <label for="asset_name" class="label">
+                    <span class="label-text">Select Asset:</span>
+                </label>
+                <select name="asset_name" id="asset_name" class="select select-bordered" required>
+                    {% for option in asset_options %}
+                    {{ option }}
+                    {% endfor %}
+                </select>
+            </div>
 
             <div class="form-control mb-4">
                 <label for="prompt" class="label">

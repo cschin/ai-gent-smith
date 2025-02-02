@@ -1,5 +1,6 @@
 use askama::Template;
 use async_trait::async_trait;
+use html_escape::encode_text;
 use sqlx::Acquire;
 use sqlx::Postgres;
 use std::collections::HashMap;
@@ -8,10 +9,10 @@ use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
 
+use crate::MOCK_USER;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
-use crate::MOCK_USER;
 
 use super::DB_POOL;
 
@@ -46,9 +47,7 @@ impl<'a: 'static> LibraryCardsBuilder<'a> {
 
 impl<'a: 'static> LibraryCards<'a> {
     pub async fn init_db_pool(&mut self) {
-        self.db_pool = Some(
-          DB_POOL.clone()
-        );
+        self.db_pool = Some(DB_POOL.clone());
     }
 }
 
@@ -70,22 +69,27 @@ where
             FROM agents a
             JOIN users u ON a.user_id = u.user_id
             WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.agent_id ASC;",
-            self.user_data,
-            self.status_to_render
+            self.user_data, self.status_to_render
         );
-        let pool = self.db_pool.as_ref().expect("Database connection not initialized");
+        let pool = self
+            .db_pool
+            .as_ref()
+            .expect("Database connection not initialized");
         let rows = sqlx::query(&query).fetch_all(pool).await.expect("db error");
 
         let cards = rows
             .iter()
             .map(|row| {
                 let id: i32 = row.try_get("agent_id").unwrap_or_default();
-                let name: String = row.try_get("name").unwrap_or_default();
-                let description: String = row.try_get("description").unwrap_or_default();
+                let name: String =
+                    encode_text::<&str>(&row.try_get("name").unwrap_or_default()).to_string();
+                let description: String =
+                    encode_text::<&str>(&row.try_get("description").unwrap_or_default())
+                        .to_string();
                 (id, name, description)
             })
             .collect::<Vec<_>>();
-        
+
         let html = AgentLibraryTemplate { cards };
         html.render().unwrap()
     }

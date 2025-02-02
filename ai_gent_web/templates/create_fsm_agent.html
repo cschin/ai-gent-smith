@@ -18,16 +18,6 @@
                 <textarea name="description" id="description" class="textarea textarea-bordered" rows="3"
                     placeholder="Enter a brief description of your AI agent"></textarea>
             </div>
-            <!-- <div class="form-control mb-4">
-                <label for="provider" class="label">
-                    <span class="label-text">LLM Provider:</span>
-                </label>
-                <select name="provider" id="provider" class="select select-bordered" required>
-                    <option value="">Select an LLM provider</option>
-                    <option value="openai">OpenAI</option>
-                    <option value="anthropic">Anthropic</option>
-                </select>
-            </div> -->
             <div class="form-control mb-4">
                 <label for="model_name" class="label">
                     <span class="label-text">Model Name:</span>
@@ -38,7 +28,16 @@
                     {% endfor %}
                 </select>
             </div>
-
+            <div class="form-control mb-4">
+                <label for="asset_name" class="label">
+                    <span class="label-text">Select Asset:</span>
+                </label>
+                <select name="asset_name" id="asset_name" class="select select-bordered" required>
+                    {% for option in asset_options %}
+                    {{ option }}
+                    {% endfor %}
+                </select>
+            </div>
             <div class="form-control mb-4">
                 <label for="config_json" class="label">
                     <span class="label-text">Configuration JSON:</span>

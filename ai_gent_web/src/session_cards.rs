@@ -1,6 +1,7 @@
 use askama::Template;
 use async_trait::async_trait;
 use chrono::DateTime;
+use html_escape::encode_text;
 use sqlx::query;
 use sqlx::Acquire;
 use sqlx::Postgres;
@@ -96,8 +97,8 @@ where
             .iter()
             .map(|row| {
                 let id: i32 = row.chat_id;
-                let name: String = row.agent_name.clone();
-                let description: String = row.summary.clone().unwrap_or_default();
+                let name: String = encode_text(&row.agent_name).to_string();
+                let description: String = encode_text(&row.summary.clone().unwrap_or_default()).to_string();
                 (id, name, description)
             })
             .collect::<Vec<_>>();

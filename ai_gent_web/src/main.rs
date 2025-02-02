@@ -24,7 +24,7 @@ use axum::{
     extract::{Json, Path, State},
     http::{HeaderMap, Method},
     response::{Html, IntoResponse, Redirect},
-    routing::{get, post},
+    routing::{get, post, trace},
     Router,
 };
 use serde::{Deserialize, Serialize};
@@ -61,6 +61,7 @@ use std::{
 
 use once_cell::sync::Lazy;
 use sqlx::postgres::{PgPool, PgPoolOptions};
+use html_escape::encode_text;
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub(crate) struct AgentConfiguration {
@@ -370,6 +371,7 @@ fn layout(context: TnContext) -> TnFutureString {
 #[template(path = "create_basic_agent.html", escape = "none")]
 struct SetupAgentTemplate {
     model_options: Vec<String>,
+    asset_options: Vec<String>,
 }
 
 #[derive(Template)]
@@ -397,6 +399,7 @@ struct UpdateAdvAgentTemplate {
 #[template(path = "create_fsm_agent.html", escape = "none")]
 struct SetupAdvAgentTemplate {
     model_options: Vec<String>,
+    asset_options: Vec<String>
 }
 
 #[derive(Template)]
@@ -432,14 +435,26 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let model_options = SUPPORTED_MODELS.iter().map( | (model_name, _) |
                     format!(r#" <option value="{}">{}</option>"#, model_name, model_name) ).collect::<Vec<String>>();
 
-                let template = SetupAgentTemplate { model_options };
+                let ctx_guard = context.read().await;
+                let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
+                let asset_list = get_active_asset_list(&user_data.username).await;
+                let asset_options = asset_list.into_iter().map(|(id, name)| {
+                    format!(r#" <option value="{}">{}</option>"#, id, encode_text(&name)) } ).collect::<Vec<String>>();
+                let template = SetupAgentTemplate { model_options, asset_options };
                 Some(template.render().unwrap())
             },
 
             ADV_AGENT_DESIGN_BTN => {
                 let model_options = SUPPORTED_MODELS.iter().map( | (model_name, _) |
                     format!(r#" <option value="{}">{}</option>"#, model_name, model_name) ).collect::<Vec<String>>();
-                let template = SetupAdvAgentTemplate { model_options };
+
+                let ctx_guard = context.read().await;
+                let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
+                let asset_list = get_active_asset_list(&user_data.username).await;
+                let asset_options = asset_list.into_iter().map(|(id, name)| {
+                    format!(r#" <option value="{}">{}</option>"#, id, encode_text(&name)) } ).collect::<Vec<String>>();
+
+                let template = SetupAdvAgentTemplate { model_options, asset_options};
                 Some(template.render().unwrap())
             },
 
@@ -1513,4 +1528,31 @@ fn handle_file_upload(context: TnContext, _event: TnEvent, payload: Value) -> Tn
         let header = HeaderMap::new();
         Some((header, Html::from("".to_string())))
     }
+}
+
+async fn get_active_asset_list(username: &str) -> Vec<(i32, String)> {
+    let pool = DB_POOL.clone();
+    let query = format!(
+        "SELECT a.asset_id, a.name, a.description
+        FROM assets a
+        JOIN users u ON a.user_id = u.user_id
+        WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.asset_id ASC;",
+        username, "active"
+    );
+
+    let rows = sqlx::query(&query)
+        .fetch_all(&pool)
+        .await
+        .expect("db error");
+    tracing::info!(target: TRON_APP, "XXXX query {}", query);
+
+    let rtn = rows
+        .iter()
+        .map(|row| {
+            let id: i32 = row.try_get("asset_id").unwrap_or_default();
+            let name: String = row.try_get("name").unwrap_or_default();
+            (id, name)
+        })
+        .collect::<Vec<_>>();
+    rtn
 }
