@@ -556,7 +556,7 @@ fn search_asset_clicked(
     _payload: Value,
 ) -> TnFutureHTMLResponse {
     tn_future! {
-        if event.e_trigger != SEARCH_AGENT_BTN {
+        if event.e_trigger != ASSET_SEARCH_BUTTON {
             return None;
         };
 
