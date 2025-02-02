@@ -24,9 +24,6 @@
                                     {% for value in agent_buttons %}
                                     {{ value }}
                                     {% endfor %}
-                                    <button class="btn btn-sm btn-block m-1 min-w-36"
-                                        onclick="logout_confirm.showModal()">Logout</button>
-                                    <!-- </div> -->
                                 </div>
                             </div>
                             <div class="collapse collapse-arrow">
@@ -42,13 +39,32 @@
                             </div>
                             <div class="collapse collapse-arrow">
                                 <input type="radio" name="side-accordion" />
+                                <div class="collapse-title text-xl font-medium">Assets</div>
+                                <div class="collapse-content">
+                                    <!-- <div class="container w-full flex flex-col my-1 mx-2 p-2"> -->
+                                    {% for value in assets_buttons %}
+                                    {{ value }}
+                                    {% endfor %}
+                                    <!-- </div> -->
+                                </div>
+                            </div>
+                            <div class="collapse collapse-arrow">
+                                <input type="radio" name="side-accordion"/>
+                                <div class="collapse-title text-xl font-medium">User Setting</div>
+                                <div class="collapse-content">
+                                    <button class="btn btn-sm btn-block m-1 min-w-36"
+                                        onclick="logout_confirm.showModal()">Logout</button>
+                                </div>
+                            </div>
+                            <!-- <div class="collapse collapse-arrow">
+                                <input type="radio" name="side-accordion" />
                                 <div class="collapse-title text-xl font-medium">Asset Collections</div>
                                 <div class="collapse-content">
                                     <ul>
                                         <li><div class="btn" hx-get="/api/asset/0/show" hx-swap="none" hx-trigger="click">FDA Cosmetic Guidance Collection</div></li>
                                     </ul>
                                 </div>
-                            </div>
+                            </div> -->
                             <!-- <div class="collapse collapse-arrow">
                                 <input type="radio" name="side-accordion" />
                                 <div class="collapse-title text-xl font-medium">Tools</div>
@@ -77,6 +93,7 @@
         </sl-split-panel>
     </div>
 </div>
+
 <dialog id="logout_confirm" class="modal">
     <div class="modal-box">
         <h3 class="font-bold text-lg">Logout?</h3>
@@ -100,6 +117,21 @@
             <form method="dialog">
                 <!-- if there is a button in form, it will close the modal -->
                 <button class="btn btn-sm" onclick='document.querySelector("#show_agent_btn").click()'>Close</button>
+            </form>
+        </div>
+    </div>
+</dialog>
+
+<!-- This needs to be in app_page.html, or it fails to work the 2nd time.--> 
+<dialog id="create_asset_notification" class="modal">
+    <div class="modal-box">
+        <div id="create_asset_notification_msg">
+            <p class="py-4">A New Asset Collection Created</p>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm" onclick='document.querySelector("#show_asset_btn").click()'>Close</button>
             </form>
         </div>
     </div>

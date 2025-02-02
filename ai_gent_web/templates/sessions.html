@@ -1,31 +1,38 @@
-<div id="workspace" class="flex flex-wrap">
-    {% for (id, name, description) in cards %}
-    <div class="card card-compact bg-primary text-primary-content w-72 m-1">
-        <div class="card-body">
-            <h2 class="card-title">{{name}}</h2>
-            <div class="card-discription max-h-48 min-h-48 overflow-auto scroll-behavior:auto">
-                <p>{{description}}</p>
-            </div>
-            <div class="card-actions justify-end">
-                <!-- <button class="btn btn-xs" hx-get="/api/chat/{{id}}/delete" hx-swap="none" hx-trigger="click">Delete</button> -->
-                <button class="btn btn-xs" onclick='document.getElementById("session_deletion_confirm_{{id}}").showModal()'>Delete</button>
-                <button class="btn btn-xs" hx-get="/api/chat/{{id}}/show" hx-swap="none" hx-trigger="click">Continue</button>
+<div id="workspace" class="flex flex-col">
+    <h1 class="text-2xl font-bold mb-2 p-2 text-gray-100">Chat Sessions</h1>
+    <div class="flex flex-wrap m-w-full">
+        {% for (id, name, when, description) in cards %}
+        <div class="card card-compact bg-primary text-primary-content w-72 m-1">
+            <div class="card-body">
+                <h2 class="card-title">{{name}}</h2>
+                <p>{{when}}</p>
+                <div class="card-discription max-h-48 min-h-48 overflow-auto scroll-behavior:auto">
+                    <p>{{description}}</p>
+                </div>
+                <div class="card-actions justify-end">
+                    <!-- <button class="btn btn-xs" hx-get="/api/chat/{{id}}/delete" hx-swap="none" hx-trigger="click">Delete</button> -->
+                    <button class="btn btn-xs"
+                        onclick='document.getElementById("session_deletion_confirm_{{id}}").showModal()'>Delete</button>
+                    <button class="btn btn-xs" hx-get="/api/chat/{{id}}/show" hx-swap="none"
+                        hx-trigger="click">Continue</button>
+                </div>
             </div>
         </div>
+        <dialog id="session_deletion_confirm_{{id}}" class="modal">
+            <div class="modal-box">
+                <div id="session_deletion_confirm_msg">
+                    <p class="py-4">Are you sure to delete the chat session?</p>
+                </div>
+                <div class="modal-action">
+                    <button class="btn btn-sm" hx-get="/api/chat/{{id}}/delete" hx-swap="none"
+                        hx-trigger="click">Delete</button>
+                    <form method="dialog">
+                        <!-- if there is a button in form, it will close the modal -->
+                        <button class="btn btn-sm">Cancel</button>
+                    </form>
+                </div>
+            </div>
+        </dialog>
+        {% endfor %}
     </div>
-    <dialog id="session_deletion_confirm_{{id}}" class="modal">
-        <div class="modal-box">
-            <div id="session_deletion_confirm_msg">
-                <p class="py-4">Are you sure to delete the chat session?</p>
-            </div>
-            <div class="modal-action">
-                <button class="btn btn-sm" hx-get="/api/chat/{{id}}/delete" hx-swap="none" hx-trigger="click">Delete</button>
-                <form method="dialog">
-                    <!-- if there is a button in form, it will close the modal -->
-                    <button class="btn btn-sm">Cancel</button>
-                </form>
-            </div>
-        </div>
-    </dialog>
-    {% endfor %}
 </div>

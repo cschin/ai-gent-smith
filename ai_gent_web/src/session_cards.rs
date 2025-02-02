@@ -1,6 +1,8 @@
 use askama::Template;
 use async_trait::async_trait;
 use chrono::DateTime;
+use chrono::Local;
+use html_escape::encode_text;
 use sqlx::query;
 use sqlx::Acquire;
 use sqlx::Postgres;
@@ -58,8 +60,8 @@ impl<'a: 'static> SessionCards<'a> {
 
 #[derive(Template)] // this will generate the code...
 #[template(path = "sessions.html", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
-struct AgentLibraryTemplate {
-    cards: Vec<(i32, String, String)>,
+struct ChatSessionTemplate {
+    cards: Vec<(i32, String, String, String)>,
 }
 
 #[async_trait]
@@ -96,13 +98,20 @@ where
             .iter()
             .map(|row| {
                 let id: i32 = row.chat_id;
-                let name: String = row.agent_name.clone();
-                let description: String = row.summary.clone().unwrap_or_default();
-                (id, name, description)
+                let name: String = encode_text(&row.agent_name).to_string();
+                let when: String = if let Some(utc_dt) = row.updated_at {
+                    let local_dt = utc_dt.with_timezone(&Local); // Convert to local timezone
+                    let formatted_time = local_dt.format("%b %d %H:%M").to_string();
+                    formatted_time
+                } else {
+                    "".into()
+                };
+                let description: String = encode_text(&row.summary.clone().unwrap_or_default()).to_string();
+                (id, name, when, description)
             })
             .collect::<Vec<_>>();
         
-        let html = AgentLibraryTemplate { cards };
+        let html = ChatSessionTemplate { cards };
         html.render().unwrap()
     }
 

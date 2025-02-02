@@ -3,6 +3,8 @@ use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use askama::Template;
 use async_trait::async_trait;
+use candle_core::WithDType;
+use html_escape::encode_text;
 use ordered_float::OrderedFloat;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -17,7 +19,7 @@ use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
 
 use super::DB_POOL;
-use crate::embedding_service::sort_points;
+use crate::embedding_service::vector_query_and_sort_points;
 use crate::embedding_service::TextChunkingService;
 use crate::embedding_service::TwoDPoint;
 use crate::llm_agent::*;
@@ -54,6 +56,7 @@ struct AgentWorkspaceTemplate {
     agent_name: String,
     agent_id: u32,
     chat_id: i32,
+    asset_id: i32,
     chat_textarea: String,
     query_text_input: String,
     stream_output: String,
@@ -75,7 +78,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(AGENT_CHAT_TEXTAREA.into(), vec![])
             .set_attr(
                 "class",
-                "min-h-[435px] max-h-[435px] overflow-auto flex-1 p-2 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400",
+                "min-h-[435px] max-h-[435px] overflow-auto  flex-1 p-2 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400",
             )
             .build();
 
@@ -120,7 +123,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let asset_search_output = text::TnTextArea::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex-1 border-2 mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[70svh]")
+        .set_attr("class", "flex-1 border-2 overflow-x-scroll text-nowrap mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[70svh]")
         .build();
 
         // let new_session_button = TnButton::builder()
@@ -232,6 +235,16 @@ where
             }
         };
 
+
+        let asset_id = {
+            let assets_guard = ctx.assets.read().await;
+            if let Some(TnAsset::U32(asset_id)) = assets_guard.get("asset_id") {
+                *asset_id as i32
+            } else {
+                panic!("no asset id found")
+            }
+        };
+
         let messages = get_messages(chat_id).await.unwrap_or_default();
 
         {
@@ -273,6 +286,7 @@ where
             agent_name,
             agent_id,
             chat_id,
+            asset_id,
             chat_textarea: chat_textarea_html,
             stream_output: stream_output_html,
             query_text_input: query_text_input_html,
@@ -410,6 +424,11 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             panic!("chat_id not found");
         };
 
+        let asset_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("asset_id").unwrap() {
+            *chat_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
 
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
@@ -438,8 +457,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
 
-
-
         // let mut options = Options::empty();
         // options.insert(Options::ENABLE_STRIKETHROUGH);
 
@@ -465,13 +482,39 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
                         context_cloned.set_ready_for(AGENT_CHAT_TEXTAREA).await;
                     },
+                    "clear" => {
+                        text::clean_stream_textarea_with_context(
+                            &context_cloned,
+                            AGENT_STREAM_OUTPUT,
+                        )
+                        .await;
+                    }
+                    "message" => {
+                        let message = format!("\nLLM Engine Message: {}", r);
+                        text::append_and_update_stream_textarea_with_context(
+                            &context_cloned,
+                            AGENT_STREAM_OUTPUT,
+                            &message,
+                        )
+                        .await
+                    }
+                    "fsm_state" => {
+                        let fsm_state = format!("\nFSM State: {}", r);
+                        text::append_and_update_stream_textarea_with_context(
+                            &context_cloned,
+                            AGENT_STREAM_OUTPUT,
+                            &fsm_state,
+                        )
+                        .await
+                    }
                     _ => {}
                 }
             }
         });
 
-        if let TnComponentValue::String(s) = query_text {
-            let query_context = search_asset(&s).await;
+        if let TnComponentValue::String(query) = query_text {
+            let query = encode_text(&query);
+            let query_context = encode_text(&search_asset(&query, asset_id, 8).await).to_string();
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
@@ -486,8 +529,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             )
             .await;
             let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
-            let query = s.replace('\n', "<br>");
-            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.clone())).await;
+            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.to_string())).await;
             context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
             let _ = insert_message(chat_id, user_id, agent_id, &query, "user", "text").await;
             match agent.process_message(&query, Some(tx)).await {
@@ -500,48 +542,49 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         }
 
         handle.abort();
-        text::clean_stream_textarea_with_context(
-            &context,
-            AGENT_STREAM_OUTPUT,
-        )
-        .await;
+
 
         None
     }
 }
 
-async fn search_asset(query: &str) -> String {
+async fn search_asset(query: &str, asset_id: i32, top_k: usize) -> String {
+
+    if asset_id == 0 {
+       return  "".to_string()
+    };
+
     let tk_service = TextChunkingService::new(None, 128, 0, 4096);
 
     let mut chunks = tk_service.text_to_chunks(query);
 
-    tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
+    // tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
     EMBEDDING_SERVICE
         .get()
         .unwrap()
         .get_embedding_for_chunks(&mut chunks)
         .expect("Failed to get embeddings");
-    let mut ref_vec = Vec::<f32>::new();
     let mut min_d = OrderedFloat::from(f64::MAX);
     let mut best_sorted_points = Vec::<TwoDPoint>::new();
-    chunks.into_iter().for_each(|c| {
+    for c in chunks.into_iter() { 
         let ev = c.embedding_vec.unwrap().clone();
-        let sorted_points = sort_points(&ev);
+        let sorted_points = vector_query_and_sort_points(asset_id, &ev, None).await;
         let d = sorted_points.first().unwrap().d;
         if d < min_d {
-            ref_vec = ev;
             min_d = d;
             best_sorted_points = sorted_points;
         }
-    });
+    };
 
-    let top_5: Vec<TwoDPoint> = best_sorted_points[..5].into();
-    let out = top_5
+    let top_k = if top_k > best_sorted_points.len() { best_sorted_points.len() } else {top_k}; 
+    let top_hits: Vec<TwoDPoint> = best_sorted_points[..top_k].into();
+    let out = top_hits
         .iter()
         .map(|p| {
+            let c= &p.chunk;
             format!(
-                "DOCUMET TITLE:\n{}\n\nCONTEXT:\n{}",
-                p.chunk.title, p.chunk.text
+                "DOCUMET TITLE:\n{}\n\n (Similarity: {:0.5}, span: {}-{}) \n\nCONTEXT:\n{}",
+                c.title, 1.0 - p.d.to_f64(), c.span.0, c.span.1, c.text
             )
         })
         .collect::<Vec<String>>()
@@ -560,9 +603,8 @@ fn search_asset_clicked(
             return None;
         };
 
-        // let asset_ref = context.get_asset_ref().await;
-        // let asset_guarad = asset_ref.read().await;
-
+        let asset_ref = context.get_asset_ref().await;
+        let asset_guarad = asset_ref.read().await;
 
         // let _user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
         //     *user_id as i32
@@ -582,9 +624,13 @@ fn search_asset_clicked(
         //     panic!("chat_id not found");
         // };
 
+        let asset_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("asset_id").unwrap() {
+            *chat_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
 
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
-
 
         let query_text = if let TnComponentValue::String(s) = query_text {
             s
@@ -601,7 +647,11 @@ fn search_asset_clicked(
         };
 
         tracing::info!(target:"tron_app", "query_text: {}", query_text);
-        let out = search_asset(&query_text).await;
+        let out = search_asset(&query_text, asset_id, 8).await;
+        text::clean_textarea_with_context(
+            &context,
+            ASSET_SEARCH_OUTPUT,
+        ).await;
         update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &out).await;
         None
     }

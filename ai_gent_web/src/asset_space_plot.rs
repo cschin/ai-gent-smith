@@ -7,18 +7,23 @@ use serde_json::Value;
 use tron_app::{
     send_sse_msg_to_client,
     tron_components::{
-        d3_plot::SseD3PlotTriggerMsg, div::{clean_div_with_context, update_and_send_div_with_context}, tn_future, TnAsset,
-        TnComponentBase, TnContext, TnEvent, TnFutureHTMLResponse,
+        d3_plot::SseD3PlotTriggerMsg,
+        div::{clean_div_with_context, update_and_send_div_with_context},
+        tn_future, TnAsset, TnComponentBase, TnContext, TnEvent, TnFutureHTMLResponse,
     },
     tron_macro::ComponentBase,
-    TnServerEventData,
+    TnServerEventData, TRON_APP,
 };
 
 use std::collections::HashMap;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 
-use crate::embedding_service::{sort_points, TwoDPoint, DOCUMENT_CHUNKS};
+use crate::embedding_service::{
+    get_all_points, vector_query_and_sort_points, TwoDPoint, DOCUMENT_CHUNKS,
+};
+
+use tokio::runtime::Runtime;
 
 static D3PLOT: &str = "d3_plot";
 static TOP_HIT_DIV: &str = "top_hit_textarea";
@@ -101,27 +106,8 @@ impl<'a: 'static> AssetSpacePlotBuilder<'a> {
                 ("application/text".into(), VecDeque::default()),
             );
             let mut data = VecDeque::default();
-            let mut two_d_embeddding = "x,y,c,o\n".to_string();
-            let filename_to_id = &DOCUMENT_CHUNKS.get().unwrap().filename_to_id;
-            two_d_embeddding.extend([DOCUMENT_CHUNKS
-                .get()
-                .unwrap()
-                .chunks
-                .iter()
-                .map(|c| {
-                    let fid = filename_to_id.get(&c.filename).unwrap();
-                    format!(
-                        "{},{},{},0.8",
-                        c.two_d_embedding.0,
-                        c.two_d_embedding.1,
-                        CMAP[(fid % 97) as usize]
-                    )
-                })
-                .collect::<Vec<String>>()
-                .join("\n")]);
+            let two_d_embeddding = "x,y,c,o\n".to_string();
             let two_d_embeddding = BytesMut::from_iter(two_d_embeddding.as_bytes());
-            tracing::info!(target: "tron_app 1", "length:{}", two_d_embeddding.len());
-    
             data.push_back(two_d_embeddding);
             stream_data_guard.insert("plot_data".into(), ("application/text".into(), data));
         }
@@ -172,6 +158,43 @@ where
             .initial_render()
             .await;
 
+        {
+            let mut two_d_embeddding = "x,y,c,o\n".to_string();
+            let asset_id = {
+                let assets_guard = ctx.assets.read().await;
+                if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                    *chat_id as i32
+                } else {
+                    panic!("no chat id found")
+                }
+            };
+            let all_chunks = get_all_points(asset_id).await.iter().map(|p| p.chunk.clone()).collect::<Vec<_>>();
+            two_d_embeddding.extend([all_chunks
+                .iter()
+                .map(|c| {
+                    let fid = c.get_fid();
+                    let two_d_embedding = c.two_d_embedding.unwrap();
+                    format!(
+                        "{},{},{},0.8",
+                        two_d_embedding.0,
+                        two_d_embedding.1,
+                        CMAP[(fid % 97) as usize]
+                    )
+                })
+                .collect::<Vec<String>>()
+                .join("\n")]);
+            let two_d_embeddding = BytesMut::from_iter(two_d_embeddding.as_bytes());
+            {
+                let context_guard = ctx;
+                let mut stream_data_guard = context_guard.stream_data.write().await;
+                let data = stream_data_guard.get_mut("plot_data").unwrap();
+                data.1.clear();
+                tracing::info!(target: "tron_app", "length:{}", two_d_embeddding.len());
+                data.1.push_back(two_d_embeddding);
+                tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
+            }
+        }
+
         self.html = AssetSpacePlotTemplate {
             d3_plot: d3_plot_output_html,
             top_hit_div: top_hit_div_output_html,
@@ -189,13 +212,13 @@ fn get_plot_data(all_points_sorted: &[TwoDPoint]) -> String {
     let mut d_color = 8.0 * color_scale / (all_points_sorted.len() as f64);
 
     let mut two_d_embeddding = "x,y,c,o\n".to_string();
-    let filename_to_id = &DOCUMENT_CHUNKS.get().unwrap().filename_to_id;
     two_d_embeddding.extend(
         all_points_sorted
             .iter()
             .map(|p| {
-                let c = p.chunk;
-                let fid = filename_to_id.get(&c.filename).unwrap();
+                let c = p.chunk.clone();
+
+                let fid = c.get_fid();
 
                 color_scale = if color_scale > 0.0 { color_scale } else { 0.0 };
 
@@ -210,12 +233,13 @@ fn get_plot_data(all_points_sorted: &[TwoDPoint]) -> String {
     two_d_embeddding
 }
 
-async fn update_plot_and_top_k<'a>(
+async fn update_plot_and_top_k(
     context: TnContext,
-    all_points_sorted: Vec<TwoDPoint<'a>>,
-    top_k_points: Vec<TwoDPoint<'a>>,
+    all_points_sorted: Vec<TwoDPoint>,
+    top_k_points: Vec<TwoDPoint>,
 ) {
     let two_d_embeddding = get_plot_data(&all_points_sorted);
+    // tracing::info!(target: "tron_app", "two_d_embeddding: {}", two_d_embeddding);
 
     {
         let two_d_embeddding = BytesMut::from_iter(two_d_embeddding.as_bytes());
@@ -223,7 +247,7 @@ async fn update_plot_and_top_k<'a>(
         let mut stream_data_guard = context_guard.stream_data.write().await;
         let data = stream_data_guard.get_mut("plot_data").unwrap();
         data.1.clear();
-        tracing::info!(target: "tron_app", "length:{}", two_d_embeddding.len());
+        // tracing::info!(target: "tron_app", "length:{}", two_d_embeddding.len());
         data.1.push_back(two_d_embeddding);
         tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
     }
@@ -238,6 +262,7 @@ async fn update_plot_and_top_k<'a>(
     send_sse_msg_to_client(&sse_tx, msg).await;
 
     let mut docs = HashSet::<String>::new();
+
     let top_doc = top_k_points
         .iter()
         .flat_map(|p| {
@@ -245,11 +270,13 @@ async fn update_plot_and_top_k<'a>(
                 None
             } else {
                 docs.insert(p.chunk.title.clone());
-                let fid = DOCUMENT_CHUNKS.get().unwrap().filename_to_id.get(&p.chunk.filename).unwrap();
+                let fid = p.chunk.get_fid();
                 let color = CMAP[(fid % 97) as usize];
-                //onchange="console.log(event.target.checked)"
-                let item = format!(r#"<div class="py-1" >
-                <label for="fid_{fid}" class="px-1" style="color: {color}">{}</label></div>"#, p.chunk.title);
+                let item = format!(
+                    r#"<div class="py-1" >
+                <label for="fid_{fid}" class="px-1" style="color: {color}">{}</label></div>"#,
+                    p.chunk.title
+                );
                 Some(item)
             }
         })
@@ -257,23 +284,23 @@ async fn update_plot_and_top_k<'a>(
     let top_doc = top_doc.join("\n\n");
     update_and_send_div_with_context(&context, TOP_HIT_DIV, &top_doc).await;
 
-    let top_chunk = top_k_points
-        .into_iter()
-        .map(|p| {
-            let mut text = String::new();
-            text.extend(format!("=== CHUNK BGN, TITLE: {}\n", p.chunk.title).chars());
-            text.push_str(&p.chunk.text);
-            text.push_str("\n=== CHUNK END \n");
-            text
-        })
-        .collect::<Vec<String>>();
-    let top_chunk = top_chunk.join("\n");
+    // let top_chunk = top_k_points
+    //     .into_iter()
+    //     .map(|p| {
+    //         let mut text = String::new();
+    //         text.extend(format!("=== CHUNK BGN, TITLE: {}\n", p.chunk.title).chars());
+    //         text.push_str(&p.chunk.text);
+    //         text.push_str("\n=== CHUNK END \n");
+    //         text
+    //     })
+    //     .collect::<Vec<String>>();
+    // let top_chunk = top_chunk.join("\n");
 
-    {
-        let context_guard = context.write().await;
-        let mut asset = context_guard.assets.write().await;
-        asset.insert("top_k_chunk".into(), TnAsset::String(top_chunk));
-    }
+    // {
+    //     let context_guard = context.write().await;
+    //     let mut asset = context_guard.assets.write().await;
+    //     asset.insert("top_k_chunk".into(), TnAsset::String(top_chunk));
+    // }
 }
 
 fn d3_plot_clicked(context: TnContext, event: TnEvent, payload: Value) -> TnFutureHTMLResponse {
@@ -286,22 +313,38 @@ fn d3_plot_clicked(context: TnContext, event: TnEvent, payload: Value) -> TnFutu
         tracing::info!(target: "tron_app", "e_x {:?}", evt_x);
         tracing::info!(target: "tron_app", "e_y {:?}", evt_y);
         //let filename_to_id = &DOCUMENT_CHUNKS.get().unwrap().filename_to_id;
-        DOCUMENT_CHUNKS.get().unwrap().chunks.iter().for_each(|c| {
-            let x = c.two_d_embedding.0 as f64;
-            let y = c.two_d_embedding.1 as f64;
+        
+        let asset_id = {
+            let context_guard = context.read().await;
+            let assets_guard = context_guard.assets.read().await;
+            if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                *chat_id as i32
+            } else {
+                panic!("no asset id found")
+            }
+        };
+
+
+        let all_doc = get_all_points(asset_id).await;
+        tracing::info!(target: TRON_APP, "XXXX {} {}", asset_id, all_doc.len());
+        all_doc.iter().for_each(|p| {
+            let c = p.chunk.clone();
+            let two_d_embedding = c.two_d_embedding.unwrap(); 
+            let x = two_d_embedding.0 as f64;
+            let y = two_d_embedding.1 as f64;
             let d = OrderedFloat::from((evt_x - x).powi(2) + (evt_y - y).powi(2));
             let point = TwoDPoint {
                 d,
                 point: (x, y),
-                chunk: c,
+                chunk: c.clone(),
             };
             all_points.push(point);
         });
         all_points.sort();
         all_points.reverse();
 
-        let ref_eb_vec = all_points.first().unwrap().chunk.embedding_vec.clone();
-        let all_points_sorted = sort_points(&ref_eb_vec);
+        let ref_eb_vec = all_points.first().unwrap().chunk.embedding_vec.clone().unwrap();
+        let all_points_sorted = vector_query_and_sort_points(asset_id, &ref_eb_vec, None).await;
         let top_10: Vec<TwoDPoint> = all_points_sorted[..10].into();
 
         update_plot_and_top_k(context, all_points_sorted, top_10).await;
@@ -322,18 +365,26 @@ fn reset_button_clicked(
         } else {
             {
                 let mut two_d_embeddding = "x,y,c,o\n".to_string();
-                let filename_to_id = &DOCUMENT_CHUNKS.get().unwrap().filename_to_id;
-                two_d_embeddding.extend([DOCUMENT_CHUNKS
-                    .get()
-                    .unwrap()
-                    .chunks
+                let asset_id = {
+                    let context_guard = context.read().await;
+                    let assets_guard = context_guard.assets.read().await;
+                    if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                        *chat_id as i32
+                    } else {
+                        panic!("no chat id found")
+                    }
+                };
+        
+                let all_chunks = get_all_points(asset_id).await.iter().map(|p| p.chunk.clone()).collect::<Vec<_>>();
+                two_d_embeddding.extend([all_chunks
                     .iter()
                     .map(|c| {
-                        let fid = filename_to_id.get(&c.filename).unwrap();
+                        let fid = c.get_fid();
+                        let two_d_embedding = c.two_d_embedding.unwrap(); 
                         format!(
                             "{},{},{},0.8",
-                            c.two_d_embedding.0,
-                            c.two_d_embedding.1,
+                            two_d_embedding.0,
+                            two_d_embedding.1,
                             CMAP[(fid % 97) as usize]
                         )
                     })
@@ -362,8 +413,6 @@ fn reset_button_clicked(
                 send_sse_msg_to_client(&sse_tx, msg).await;
             }
             clean_div_with_context(&context, TOP_HIT_DIV).await;
-
-
             None
         }
     }

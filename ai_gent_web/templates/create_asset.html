@@ -1,0 +1,32 @@
+{% block content %}
+<div id="workspace">
+    <div class="container mx-auto max-w-4xl px-4 py-8">
+        <h1 class="text-3xl font-bold mb-6">Create An Asset</h1>
+        <div class="p-2">
+            {{dnd_file_upload_html}}
+        </div>
+        <form hx-post="/api/asset/create" hx-ext="json-enc" hx-swap="innerHTML"
+            hx-target="#create_asset_notification_msg" hx-on::after-request="create_asset_notification.showModal()">
+            <div class="form-control mb-4">
+                <label for="name" class="label">
+                    <span class="label-text">Asset Name:</span>
+                </label>
+                <input type="text" name="name" id="name" class="input input-bordered" required
+                    placeholder="Enter a name for the asset ">
+            </div>
+            <div class="form-control mb-4">
+                <label for="description" class="label">
+                    <span class="label-text">Asset Description:</span>
+                </label>
+                <textarea name="description" id="description" class="textarea textarea-bordered" rows="3"
+                    placeholder="Enter a brief description of the asset"></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-primary w-full">Create Asset</button>
+        </form>
+    </div>
+</div>
+
+
+
+{% endblock %}

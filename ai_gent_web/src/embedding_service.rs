@@ -5,13 +5,18 @@ use candle_core::{DType, Device, Module, Tensor};
 use candle_nn::VarBuilder;
 use flate2::read::GzDecoder;
 use serde::{Deserialize, Serialize};
+use sqlx::postgres::types::PgRange;
 use tokenizers::{Encoding, Tokenizer};
 use tokio::sync::OnceCell;
+use tron_app::TRON_APP;
 
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::fs::{self, File};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Cursor, Write};
+use std::ops::Bound;
+
+use pgvector::Vector;
 
 pub struct EmbeddingService {
     model: BertModel,
@@ -239,7 +244,7 @@ impl EmbeddingService {
                     .cloned()
                     .collect::<Vec<_>>();
                 //assert!(tokens.len() == 256);
-                tracing::info!(target: "tron_app", "tokens {:?}", tokens);
+                //tracing::info!(target: "tron_app", "tokens {:?}", tokens);
                 let token_ids = vec![Tensor::new(tokens.as_slice(), device).unwrap()];
                 let token_ids = Tensor::stack(&token_ids, 0).unwrap();
                 let embeddings = self.model.forward(&token_ids).unwrap();
@@ -271,27 +276,35 @@ pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
     v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)
 }
 
-
-
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 pub struct DocumentChunk {
     pub text: String,
     pub span: (usize, usize),
-    pub token_ids: Vec<u32>,
-    pub two_d_embedding: (f32, f32),
-    pub embedding_vec: Vec<f32>,
+    pub token_ids: Option<Vec<u32>>,
+    pub two_d_embedding: Option<(f32, f32)>,
+    pub embedding_vec: Option<Vec<f32>>,
     pub filename: String,
     pub title: String,
 }
 
 pub struct DocumentChunks {
     pub chunks: Vec<DocumentChunk>,
-    pub filename_to_id: HashMap<String, u32>,
 }
 
 pub static EMBEDDING_SERVICE: OnceCell<EmbeddingService> = OnceCell::const_new();
 
 pub static DOCUMENT_CHUNKS: OnceCell<DocumentChunks> = OnceCell::const_new();
+
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
+
+impl DocumentChunk {
+    pub fn get_fid(&self) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        self.filename.hash(&mut hasher);
+        hasher.finish()
+    }
+}
 
 impl DocumentChunks {
     pub fn global() -> &'static DocumentChunks {
@@ -300,62 +313,116 @@ impl DocumentChunks {
             .expect("document chunks are not initialized")
     }
 
-    fn from_file(filename: String) -> DocumentChunks {
+    pub fn from_gz_file(filename: String) -> Option<DocumentChunks> {
         let mut chunks = Vec::new();
         let file = BufReader::new(File::open(filename).unwrap());
         let decoder = GzDecoder::new(file);
         let reader = BufReader::new(decoder);
 
-        println!("loading data");
+        tracing::info!(target: "tron_app", "loading embeding data file");
         // Read the file line by line
         let mut count = 0;
-        let mut filename_to_id = HashMap::<String, u32>::default();
-        let mut fid = 0;
         for line in reader.lines() {
-            let chunk: DocumentChunk = serde_json::from_str(&line.unwrap()).unwrap();
-            let filename = chunk.filename.clone();
-            filename_to_id.entry(filename).or_insert_with(|| {
-                fid += 1;
-                fid - 1
-            });
-            chunks.push(chunk);
-            count += 1;
+            if let Ok(line) = line {
+                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
+                chunks.push(chunk);
+                count += 1;
+                } else {
+                    return None
+                }
+            } else {
+                return None
+            }
         }
-        println!("{} records loaded", count);
+        tracing::info!(target: TRON_APP, "{} records loaded", count);
 
-        DocumentChunks {
-            chunks,
-            filename_to_id,
+        Some(DocumentChunks { chunks })
+    }
+
+    pub fn from_gz_data(data: &[u8]) -> Option<DocumentChunks> {
+        let cursor = Cursor::new(data);
+        let mut chunks = Vec::new();
+        let decoder = GzDecoder::new(cursor);
+        let reader = BufReader::new(decoder);
+
+        tracing::info!(target: "tron_app", "loading embeding from upload data");
+        // Read the file line by line
+        let mut count = 0;
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
+                chunks.push(chunk);
+                count += 1;
+                } else {
+                    return None
+                }
+            } else {
+                return None
+            }
         }
+        tracing::info!(target: TRON_APP, "{} records loaded", count);
+
+        Some (DocumentChunks { chunks })
+    }
+
+    pub fn from_data(data: &[u8]) -> Option<DocumentChunks> {
+        let cursor = Cursor::new(data);
+        let reader = BufReader::new(cursor);
+        let mut chunks = Vec::new();
+        
+        tracing::info!(target: "tron_app", "loading embeding from upload data");
+        // Read the file line by line
+        let mut count = 0;
+        for line in reader.lines() {
+            if let Ok(line) = line {
+                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
+                chunks.push(chunk);
+                count += 1;
+                } else {
+                    return None
+                }
+            } else {
+                return None
+            }
+        }
+        tracing::info!(target: TRON_APP, "{} records loaded", count);
+
+        Some (DocumentChunks { chunks })
     }
 }
 
-pub async fn setup_rag_data() {
-    let _result = DOCUMENT_CHUNKS
-    .get_or_init(|| async { DocumentChunks::from_file("/opt/data/all_embedding.jsonl.gz".into()) })
-    .await;
+fn bound_to_usize(bound: Bound<i32>) -> Option<usize> {
+    match bound {
+        Bound::Included(value) => Some(value as usize), // Convert Included value
+        Bound::Excluded(value) => Some(value as usize), // Convert Excluded value
+        Bound::Unbounded => None,                       // Unbounded cannot be converted to usize
+    }
+}
 
+pub async fn initialize_embedding_model() {
     let _result = EMBEDDING_SERVICE
-    .get_or_init(|| async {
-        println!("load embedding model");
-        let es = EmbeddingService::new(None);
-        println!("finish loading embedding model");
-        es
-    })
-    .await;
+        .get_or_init(|| async {
+            println!("load embedding model");
+            let es = EmbeddingService::new(None);
+            println!("finish loading embedding model");
+            es
+        })
+        .await;
 }
 
 use ordered_float::OrderedFloat;
 use std::collections::BinaryHeap;
 
+use crate::DB_POOL;
+
 #[derive(Debug, Clone)]
-pub struct TwoDPoint<'a> {
+pub struct TwoDPoint {
     pub d: OrderedFloat<f64>,
     pub point: (f64, f64),
-    pub chunk: &'a DocumentChunk,
+    pub chunk: DocumentChunk,
 }
 
-impl Ord for TwoDPoint<'_> {
+impl Ord for TwoDPoint {
     fn cmp(&self, other: &Self) -> Ordering {
         // Notice that the we flip the ordering on costs.
         // In case of a tie we compare positions - this step is necessary
@@ -365,49 +432,119 @@ impl Ord for TwoDPoint<'_> {
 }
 
 // `PartialOrd` needs to be implemented as well.
-impl PartialOrd for TwoDPoint<'_> {
+impl PartialOrd for TwoDPoint {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for TwoDPoint<'_> {
+impl PartialEq for TwoDPoint {
     fn eq(&self, other: &Self) -> bool {
         self.d == other.d
     }
 }
 
-impl Eq for TwoDPoint<'_> {}
+impl Eq for TwoDPoint {}
 
+use sqlx::Row;
 
-pub fn sort_points<'a>(ref_vec: &[f32]) -> Vec<TwoDPoint<'a>> {
+pub async fn vector_query_and_sort_points(
+    asset_id: i32,
+    ref_vec: &[f32],
+    top_k: Option<i32>,
+) -> Vec<TwoDPoint> {
     //tracing::info!(target:"tron_app", "ref_vec:{:?}", ref_vec);
     let mut all_points = Vec::new();
-    DOCUMENT_CHUNKS.get().unwrap().chunks.iter().for_each(|c| {
-        let x = c.two_d_embedding.0 as f64;
-        let y = c.two_d_embedding.1 as f64;
-        let x_len: f64 = (0..c.embedding_vec.len())
-            .map(|idx| c.embedding_vec[idx].powi(2))
-            .sum::<f32>() as f64;
-        let y_len: f64 = (0..ref_vec.len())
-            .map(|idx| ref_vec[idx].powi(2))
-            .sum::<f32>() as f64;
-        //let d = OrderedFloat::from((evt_x - x).powi(2) + (evt_y - y).powi(2));
-        let mut d: f64 = (0..c.embedding_vec.len())
-            .map(|idx| (c.embedding_vec[idx] * ref_vec[idx]))
-            .sum::<f32>() as f64;
-        d /= x_len.powf(0.5);
-        d /= y_len.powf(0.5);
-        d = 1.0 - d;
-        let d = OrderedFloat::from(d);
-        let point = TwoDPoint {
-            d,
-            point: (x, y),
-            chunk: c,
-        };
-        all_points.push(point);
-    });
+
+    let v0 = Vector::from(ref_vec.to_vec());
+    let db_pool = DB_POOL.clone();
+
+    let results = if let Some(top_k) = top_k {
+        sqlx::query(
+            r#"SELECT filename, title, text, span, embedding_vector, 
+                   COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
+                   1.0 - (embedding_vector <=> $1) AS similarity
+                   FROM text_embedding
+                   WHERE asset_id = $2
+                   ORDER BY similarity DESC LIMIT $3;"#)
+            .bind(v0)
+            .bind(asset_id)
+            .bind(top_k)
+            .fetch_all(&db_pool)
+            .await
+    } else {
+        sqlx::query(
+        r#"SELECT filename, title, text, span, embedding_vector, 
+                       COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
+                       1.0 - (embedding_vector <=> $1) AS similarity
+               FROM text_embedding
+               WHERE asset_id = $2
+               ORDER BY similarity DESC;"#)
+        .bind(v0)
+        .bind(asset_id)
+        .fetch_all(&db_pool)
+        .await
+    };
+
+    if let Ok(rows) = results {
+        for r in rows {
+            let p = pgrow_to_point(r);
+            all_points.push(p);
+        }
+    }
+
     all_points.sort();
     all_points.reverse();
     all_points
+}
+
+pub async fn get_all_points(asset_id: i32) -> Vec<TwoDPoint> {
+    //tracing::info!(target:"tron_app", "ref_vec:{:?}", ref_vec);
+    let mut all_points = Vec::new();
+
+    let db_pool = DB_POOL.clone();
+
+    let results = sqlx::query(
+        r#"SELECT filename, title, text, span, embedding_vector, 
+                       COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
+                       CAST(0.0 AS FLOAT8) AS similarity 
+               FROM text_embedding
+               WHERE asset_id = $1;"#)
+        .bind(asset_id)
+    .fetch_all(&db_pool)
+    .await;
+
+    if let Ok(rows) = results {
+        for r in rows {
+            let p = pgrow_to_point(r);
+            all_points.push(p);
+        }
+    }
+
+    all_points.sort();
+    all_points.reverse();
+    all_points
+}
+
+fn pgrow_to_point(r: sqlx::postgres::PgRow) -> TwoDPoint {
+    let span = r.get::<PgRange<i32>, &str>("span");
+    let span = (
+        bound_to_usize(span.start).unwrap(),
+        bound_to_usize(span.end).unwrap(),
+    );
+    let embedding_vec = r.get::<Vector, &str>("embedding_vector").to_vec();
+    let two_d_embedding = r.get::<Vector, &str>("two_d_embedding").to_vec();
+    let chunk = DocumentChunk {
+        embedding_vec: Some(embedding_vec),
+        filename: r.get::<String, &str>("filename"),
+        span,
+        token_ids: None,
+        two_d_embedding: Some((two_d_embedding[0], two_d_embedding[1])),
+        text: r.get::<String, &str>("text"),
+        title: r.get::<String, &str>("title"),
+    };
+    let d = OrderedFloat::from(1.0 - r.get::<f64, &str>("similarity"));
+    let point = chunk.two_d_embedding.unwrap();
+    let point = (point.0 as f64, point.1 as f64);
+    TwoDPoint { d, chunk, point }
 }

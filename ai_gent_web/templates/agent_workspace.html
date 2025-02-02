@@ -1,7 +1,7 @@
 <div id="workspace" class="container mx-auto px-4">
     <div class="flex flex-row p-1 w-full">
         <div class="basis-3/4 flex flex-col p-1 w-full max-w-3/4 min-h-[80svh]">
-            <label class="text-xl text-black"> {{ agent_name }} </label>
+            <label class="text-2xl font-bold mb-2 p-2 text-gray-100"> Agent Chat: {{ agent_name }} </label>
             {{ chat_textarea }}
             {{ stream_output }}
 
@@ -30,12 +30,34 @@
             </div>
         </div>
         <div class="basis-1/4 flex flex-col p-1 w-full min-h-[80svh]">
-            <label class="text-xl text-black"> Supporting Context </label>
+            <label class="text-xl text-gray-100 p-2 mb-2"> Supporting Context </label>
             {{asset_search_output}}
-            <!-- <textarea class="flex-1 border-2 mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[70svh]"></textarea> -->
         </div>
     </div>
 </div>
+<script>
+    // this enable sending the query message by click "Enter"
+    let attach_event = function () {
+        document.getElementById("agent_query_text_input").addEventListener("keydown", 
+            function(event) {
+                if (event.key === "Enter"  && !event.shiftKey) {  // Check if Enter is pressed
+                    event.preventDefault();   // Prevent default behavior (e.g., newline in a textarea)
+                    // make sure the textarea updated its content to the server
+                    const change_event = new Event("change", { bubbles: true });
+                    document.getElementById("agent_query_text_input").dispatchEvent(change_event);
+                    htmx.trigger("#agent_query_button", "click");
+                }
+            });
+        };
+
+    attach_event();
+    document.body.addEventListener("htmx:afterSwap", function(event) {
+        // we do a outerHTML swap, so we need set up this hook every time the textarea is swapped in
+        if (event.detail.target.id === "agent_query_text_input") {
+            attach_event();
+        }
+    });
+</script>
 
 <style>
 pre {

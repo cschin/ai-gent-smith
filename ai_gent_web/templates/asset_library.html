@@ -1,0 +1,36 @@
+<div id="workspace" class="flex flex-col">
+    <h1 class="text-2xl font-bold mb-2 p-2 text-gray-100">Asset Library</h1>
+    <div class="flex flex-wrap m-w-full">
+        {% for (id, name, description) in cards %}
+        <div class="card card-compact bg-primary text-primary-content w-72 m-1">
+            <div class="card-body">
+                <h2 class="card-title">{{name}}</h2>
+                <div class="card-discription max-h-32 min-h-32 overflow-auto scroll-behavior:auto">
+                    <p>{{description}}</p>
+                </div>
+                <div class="card-actions justify-end">
+                    <button class="btn btn-xs"
+                        onclick='document.getElementById("asset_deletion_confirm_{{id}}").showModal()'>Delete</button>
+                    <button class="btn btn-xs" hx-get="/api/asset/{{id}}/show" hx-swap="none"
+                        hx-trigger="click">show</button>
+                </div>
+            </div>
+        </div>
+        <dialog id="asset_deletion_confirm_{{id}}" class="modal">
+            <div class="modal-box">
+                <div id="session_deletion_confirm_msg">
+                    <p class="py-4">Are you sure to delete the chat session?</p>
+                </div>
+                <div class="modal-action">
+                    <button class="btn btn-sm" hx-get="/api/asset/{{id}}/delete" hx-swap="none"
+                        hx-trigger="click">Delete</button>
+                    <form method="dialog">
+                        <!-- if there is a button in form, it will close the modal -->
+                        <button class="btn btn-sm">Cancel</button>
+                    </form>
+                </div>
+            </div>
+        </dialog>
+        {% endfor %}
+    </div>
+</div>
