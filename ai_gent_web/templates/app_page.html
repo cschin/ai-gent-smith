@@ -24,9 +24,6 @@
                                     {% for value in agent_buttons %}
                                     {{ value }}
                                     {% endfor %}
-                                    <button class="btn btn-sm btn-block m-1 min-w-36"
-                                        onclick="logout_confirm.showModal()">Logout</button>
-                                    <!-- </div> -->
                                 </div>
                             </div>
                             <div class="collapse collapse-arrow">
@@ -49,6 +46,14 @@
                                     {{ value }}
                                     {% endfor %}
                                     <!-- </div> -->
+                                </div>
+                            </div>
+                            <div class="collapse collapse-arrow">
+                                <input type="radio" name="side-accordion"/>
+                                <div class="collapse-title text-xl font-medium">User Setting</div>
+                                <div class="collapse-content">
+                                    <button class="btn btn-sm btn-block m-1 min-w-36"
+                                        onclick="logout_confirm.showModal()">Logout</button>
                                 </div>
                             </div>
                             <!-- <div class="collapse collapse-arrow">
@@ -88,6 +93,7 @@
         </sl-split-panel>
     </div>
 </div>
+
 <dialog id="logout_confirm" class="modal">
     <div class="modal-box">
         <h3 class="font-bold text-lg">Logout?</h3>
