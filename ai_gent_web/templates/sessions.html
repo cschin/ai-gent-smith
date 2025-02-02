@@ -1,10 +1,11 @@
 <div id="workspace" class="flex flex-col">
     <h1 class="text-2xl font-bold mb-2 p-2 text-gray-100">Chat Sessions</h1>
     <div class="flex flex-wrap m-w-full">
-        {% for (id, name, description) in cards %}
+        {% for (id, name, when, description) in cards %}
         <div class="card card-compact bg-primary text-primary-content w-72 m-1">
             <div class="card-body">
                 <h2 class="card-title">{{name}}</h2>
+                <p>{{when}}</p>
                 <div class="card-discription max-h-48 min-h-48 overflow-auto scroll-behavior:auto">
                     <p>{{description}}</p>
                 </div>
