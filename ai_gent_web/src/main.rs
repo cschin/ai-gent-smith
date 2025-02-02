@@ -1385,7 +1385,7 @@ async fn create_asset(
                 if let Some(data) = file_data {
                     let c = match t.as_str() {
                         "application/x-gzip" => DocumentChunks::from_gz_data(data),
-                        "application/json" => DocumentChunks::from_data(data),
+                        "application/json" | "" => DocumentChunks::from_data(data), // we may use .jsonl than just .json
                         _ => None,
                     };
                     if let Some(c) = c {
@@ -1509,20 +1509,6 @@ fn handle_file_upload(context: TnContext, _event: TnEvent, payload: Value) -> Tn
             let mut guard = asset_ref.write().await;
             guard.insert("asset_files".to_string(), TnAsset::VecString2(v));
         }
-
-        // if !file_list.is_empty() {
-        //     for (filename, _size, t) in file_list {
-        //         tracing::info!(target: TRON_APP, "filename: {}, size:{}", filename, _size);
-        //         let asset_ref = context.get_asset_ref().await;
-        //         let guard = asset_ref.read().await;
-        //         let asset = guard.get("upload").unwrap();
-        //         let file_data = if let TnAsset::HashMapVecU8(h) = asset {
-        //             h.get(filename)
-        //         } else {
-        //             None
-        //         };
-        //     }
-        // }
 
         let header = HeaderMap::new();
         Some((header, Html::from("".to_string())))
