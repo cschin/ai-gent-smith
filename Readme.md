@@ -61,7 +61,7 @@ permission for the data file.
     - `OPENAI_API_KEY` for OpenAI APIs
     - `ANTHROPIC_API_KEY` for Anthropic APIs
     - `DATABASE_URL` for AI-Gent Smith to accese the postgresql database, for example if your
-    user name is `db_user`, you can do `expose DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt if your postgresql user name is `db_user`.
+    user name is `db_user`, you can do `export DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt if your postgresql user name is `db_user`.
 9. Build the project: 
 
 ```
