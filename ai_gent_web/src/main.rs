@@ -59,9 +59,9 @@ use std::{
     collections::HashMap, default, fs::File, ops::Bound, pin::Pin, sync::Arc, task::Context,
 };
 
+use html_escape::encode_text;
 use once_cell::sync::Lazy;
 use sqlx::postgres::{PgPool, PgPoolOptions};
-use html_escape::encode_text;
 
 #[derive(Debug, Default, Deserialize, Serialize)]
 pub(crate) struct AgentConfiguration {
@@ -75,8 +75,8 @@ pub(crate) struct AgentConfiguration {
 struct SimpleAgentSettingForm {
     name: String,
     description: String,
-    // provider: String,
     model_name: String,
+    asset_id: String,
     prompt: String,
     follow_up_prompt: Option<String>,
 }
@@ -85,8 +85,8 @@ struct SimpleAgentSettingForm {
 struct AdvAgentSettingForm {
     name: String,
     description: String,
-    // provider: String,
     model_name: String,
+    asset_id: String,
     agent_config: String,
 }
 
@@ -94,7 +94,6 @@ struct AdvAgentSettingForm {
 struct AgentSetting {
     name: String,
     description: String,
-    // provider: String,
     model_name: String,
     fsm_agent_config: String,
 }
@@ -401,7 +400,7 @@ struct UpdateAdvAgentTemplate {
 #[template(path = "create_fsm_agent.html", escape = "none")]
 struct SetupAdvAgentTemplate {
     model_options: Vec<String>,
-    asset_options: Vec<String>
+    asset_options: Vec<String>,
 }
 
 #[derive(Template)]
@@ -440,8 +439,9 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let ctx_guard = context.read().await;
                 let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
                 let asset_list = get_active_asset_list(&user_data.username).await;
-                let asset_options = asset_list.into_iter().map(|(id, name)| {
-                    format!(r#" <option value="{}">{}</option>"#, id, encode_text(&name)) } ).collect::<Vec<String>>();
+                let mut asset_options = vec![r#"<option value=0 selected>No Asset Needed</option>"#.to_string()];
+                asset_options.extend(asset_list.into_iter().map(|(id, name)| {
+                    format!(r#" <option value={}>{}</option>"#, id, encode_text(&name)) } ));
                 let template = SetupAgentTemplate { model_options, asset_options };
                 Some(template.render().unwrap())
             },
@@ -453,8 +453,9 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let ctx_guard = context.read().await;
                 let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
                 let asset_list = get_active_asset_list(&user_data.username).await;
-                let asset_options = asset_list.into_iter().map(|(id, name)| {
-                    format!(r#" <option value="{}">{}</option>"#, id, encode_text(&name)) } ).collect::<Vec<String>>();
+                let mut asset_options = vec![r#"<option value=0 selected>No Asset Needed</option>"#.to_string()];
+                asset_options.extend(asset_list.into_iter().map(|(id, name)| {
+                    format!(r#" <option value={}>{}</option>"#, id, encode_text(&name)) } ));
 
                 let template = SetupAdvAgentTemplate { model_options, asset_options};
                 Some(template.render().unwrap())
@@ -573,6 +574,7 @@ struct AgentQueryResult {
     status: String,                   // or an enum if status is represented as such
     configuration: serde_json::Value, // assuming configuration is stored as JSON
     class: String,                    // or another appropriate type
+    asset_id: Option<i32>,
 }
 
 async fn show_agent_setting(
@@ -591,20 +593,34 @@ async fn show_agent_setting(
 
     let row = sqlx::query_as!(
         AgentQueryResult,
-        "SELECT a.agent_id, a.name, a.description, a.status, a.configuration, a.class FROM agents a
+        "SELECT a.agent_id, a.name, a.description, a.status, a.configuration, a.class, a.asset_id FROM agents a
 JOIN users u ON a.user_id = u.user_id
 WHERE u.username = $1 AND a.agent_id = $2;",
         user_data.username,
-        agent_id
+        agent_id,
     )
     .fetch_one(&db_pool)
     .await
     .unwrap();
 
+    let asset_id = row.asset_id.unwrap_or(0);
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
-    let asset_list = get_active_asset_list(&user_data.username).await;
-    let asset_options = asset_list.into_iter().map(|(id, name)| {
-        format!(r#" <option value="{}">{}</option>"#, id, encode_text(&name)) } ).collect::<Vec<String>>();
+    let mut asset_list = vec![(0_i32, "No Asset Need".to_string())];
+    asset_list.extend(get_active_asset_list(&user_data.username).await);
+    let asset_options = asset_list
+        .into_iter()
+        .map(|(id, name)| {
+            if id == asset_id {
+                format!(
+                    r#" <option value={} selected>{}</option>"#,
+                    id,
+                    encode_text(&name)
+                )
+            } else {
+                format!(r#" <option value={}>{}</option>"#, id, encode_text(&name))
+            }
+        })
+        .collect();
 
     match row.class.as_str() {
         "basic" => show_basic_agent_setting(&row, asset_options, agent_id),
@@ -613,7 +629,11 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     }
 }
 
-fn show_basic_agent_setting(row: &AgentQueryResult, asset_options: Vec<String>, agent_id: i32) -> (HeaderMap, Html<String>) {
+fn show_basic_agent_setting(
+    row: &AgentQueryResult,
+    asset_options: Vec<String>,
+    agent_id: i32,
+) -> (HeaderMap, Html<String>) {
     let name: String = row.name.clone();
     let description: String = if let Some(d) = row.description.clone() {
         d
@@ -665,8 +685,6 @@ fn show_basic_agent_setting(row: &AgentQueryResult, asset_options: Vec<String>, 
         })
         .collect::<Vec<String>>();
 
-      
-
     let out_html = if let Some(out_html) = {
         let template = UpdateBasicAgentTemplate {
             agent_id,
@@ -687,7 +705,11 @@ fn show_basic_agent_setting(row: &AgentQueryResult, asset_options: Vec<String>, 
     (h, Html::from(out_html))
 }
 
-fn show_adv_agent_setting(row: &AgentQueryResult, asset_options: Vec<String>, agent_id: i32) -> (HeaderMap, Html<String>) {
+fn show_adv_agent_setting(
+    row: &AgentQueryResult,
+    asset_options: Vec<String>,
+    agent_id: i32,
+) -> (HeaderMap, Html<String>) {
     let name: String = row.name.clone();
     let description: String = if let Some(d) = row.description.clone() {
         d
@@ -753,6 +775,7 @@ async fn use_agent(
     let name;
     let user_id;
     let user_data;
+    let asset_id;
     let configuration;
     {
         let ctx_guard = ctx.read().await;
@@ -761,7 +784,7 @@ async fn use_agent(
         let db_pool = DB_POOL.clone();
 
         let row = sqlx::query!(
-            "SELECT a.agent_id, a.name, a.description, a.status, a.configuration, a.user_id FROM agents a
+            "SELECT a.agent_id, a.name, a.description, a.status, a.configuration, a.user_id, a.asset_id FROM agents a
 JOIN users u ON a.user_id = u.user_id
 WHERE u.username = $1 AND a.agent_id = $2;",
             user_data.username,
@@ -790,10 +813,16 @@ WHERE u.username = $1 AND a.agent_id = $2;",
             "".into()
         };
 
+        asset_id = if let Some(asset_id) = row.asset_id {
+            asset_id as u32
+        } else {
+            0_u32
+        };
+
         tracing::info!(
             target: "tron_app",
-            "agent: {}:{} // {} // {} // {}",
-            agent_id, name, description, model_name, configuration
+            "agent: {}:{} // {} // {} // {} // {:?}",
+            agent_id, name, description, model_name, configuration, asset_id
         );
     }
     {
@@ -802,6 +831,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         assets_guard.insert("user_id".into(), TnAsset::U32(user_id as u32));
         assets_guard.insert("agent_name".into(), TnAsset::String(name.clone()));
         assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
+        assets_guard.insert("asset_id".into(), TnAsset::U32(asset_id));
         let uuid = Uuid::new_v4();
         let title = format!("{}:{}", name, uuid);
         let db_pool = DB_POOL.clone();
@@ -875,11 +905,21 @@ async fn create_basic_agent(
         .render()
         .unwrap();
 
+    let asset_id = agent_setting_form.asset_id.parse::<i32>();
+    let asset_id = if let Ok(asset_id) = asset_id {
+        if asset_id != 0 {
+            Some(asset_id)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        //provider: agent_setting_form.provider.clone(),
         fsm_agent_config: simple_agent_config,
     };
 
@@ -888,8 +928,8 @@ async fn create_basic_agent(
     let db_pool = DB_POOL.clone();
     // TODO: make sure the string is proper avoiding SQL injection
     let _query = sqlx::query!(
-        r#"INSERT INTO agents (user_id, name, description, status, configuration, class)
-        SELECT user_id, $2, $3, $4, $5, $6
+        r#"INSERT INTO agents (user_id, name, description, status, configuration, class, asset_id)
+        SELECT user_id, $2, $3, $4, $5, $6, $7
         FROM users
         WHERE username = $1"#,
         user_data.username,
@@ -897,7 +937,8 @@ async fn create_basic_agent(
         agent_setting_form.description,
         "active",
         agent_setting_value,
-        "basic".into()
+        "basic".into(),
+        asset_id
     )
     .fetch_one(&db_pool)
     .await;
@@ -925,11 +966,21 @@ async fn create_adv_agent(
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
+    let asset_id = agent_setting_form.asset_id.parse::<i32>();
+    let asset_id = if let Ok(asset_id) = asset_id {
+        if asset_id != 0 {
+            Some(asset_id)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        // provider: agent_setting_form.provider.clone(),
         fsm_agent_config: agent_setting_form.agent_config,
     };
 
@@ -938,8 +989,8 @@ async fn create_adv_agent(
     let db_pool = DB_POOL.clone();
     // TODO: make sure the string is proper avoiding SQL injection
     let _query = sqlx::query!(
-        r#"INSERT INTO agents (user_id, name, description, status, configuration, class)
-        SELECT user_id, $2, $3, $4, $5, $6
+        r#"INSERT INTO agents (user_id, name, description, status, configuration, class, asset_id)
+        SELECT user_id, $2, $3, $4, $5, $6, $7
         FROM users
         WHERE username = $1"#,
         user_data.username,
@@ -947,7 +998,8 @@ async fn create_adv_agent(
         agent_setting_form.description,
         "active",
         agent_setting_value,
-        "advanced".into()
+        "advanced".into(),
+        asset_id
     )
     .fetch_one(&db_pool)
     .await;
@@ -983,11 +1035,21 @@ async fn update_basic_agent(
         .render()
         .unwrap();
 
+    let asset_id = agent_setting_form.asset_id.parse::<i32>();
+    let asset_id = if let Ok(asset_id) = asset_id {
+        if asset_id != 0 {
+            Some(asset_id)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    tracing::info!(target: TRON_APP, "update basis agent asset id: {:?} {:?}", agent_setting_form.asset_id, asset_id);
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        //provider: agent_setting_form.provider.clone(),
         fsm_agent_config: simple_agent_config,
     };
 
@@ -996,14 +1058,15 @@ async fn update_basic_agent(
     let db_pool = DB_POOL.clone();
     let _query = sqlx::query!(
         r#"UPDATE agents 
-    SET name = $3, description = $4, status = $5, configuration = $6
+    SET name = $3, description = $4, status = $5, configuration = $6, asset_id = $7
     WHERE agent_id = $2 AND user_id = (SELECT user_id FROM users WHERE username = $1)"#,
         user_data.username,
         agent_id,
         agent_setting_form.name,
         agent_setting_form.description,
         "active",
-        agent_setting_value
+        agent_setting_value,
+        asset_id
     )
     .fetch_one(&db_pool)
     .await;
@@ -1031,13 +1094,24 @@ async fn update_adv_agent(
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
+
+    let asset_id = agent_setting_form.asset_id.parse::<i32>();
+    let asset_id = if let Ok(asset_id) = asset_id {
+        if asset_id != 0 {
+            Some(asset_id)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    
     // TODO: validate agent_config
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        // provider: agent_setting_form.provider.clone(),
         fsm_agent_config: agent_setting_form.agent_config,
     };
 
@@ -1046,14 +1120,15 @@ async fn update_adv_agent(
     let db_pool = DB_POOL.clone();
     let _query = sqlx::query!(
         r#"UPDATE agents 
-    SET name = $3, description = $4, status = $5, configuration = $6
+    SET name = $3, description = $4, status = $5, configuration = $6, asset_id = $7
     WHERE agent_id = $2 AND user_id = (SELECT user_id FROM users WHERE username = $1)"#,
         user_data.username,
         agent_id,
         agent_setting_form.name,
         agent_setting_form.description,
         "active",
-        agent_setting_value
+        agent_setting_value,
+        asset_id
     )
     .fetch_one(&db_pool)
     .await;
@@ -1455,8 +1530,6 @@ async fn create_asset(
         .await
         .unwrap();
 
-        tracing::info!(target: "app_tron", "XXX {:?}", query_result);
-
         for c in document_chunks.chunks.into_iter() {
             let span = PgRange {
                 start: Bound::Included(c.span.0 as i32),
@@ -1508,7 +1581,6 @@ fn handle_file_upload(context: TnContext, _event: TnEvent, payload: Value) -> Tn
                 .iter()
                 .flat_map(|v| {
                     if let Value::Array(v) = v {
-                        tracing::debug!(target: TRON_APP, "v:{:?}", v);
                         let filename = v[0].as_str();
                         let size = v[1].as_u64();
                         let t = v[2].as_str();
@@ -1556,7 +1628,6 @@ async fn get_active_asset_list(username: &str) -> Vec<(i32, String)> {
         .fetch_all(&pool)
         .await
         .expect("db error");
-    tracing::info!(target: TRON_APP, "XXXX query {}", query);
 
     let rtn = rows
         .iter()

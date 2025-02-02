@@ -55,6 +55,7 @@ struct AgentWorkspaceTemplate {
     agent_name: String,
     agent_id: u32,
     chat_id: i32,
+    asset_id: i32,
     chat_textarea: String,
     query_text_input: String,
     stream_output: String,
@@ -233,6 +234,16 @@ where
             }
         };
 
+
+        let asset_id = {
+            let assets_guard = ctx.assets.read().await;
+            if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                *chat_id as i32
+            } else {
+                panic!("no chat id found")
+            }
+        };
+
         let messages = get_messages(chat_id).await.unwrap_or_default();
 
         {
@@ -274,6 +285,7 @@ where
             agent_name,
             agent_id,
             chat_id,
+            asset_id,
             chat_textarea: chat_textarea_html,
             stream_output: stream_output_html,
             query_text_input: query_text_input_html,
@@ -411,6 +423,11 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             panic!("chat_id not found");
         };
 
+        let asset_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("asset_id").unwrap() {
+            *chat_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
 
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
@@ -438,8 +455,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 
         agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
-
-
 
         // let mut options = Options::empty();
         // options.insert(Options::ENABLE_STRIKETHROUGH);
@@ -473,7 +488,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         if let TnComponentValue::String(s) = query_text {
             let s = encode_text(&s);
-            let query_context = encode_text(&search_asset(&s).await).to_string();
+            let query_context = encode_text(&search_asset(&s, asset_id).await).to_string();
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
@@ -512,7 +527,12 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
     }
 }
 
-async fn search_asset(query: &str) -> String {
+async fn search_asset(query: &str, asset_id: i32) -> String {
+
+    if asset_id == 0 {
+       return  "".to_string()
+    };
+
     let tk_service = TextChunkingService::new(None, 128, 0, 4096);
 
     let mut chunks = tk_service.text_to_chunks(query);
@@ -527,7 +547,7 @@ async fn search_asset(query: &str) -> String {
     let mut best_sorted_points = Vec::<TwoDPoint>::new();
     for c in chunks.into_iter() { 
         let ev = c.embedding_vec.unwrap().clone();
-        let sorted_points = vector_query_and_sort_points(1, &ev, None).await;
+        let sorted_points = vector_query_and_sort_points(asset_id, &ev, None).await;
         let d = sorted_points.first().unwrap().d;
         if d < min_d {
             min_d = d;
@@ -560,9 +580,8 @@ fn search_asset_clicked(
             return None;
         };
 
-        // let asset_ref = context.get_asset_ref().await;
-        // let asset_guarad = asset_ref.read().await;
-
+        let asset_ref = context.get_asset_ref().await;
+        let asset_guarad = asset_ref.read().await;
 
         // let _user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
         //     *user_id as i32
@@ -582,6 +601,11 @@ fn search_asset_clicked(
         //     panic!("chat_id not found");
         // };
 
+        let asset_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("asset_id").unwrap() {
+            *chat_id as i32
+        } else {
+            panic!("chat_id not found");
+        };
 
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
@@ -600,7 +624,7 @@ fn search_asset_clicked(
         };
 
         tracing::info!(target:"tron_app", "query_text: {}", query_text);
-        let out = search_asset(&query_text).await;
+        let out = search_asset(&query_text, asset_id).await;
         text::clean_textarea_with_context(
             &context,
             ASSET_SEARCH_OUTPUT,
