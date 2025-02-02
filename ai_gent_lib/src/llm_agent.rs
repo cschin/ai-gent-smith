@@ -214,7 +214,7 @@ impl<C: LLMClient> LLMAgent<C> {
             tracing::info!(target: "tron_app", "prompt: {}\n\n", prompt);
 
             let llm_output = if let Some(tx) = tx.clone() {
-                let _ = tx.send(("message".into(), "LLM request sent, waiting for response".into())).await;
+                let _ = tx.send(("message".into(), "LLM request sent, waiting for response\n".into())).await;
                 let mut llm_output = String::default();
 
                 let mut llm_stream = self

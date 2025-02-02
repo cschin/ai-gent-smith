@@ -512,9 +512,9 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             }
         });
 
-        if let TnComponentValue::String(s) = query_text {
-            let s = encode_text(&s);
-            let query_context = encode_text(&search_asset(&s, asset_id, 8).await).to_string();
+        if let TnComponentValue::String(query) = query_text {
+            let query = encode_text(&query);
+            let query_context = encode_text(&search_asset(&query, asset_id, 8).await).to_string();
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
@@ -529,8 +529,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             )
             .await;
             let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
-            let query = s.replace('\n', "<br><br>");
-            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.clone())).await;
+            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.to_string())).await;
             context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
             let _ = insert_message(chat_id, user_id, agent_id, &query, "user", "text").await;
             match agent.process_message(&query, Some(tx)).await {
