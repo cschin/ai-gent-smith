@@ -213,7 +213,7 @@ impl<C: LLMClient> LLMAgent<C> {
             tracing::info!(target: "tron_app", "summary prompt: {}\n\n", summary_prompt);
             tracing::info!(target: "tron_app", "prompt: {}\n\n", prompt);
 
-            let llm_output = if let Some(tx) = tx {
+            let llm_output = if let Some(tx) = tx.clone() {
                 let mut llm_output = String::default();
 
                 let mut llm_stream = self
@@ -236,6 +236,15 @@ impl<C: LLMClient> LLMAgent<C> {
             last_message.push(("assistant".into(), llm_output.clone()));
 
             tracing::info!(target: "tron_app", "raw output: {}\n", llm_output);
+            
+            if let Some(tx) = tx.clone() {
+                let _ = tx
+                    .send((
+                        "message".into(),
+                        "determining the agent's next state and generating chat summary".into()),
+                    )
+                    .await;
+            };
 
             let next_state = self.llm_client.generate(&fsm_prompt, &self.messages).await;
 
@@ -259,11 +268,21 @@ impl<C: LLMClient> LLMAgent<C> {
                 response.next_state
             );
 
+ 
             // placeholder for tool usage
 
             // Transition state if specified
             if let Some(next_state) = &response.next_state {
                 self.transition_state(next_state).await?;
+            }
+
+            if let Some(tx) = tx {
+                let _ = tx
+                    .send((
+                        "fsm_state".into(),
+                        response.next_state.unwrap_or("Error".into()),
+                    ))
+                    .await;
             }
 
             Ok(response.message)

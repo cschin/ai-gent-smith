@@ -3,6 +3,7 @@ use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use askama::Template;
 use async_trait::async_trait;
+use candle_core::WithDType;
 use html_escape::encode_text;
 use ordered_float::OrderedFloat;
 use serde_json::Value;
@@ -481,6 +482,29 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
                         context_cloned.set_ready_for(AGENT_CHAT_TEXTAREA).await;
                     },
+                    "message" => {
+                        let message = format!("\n\nLLM Engine Message: {}\n", r);
+                        text::append_and_update_stream_textarea_with_context(
+                            &context_cloned,
+                            AGENT_STREAM_OUTPUT,
+                            &message,
+                        )
+                        .await
+                    }
+                    "fsm_state" => {
+                        text::clean_stream_textarea_with_context(
+                            &context_cloned,
+                            AGENT_STREAM_OUTPUT,
+                        )
+                        .await;
+                        let fsm_state = format!("\n\nFSM State: {}\n", r);
+                        text::append_and_update_stream_textarea_with_context(
+                            &context_cloned,
+                            AGENT_STREAM_OUTPUT,
+                            &fsm_state,
+                        )
+                        .await
+                    }
                     _ => {}
                 }
             }
@@ -517,11 +541,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         }
 
         handle.abort();
-        text::clean_stream_textarea_with_context(
-            &context,
-            AGENT_STREAM_OUTPUT,
-        )
-        .await;
+
 
         None
     }
@@ -537,7 +557,7 @@ async fn search_asset(query: &str, asset_id: i32) -> String {
 
     let mut chunks = tk_service.text_to_chunks(query);
 
-    tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
+    // tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
     EMBEDDING_SERVICE
         .get()
         .unwrap()
@@ -559,9 +579,10 @@ async fn search_asset(query: &str, asset_id: i32) -> String {
     let out = top_5
         .iter()
         .map(|p| {
+            let c= &p.chunk;
             format!(
-                "DOCUMET TITLE:\n{}\n\nCONTEXT:\n{}",
-                p.chunk.title, p.chunk.text
+                "DOCUMET TITLE:\n{}\n\n (Similarity: {:0.5}, span: {}-{}) \n\nCONTEXT:\n{}",
+                c.title, 1.0 - p.d.to_f64(), c.span.0, c.span.1, c.text
             )
         })
         .collect::<Vec<String>>()
