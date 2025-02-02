@@ -463,7 +463,7 @@ pub async fn vector_query_and_sort_points(
         sqlx::query(
             r#"SELECT filename, title, text, span, embedding_vector, 
                    COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
-                   1.0 - (embedding_vector <#> $1) AS similarity
+                   1.0 - (embedding_vector <=> $1) AS similarity
                    FROM text_embedding
                    WHERE asset_id = $2
                    ORDER BY similarity DESC LIMIT $3;"#)
@@ -476,7 +476,7 @@ pub async fn vector_query_and_sort_points(
         sqlx::query(
         r#"SELECT filename, title, text, span, embedding_vector, 
                        COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
-                       1.0 - (embedding_vector <#> $1) AS similarity
+                       1.0 - (embedding_vector <=> $1) AS similarity
                FROM text_embedding
                WHERE asset_id = $2
                ORDER BY similarity DESC;"#)
