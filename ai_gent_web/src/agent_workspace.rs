@@ -76,7 +76,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(AGENT_CHAT_TEXTAREA.into(), vec![])
             .set_attr(
                 "class",
-                "min-h-[435px] max-h-[435px] overflow-auto flex-1 p-2 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400",
+                "min-h-[435px] max-h-[435px] overflow-auto  flex-1 p-2 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400",
             )
             .build();
 
@@ -121,7 +121,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let asset_search_output = text::TnTextArea::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex-1 border-2 mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[70svh]")
+        .set_attr("class", "flex-1 border-2 overflow-x-scroll text-nowrap mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[70svh]")
         .build();
 
         // let new_session_button = TnButton::builder()

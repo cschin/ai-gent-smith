@@ -39,7 +39,16 @@
                 </select>
 
             </div>
-
+            <div class="form-control mb-4">
+                <label for="asset_name" class="label">
+                    <span class="label-text">Select Asset:</span>
+                </label>
+                <select name="asset_name" id="asset_name" class="select select-bordered" required>
+                    {% for option in asset_options %}
+                    {{ option }}
+                    {% endfor %}
+                </select>
+            </div>
             <div class="form-control mb-4">
                 <label for="prompt" class="label">
                     <span class="label-text">Initial Prompt:</span>

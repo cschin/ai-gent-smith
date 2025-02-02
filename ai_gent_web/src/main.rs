@@ -381,6 +381,7 @@ struct UpdateBasicAgentTemplate {
     name: String,
     description: String,
     model_options: Vec<String>,
+    asset_options: Vec<String>,
     prompt: String,
     follow_up_prompt: String,
 }
@@ -392,6 +393,7 @@ struct UpdateAdvAgentTemplate {
     name: String,
     description: String,
     model_options: Vec<String>,
+    asset_options: Vec<String>,
     agent_config: String,
 }
 
@@ -598,14 +600,20 @@ WHERE u.username = $1 AND a.agent_id = $2;",
     .fetch_one(&db_pool)
     .await
     .unwrap();
+
+    let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
+    let asset_list = get_active_asset_list(&user_data.username).await;
+    let asset_options = asset_list.into_iter().map(|(id, name)| {
+        format!(r#" <option value="{}">{}</option>"#, id, encode_text(&name)) } ).collect::<Vec<String>>();
+
     match row.class.as_str() {
-        "basic" => show_basic_agent_setting(&row, agent_id),
-        "advanced" => show_adv_agent_setting(&row, agent_id),
+        "basic" => show_basic_agent_setting(&row, asset_options, agent_id),
+        "advanced" => show_adv_agent_setting(&row, asset_options, agent_id),
         _ => unimplemented!(),
     }
 }
 
-fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, Html<String>) {
+fn show_basic_agent_setting(row: &AgentQueryResult, asset_options: Vec<String>, agent_id: i32) -> (HeaderMap, Html<String>) {
     let name: String = row.name.clone();
     let description: String = if let Some(d) = row.description.clone() {
         d
@@ -657,12 +665,15 @@ fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap
         })
         .collect::<Vec<String>>();
 
+      
+
     let out_html = if let Some(out_html) = {
         let template = UpdateBasicAgentTemplate {
             agent_id,
             name,
             description,
             model_options,
+            asset_options,
             prompt,
             follow_up_prompt,
         };
@@ -676,7 +687,7 @@ fn show_basic_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap
     (h, Html::from(out_html))
 }
 
-fn show_adv_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, Html<String>) {
+fn show_adv_agent_setting(row: &AgentQueryResult, asset_options: Vec<String>, agent_id: i32) -> (HeaderMap, Html<String>) {
     let name: String = row.name.clone();
     let description: String = if let Some(d) = row.description.clone() {
         d
@@ -718,6 +729,7 @@ fn show_adv_agent_setting(row: &AgentQueryResult, agent_id: i32) -> (HeaderMap, 
             name,
             description,
             model_options,
+            asset_options,
             agent_config: fsm_agent_config,
         };
         Some(template.render().unwrap())
