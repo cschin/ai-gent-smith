@@ -795,21 +795,22 @@ WHERE u.username = $1 AND a.agent_id = $2;",
         .unwrap();
 
         name = row.name;
-        let description: String = if let Some(d) = row.description {
+        let _description: String = if let Some(d) = row.description {
             d
         } else {
             "".into()
         };
         let _status = row.status;
         user_id = row.user_id;
-        let model_name;
+
+        let _model_name;
         configuration = if let Some(conf) = row.configuration {
             let model_setting: AgentSetting =
                 serde_json::from_value::<AgentSetting>(conf.clone()).unwrap();
-            model_name = model_setting.model_name;
+            _model_name = model_setting.model_name;
             conf.to_string()
         } else {
-            model_name = "".into();
+            _model_name = "".into();
             "".into()
         };
 
@@ -1094,7 +1095,6 @@ async fn update_adv_agent(
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
-
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {
         if asset_id != 0 {
@@ -1105,7 +1105,7 @@ async fn update_adv_agent(
     } else {
         None
     };
-    
+
     // TODO: validate agent_config
 
     let agent_setting = AgentSetting {
@@ -1191,7 +1191,7 @@ async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, sessio
     .fetch_one(&db_pool)
     .await;
 
-    let user_id = if let Err(_res) = res {
+    let _user_id = if let Err(_res) = res {
         let rec = sqlx::query!(
             r#"INSERT INTO users (username, email, password_hash, created_at, last_login) VALUES
 ($1, $2, 'hashed_password', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -1259,7 +1259,6 @@ async fn show_chat(
         } else {
             0_u32
         };
-
     }
     {
         let ctx_guard = ctx.read().await;
@@ -1415,7 +1414,7 @@ async fn show_asset(
         let mut assets_guard = ctx_guard.assets.write().await;
         assets_guard.insert("asset_id".into(), TnAsset::U32(asset_id));
     }
-    
+
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());

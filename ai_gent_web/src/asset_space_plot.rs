@@ -303,7 +303,7 @@ async fn update_plot_and_top_k(
     // }
 }
 
-fn d3_plot_clicked(context: TnContext, event: TnEvent, payload: Value) -> TnFutureHTMLResponse {
+fn d3_plot_clicked(context: TnContext, _event: TnEvent, payload: Value) -> TnFutureHTMLResponse {
     tn_future! {
         // tracing::info!(target: "tron_app", "event {:?}", event);
         // tracing::info!(target: "tron_app", "payload {:?}", payload);
