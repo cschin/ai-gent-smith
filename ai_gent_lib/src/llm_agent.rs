@@ -210,8 +210,8 @@ impl<C: LLMClient> LLMAgent<C> {
 
             let summary_prompt = [self.summary_prompt.as_str(), self.summary.as_str()].join("\n");
 
-            tracing::info!(target: "tron_app", "summary prompt: {}\n\n", summary_prompt);
-            tracing::info!(target: "tron_app", "prompt: {}\n\n", prompt);
+            // tracing::info!(target: "tron_app", "summary prompt: {}\n\n", summary_prompt);
+            // tracing::info!(target: "tron_app", "prompt: {}\n\n", prompt);
 
             let llm_output = if let Some(tx) = tx.clone() {
                 let _ = tx.send(("message".into(), "LLM request sent, waiting for response\n".into())).await;
@@ -236,7 +236,7 @@ impl<C: LLMClient> LLMAgent<C> {
             self.messages.push(("assistant".into(), llm_output.clone()));
             last_message.push(("assistant".into(), llm_output.clone()));
 
-            tracing::info!(target: "tron_app", "raw output: {}\n", llm_output);
+            // tracing::info!(target: "tron_app", "raw output: {}\n", llm_output);
 
             if let Some(tx) = tx.clone() {
                 let _ = tx.send(("clear".into(), "".into())).await;
@@ -254,21 +254,21 @@ impl<C: LLMClient> LLMAgent<C> {
                 .llm_client
                 .generate(&summary_prompt, &last_message)
                 .await;
-            tracing::info!(target: "tron_app", "summary_prompt: {}", summary_prompt);
-            tracing::info!(target: "tron_app", "last_message: {:?}", last_message);
-            tracing::info!(target: "tron_app", "summary: {}", self.summary);
-            tracing::info!(target: "tron_app", "next_state raw: {}", next_state);
+            // tracing::info!(target: "tron_app", "summary_prompt: {}", summary_prompt);
+            // tracing::info!(target: "tron_app", "last_message: {:?}", last_message);
+            // tracing::info!(target: "tron_app", "summary: {}", self.summary);
+            // tracing::info!(target: "tron_app", "next_state raw: {}", next_state);
 
             let mut response: LLMResponse = serde_json::from_str(&next_state)
                 .map_err(|e| format!("Failed to parse LLM output: {e}, {}", next_state))?;
 
             response.message = llm_output;
 
-            tracing::info!(
-                "resp: {:?} /n NEXT STATE:{:?}\n",
-                response,
-                response.next_state
-            );
+            // tracing::info!(
+            //     "resp: {:?} /n NEXT STATE:{:?}\n",
+            //     response,
+            //     response.next_state
+            // );
 
             // placeholder for tool usage
 
@@ -296,7 +296,7 @@ impl<C: LLMClient> LLMAgent<C> {
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), String> {
         match self.fsm.transition(next_state.into()).await {
             (TransitionResult::Success, _) => {
-                tracing::info!("Transitioned to state: {}", next_state);
+                // tracing::info!("Transitioned to state: {}", next_state);
                 Ok(())
             }
             (TransitionResult::InvalidTransition, _) => Err(format!(

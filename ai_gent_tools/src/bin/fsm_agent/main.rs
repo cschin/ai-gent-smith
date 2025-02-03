@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG).unwrap().build().unwrap();
     let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 
-    tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
+    // tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
 
     //write_agent_config_to_file(&fsm_config);
 
@@ -93,9 +93,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     Err(err) => println!("LLM error, please retry your question. {:?}", err),
                 }
 
-                if let Some(current_state) = agent.fsm.current_state() {
-                    tracing::info!("Current state: {}", current_state);
-                }
+                // if let Some(current_state) = agent.fsm.current_state() {
+                //     tracing::info!("Current state: {}", current_state);
+                // }
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

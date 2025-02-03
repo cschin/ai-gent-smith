@@ -189,9 +189,9 @@ where
                 let mut stream_data_guard = context_guard.stream_data.write().await;
                 let data = stream_data_guard.get_mut("plot_data").unwrap();
                 data.1.clear();
-                tracing::info!(target: "tron_app", "length:{}", two_d_embeddding.len());
+                // tracing::info!(target: "tron_app", "length:{}", two_d_embeddding.len());
                 data.1.push_back(two_d_embeddding);
-                tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
+                // tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
             }
         }
 
@@ -249,7 +249,7 @@ async fn update_plot_and_top_k(
         data.1.clear();
         // tracing::info!(target: "tron_app", "length:{}", two_d_embeddding.len());
         data.1.push_back(two_d_embeddding);
-        tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
+        // tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
     }
     let sse_tx = context.get_sse_tx().await;
     let msg = SseD3PlotTriggerMsg {
@@ -305,13 +305,13 @@ async fn update_plot_and_top_k(
 
 fn d3_plot_clicked(context: TnContext, event: TnEvent, payload: Value) -> TnFutureHTMLResponse {
     tn_future! {
-        tracing::info!(target: "tron_app", "event {:?}", event);
-        tracing::info!(target: "tron_app", "payload {:?}", payload);
+        // tracing::info!(target: "tron_app", "event {:?}", event);
+        // tracing::info!(target: "tron_app", "payload {:?}", payload);
         let mut all_points = Vec::new();
         let evt_x = serde_json::from_value::<f64>(payload["event_data"]["e_x"].clone()).unwrap();
         let evt_y = serde_json::from_value::<f64>(payload["event_data"]["e_y"].clone()).unwrap();
-        tracing::info!(target: "tron_app", "e_x {:?}", evt_x);
-        tracing::info!(target: "tron_app", "e_y {:?}", evt_y);
+        // tracing::info!(target: "tron_app", "e_x {:?}", evt_x);
+        // tracing::info!(target: "tron_app", "e_y {:?}", evt_y);
         //let filename_to_id = &DOCUMENT_CHUNKS.get().unwrap().filename_to_id;
         
         let asset_id = {
@@ -326,7 +326,6 @@ fn d3_plot_clicked(context: TnContext, event: TnEvent, payload: Value) -> TnFutu
 
 
         let all_doc = get_all_points(asset_id).await;
-        tracing::info!(target: TRON_APP, "XXXX {} {}", asset_id, all_doc.len());
         all_doc.iter().for_each(|p| {
             let c = p.chunk.clone();
             let two_d_embedding = c.two_d_embedding.unwrap(); 
@@ -359,7 +358,7 @@ fn reset_button_clicked(
     _payload: Value,
 ) -> TnFutureHTMLResponse {
     tn_future! {
-        tracing::info!(target: "tron_app", "{:?}", event);
+        // tracing::info!(target: "tron_app", "{:?}", event);
         if event.e_trigger != RESET_BUTTON {
             None
         } else {
@@ -396,9 +395,9 @@ fn reset_button_clicked(
                     let mut stream_data_guard = context_guard.stream_data.write().await;
                     let data = stream_data_guard.get_mut("plot_data").unwrap();
                     data.1.clear();
-                    tracing::info!(target: "tron_app", "length:{}", two_d_embeddding.len());
+                    // tracing::info!(target: "tron_app", "length:{}", two_d_embeddding.len());
                     data.1.push_back(two_d_embeddding);
-                    tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
+                    // tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
                 }
             }
             {

@@ -466,7 +466,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             while let Some((t, r)) = rx.recv().await {
                 match t.as_str() {
                     "token" =>  {
-                    tracing::info!(target: "tron_app", "streaming token: {}", r);
+                    // tracing::info!(target: "tron_app", "streaming token: {}", r);
                     text::append_and_update_stream_textarea_with_context(
                         &context_cloned,
                         AGENT_STREAM_OUTPUT,
@@ -474,7 +474,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     )
                     .await},
                     "llm_output" => {
-                        tracing::info!(target: "tron_app", "LLM Response: {}", r);
+                        // tracing::info!(target: "tron_app", "LLM Response: {}", r);
                         let parser = Parser::new_ext(&r, Options::all());
                         let mut html_output = String::new();
                         html::push_html(&mut html_output, parser);
@@ -646,7 +646,7 @@ fn search_asset_clicked(
             }
         };
 
-        tracing::info!(target:"tron_app", "query_text: {}", query_text);
+        // tracing::info!(target:"tron_app", "query_text: {}", query_text);
         let out = search_asset(&query_text, asset_id, 8).await;
         text::clean_textarea_with_context(
             &context,

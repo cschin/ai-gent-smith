@@ -583,7 +583,7 @@ async fn show_agent_setting(
     Path(agent_id): Path<i32>,
     session: Session,
 ) -> impl IntoResponse {
-    tracing::info!(target: "tron_app", "in show_agent: agent_id {}", agent_id);
+    // tracing::info!(target: "tron_app", "in show_agent: agent_id {}", agent_id);
     let ctx_store_guard = appdata.context_store.read().await;
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
@@ -658,11 +658,11 @@ fn show_basic_agent_setting(
         .get("AskFollowUpQuestion")
         .unwrap_or(&"".to_string())
         .clone();
-    tracing::info!(
-        target: "tron_app",
-        "agent: {}:{} // {} // {}",
-        agent_id, name, description, configuration
-    );
+    // tracing::info!(
+    //     target: "tron_app",
+    //     "agent: {}:{} // {} // {}",
+    //     agent_id, name, description, configuration
+    // );
 
     let mut h = HeaderMap::new();
     h.insert("Hx-Reswap", "outerHTML show:top".parse().unwrap());
@@ -819,11 +819,11 @@ WHERE u.username = $1 AND a.agent_id = $2;",
             0_u32
         };
 
-        tracing::info!(
-            target: "tron_app",
-            "agent: {}:{} // {} // {} // {} // {:?}",
-            agent_id, name, description, model_name, configuration, asset_id
-        );
+        // tracing::info!(
+        //     target: "tron_app",
+        //     "agent: {}:{} // {} // {} // {} // {:?}",
+        //     agent_id, name, description, model_name, configuration, asset_id
+        // );
     }
     {
         let ctx_guard = ctx.read().await;
@@ -1029,8 +1029,8 @@ async fn update_basic_agent(
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
     let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap();
     let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap();
-    tracing::info!(target: "tron_app", "prompt: {}", prompt);
-    tracing::info!(target: "tron_app", "follow_up: {}", follow_up);
+    // tracing::info!(target: "tron_app", "prompt: {}", prompt);
+    // tracing::info!(target: "tron_app", "follow_up: {}", follow_up);
     let simple_agent_config = SimpleAgentConfigTemplate { prompt, follow_up }
         .render()
         .unwrap();
@@ -1045,7 +1045,7 @@ async fn update_basic_agent(
     } else {
         None
     };
-    tracing::info!(target: TRON_APP, "update basis agent asset id: {:?} {:?}", agent_setting_form.asset_id, asset_id);
+    //tracing::info!(target: TRON_APP, "update basis agent asset id: {:?} {:?}", agent_setting_form.asset_id, asset_id);
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
@@ -1211,7 +1211,7 @@ RETURNING user_id"#,
     } else {
         res.unwrap().user_id
     };
-    tracing::info!(target: "tron_app", "check_user: {:?} id: {}", user_data, user_id);
+    //tracing::info!(target: "tron_app", "check_user: {:?} id: {}", user_data, user_id);
 }
 
 async fn show_chat(
@@ -1477,7 +1477,7 @@ async fn create_asset(
     session: Session,
     Json(payload): Json<Value>,
 ) -> impl IntoResponse {
-    tracing::info!(target: "app_tron", "payload create_asset {:?}", payload);
+    // tracing::info!(target: "app_tron", "payload create_asset {:?}", payload);
 
     let asset_setting_form: AssetSettingForm =
         serde_json::from_value::<AssetSettingForm>(payload.clone()).unwrap();
@@ -1570,7 +1570,7 @@ async fn create_asset(
             .bind(two_d_embedding)
             .bind(&c.filename)
             .bind(&c.title).fetch_one(&db_pool).await;
-            tracing::info!(target: TRON_APP, "insert embedding {:?}", _res);
+            // tracing::info!(target: TRON_APP, "insert embedding {:?}", _res);
         }
 
         //let uuid = Uuid::new_v4();
@@ -1611,7 +1611,7 @@ fn handle_file_upload(context: TnContext, _event: TnEvent, payload: Value) -> Tn
             vec![]
         };
 
-        tracing::info!( target: TRON_APP, "{:?}", file_list);
+        tracing::info!( target: TRON_APP, "uploaded files: {:?}", file_list);
 
         if !file_list.is_empty() {
             let mut v: Vec<(String, String)> = vec![];

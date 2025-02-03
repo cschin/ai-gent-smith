@@ -319,7 +319,7 @@ impl DocumentChunks {
         let decoder = GzDecoder::new(file);
         let reader = BufReader::new(decoder);
 
-        tracing::info!(target: "tron_app", "loading embeding data file");
+        // tracing::info!(target: "tron_app", "loading embeding data file");
         // Read the file line by line
         let mut count = 0;
         for line in reader.lines() {
@@ -345,7 +345,7 @@ impl DocumentChunks {
         let decoder = GzDecoder::new(cursor);
         let reader = BufReader::new(decoder);
 
-        tracing::info!(target: "tron_app", "loading embeding from upload data");
+        // tracing::info!(target: "tron_app", "loading embedding from upload data");
         // Read the file line by line
         let mut count = 0;
         for line in reader.lines() {
@@ -370,7 +370,7 @@ impl DocumentChunks {
         let reader = BufReader::new(cursor);
         let mut chunks = Vec::new();
         
-        tracing::info!(target: "tron_app", "loading embeding from upload data");
+        tracing::info!(target: "tron_app", "loading embedding from upload data");
         // Read the file line by line
         let mut count = 0;
         for line in reader.lines() {
