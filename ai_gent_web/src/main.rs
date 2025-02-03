@@ -784,9 +784,10 @@ async fn use_agent(
         let db_pool = DB_POOL.clone();
 
         let row = sqlx::query!(
-            "SELECT a.agent_id, a.name, a.description, a.status, a.configuration, a.user_id, a.asset_id FROM agents a
-JOIN users u ON a.user_id = u.user_id
-WHERE u.username = $1 AND a.agent_id = $2;",
+            "SELECT a.agent_id, a.name, a.description, a.status, a.configuration, a.user_id, a.asset_id, assets.status asset_status FROM agents a
+             JOIN users u ON a.user_id = u.user_id
+             JOIN assets ON assets.asset_id = a.asset_id
+             WHERE u.username = $1 AND a.agent_id = $2;",
             user_data.username,
             agent_id
         )
@@ -814,8 +815,13 @@ WHERE u.username = $1 AND a.agent_id = $2;",
             "".into()
         };
 
+        // TODO: check if the asset is still active
         asset_id = if let Some(asset_id) = row.asset_id {
-            asset_id as u32
+            if row.asset_status == "active" {
+                asset_id as u32
+            } else {
+                0_u32
+            }
         } else {
             0_u32
         };
