@@ -2,8 +2,8 @@
 
 ## pdf_to_embedding.py
 
-As simple script to generate the embedding data that can be imported to 
-Ai-gent Smit
+A simple script to generate the embedding data that can be imported to 
+Ai-gent Smith
 
 ### Dependences
 
