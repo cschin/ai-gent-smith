@@ -45,6 +45,7 @@ def main(args):
         title_mapping = {}
 
     fns = glob.glob(f"{input_dir_path}/*.pdf") + glob.glob(f"{input_dir_path}/*.PDF")
+    
 
     out_file = sys.stdout if output_file == '-' else open(output_file, "w")
 
@@ -54,41 +55,49 @@ def main(args):
     }
     embedding_chunks = []
     embedding_vec =[]
+    count = 0
+    total_number_of_files = len(fns)
     for fn in fns:
         print(f"processing file {fn}", file=sys.stderr)
         base_filename = os.path.basename(fn)
         title = title_mapping.get(fn, os.path.splitext(base_filename)[0])
         basic_doc_path = fn
         parser = openparse.DocumentParser()
-        parsed_basic_doc = parser.parse(basic_doc_path)
-        parsed_dict = parsed_basic_doc.model_dump()
-        # print(parsed_dict)
-        for node in parsed_dict["nodes"]:
-            payload = {"text": node["text"]}
-            response = requests.post(url, headers=headers, data=json.dumps(payload))
-            if response.status_code == 200:
-            # Request was successful
-                result = response.json()
-                for chunk in result["data"]:
-                    if len(chunk["text"]) == 0:
-                        continue
-                    doc_chunk = {"filename": base_filename, 
-                                "title": title, 
-                                "two_d_embedding": [0.0, 0.0], 
-                                "embedding_vec": chunk["embedding_vec"], 
-                                "text":chunk["text"],
-                                "span":chunk["span"],
-                                "bbox":node["bbox"],
-                                "node_id":node["node_id"]}
-                    embedding_chunks.append(doc_chunk)
-                    embedding_vec.append(chunk["embedding_vec"]),
-                    #doc_chunk_json = json.dumps(doc_chunk)
-                    #print(doc_chunk_json, file=out_file)
-                
-            else:
-                # Request failed
-                print("Error:", response.status_code, response.text)
-        print(f"finish processing file {fn}", file=sys.stderr)
+        try:
+            parsed_basic_doc = parser.parse(basic_doc_path)
+            parsed_dict = parsed_basic_doc.model_dump()
+            # print(parsed_dict)
+            count += 1
+            for node in parsed_dict["nodes"]:
+                payload = {"text": node["text"]}
+                response = requests.post(url, headers=headers, data=json.dumps(payload))
+                if response.status_code == 200:
+                # Request was successful
+                    result = response.json()
+                    for chunk in result["data"]:
+                        if len(chunk["text"]) == 0:
+                            continue
+                        doc_chunk = {"filename": base_filename, 
+                                    "title": title, 
+                                    "two_d_embedding": [0.0, 0.0], 
+                                    "embedding_vec": chunk["embedding_vec"], 
+                                    "text":chunk["text"],
+                                    "span":chunk["span"],
+                                    "bbox":node["bbox"],
+                                    "node_id":node["node_id"]}
+                        embedding_chunks.append(doc_chunk)
+                        embedding_vec.append(chunk["embedding_vec"]),
+                        #doc_chunk_json = json.dumps(doc_chunk)
+                        #print(doc_chunk_json, file=out_file)
+                    
+                else:
+                    # Request failed
+                    print("Error:", response.status_code, response.text)
+            print(f"finish processing file {fn}, {count} out of {total_number_of_files}", file=sys.stderr)
+        except Exception as e:
+            print(f"error: {e}, processing file {fn}", file=sys.stderr)
+
+ 
 
     print("compute 2d embedding", file=sys.stderr)
     embedding_vec = np.array(embedding_vec)
