@@ -324,14 +324,14 @@ impl DocumentChunks {
         let mut count = 0;
         for line in reader.lines() {
             if let Ok(line) = line {
-                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
-                chunks.push(chunk);
-                count += 1;
+                if let Ok(chunk) = serde_json::from_str::<DocumentChunk>(&line) {
+                    chunks.push(chunk);
+                    count += 1;
                 } else {
-                    return None
+                    return None;
                 }
             } else {
-                return None
+                return None;
             }
         }
         tracing::info!(target: TRON_APP, "{} records loaded", count);
@@ -349,45 +349,51 @@ impl DocumentChunks {
         // Read the file line by line
         let mut count = 0;
         for line in reader.lines() {
-            if let Ok(line) = line {
-                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
-                chunks.push(chunk);
-                count += 1;
-                } else {
-                    return None
-                }
-            } else {
-                return None
+            match line {
+                Ok(line) => match serde_json::from_str::<DocumentChunk>(&line) {
+                    Ok(chunk) => {
+                        chunks.push(chunk);
+                        count += 1;
+                    }
+                    Err(e) => {
+                        tracing::info!(target: TRON_APP, "jsonl parsing err: {:?} line number: {}", e, count);
+                        count += 1;
+                    }
+                },
+                Err(_e) => {}
             }
         }
-        tracing::info!(target: TRON_APP, "{} records loaded", count);
+        tracing::info!(target: TRON_APP, "{} records loaded", chunks.len());
 
-        Some (DocumentChunks { chunks })
+        Some(DocumentChunks { chunks })
     }
 
     pub fn from_data(data: &[u8]) -> Option<DocumentChunks> {
         let cursor = Cursor::new(data);
         let reader = BufReader::new(cursor);
         let mut chunks = Vec::new();
-        
+
         tracing::info!(target: "tron_app", "loading embedding from upload data");
         // Read the file line by line
         let mut count = 0;
         for line in reader.lines() {
-            if let Ok(line) = line {
-                if let Ok(chunk)  = serde_json::from_str::<DocumentChunk>(&line) {
-                chunks.push(chunk);
-                count += 1;
-                } else {
-                    return None
-                }
-            } else {
-                return None
+            match line {
+                Ok(line) => match serde_json::from_str::<DocumentChunk>(&line) {
+                    Ok(chunk) => {
+                        chunks.push(chunk);
+                        count += 1;
+                    }
+                    Err(e) => {
+                        tracing::info!(target: TRON_APP, "jsonl parsing err: {:?} line number: {}", e, count);
+                        count += 1;
+                    }
+                },
+                Err(_e) => {}
             }
         }
-        tracing::info!(target: TRON_APP, "{} records loaded", count);
+        tracing::info!(target: TRON_APP, "{} records loaded", chunks.len());
 
-        Some (DocumentChunks { chunks })
+        Some(DocumentChunks { chunks })
     }
 }
 
@@ -466,20 +472,22 @@ pub async fn vector_query_and_sort_points(
                    1.0 - (embedding_vector <=> $1) AS similarity
                    FROM text_embedding
                    WHERE asset_id = $2
-                   ORDER BY similarity DESC LIMIT $3;"#)
-            .bind(v0)
-            .bind(asset_id)
-            .bind(top_k)
-            .fetch_all(&db_pool)
-            .await
+                   ORDER BY similarity DESC LIMIT $3;"#,
+        )
+        .bind(v0)
+        .bind(asset_id)
+        .bind(top_k)
+        .fetch_all(&db_pool)
+        .await
     } else {
         sqlx::query(
-        r#"SELECT filename, title, text, span, embedding_vector, 
+            r#"SELECT filename, title, text, span, embedding_vector, 
                        COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
                        1.0 - (embedding_vector <=> $1) AS similarity
                FROM text_embedding
                WHERE asset_id = $2
-               ORDER BY similarity DESC;"#)
+               ORDER BY similarity DESC;"#,
+        )
         .bind(v0)
         .bind(asset_id)
         .fetch_all(&db_pool)
@@ -509,8 +517,9 @@ pub async fn get_all_points(asset_id: i32) -> Vec<TwoDPoint> {
                        COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
                        CAST(0.0 AS FLOAT8) AS similarity 
                FROM text_embedding
-               WHERE asset_id = $1;"#)
-        .bind(asset_id)
+               WHERE asset_id = $1;"#,
+    )
+    .bind(asset_id)
     .fetch_all(&db_pool)
     .await;
 
