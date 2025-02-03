@@ -276,7 +276,7 @@ pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
     v.broadcast_div(&v.sqr()?.sum_keepdim(1)?.sqrt()?)
 }
 
-#[derive(Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DocumentChunk {
     pub text: String,
     pub span: (usize, usize),
@@ -292,8 +292,10 @@ pub struct DocumentChunks {
 }
 
 pub static EMBEDDING_SERVICE: OnceCell<EmbeddingService> = OnceCell::const_new();
+pub static TEXT_CHUNKING_SERVICE: OnceCell<TextChunkingService> = OnceCell::const_new();
 
-pub static DOCUMENT_CHUNKS: OnceCell<DocumentChunks> = OnceCell::const_new();
+
+
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -307,11 +309,7 @@ impl DocumentChunk {
 }
 
 impl DocumentChunks {
-    pub fn global() -> &'static DocumentChunks {
-        DOCUMENT_CHUNKS
-            .get()
-            .expect("document chunks are not initialized")
-    }
+
 
     pub fn from_gz_file(filename: String) -> Option<DocumentChunks> {
         let mut chunks = Vec::new();
@@ -410,6 +408,15 @@ pub async fn initialize_embedding_model() {
         .get_or_init(|| async {
             println!("load embedding model");
             let es = EmbeddingService::new(None);
+            println!("finish loading embedding model");
+            es
+        })
+        .await;
+
+    let _result = TEXT_CHUNKING_SERVICE
+        .get_or_init(|| async {
+            println!("load embedding model");
+            let es = TextChunkingService::new(None, 1024, 256, 4096);
             println!("finish loading embedding model");
             es
         })

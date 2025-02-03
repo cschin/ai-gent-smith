@@ -7,6 +7,7 @@ mod asset_space_plot;
 mod embedding_service;
 mod library_cards;
 mod llm_agent;
+mod services;
 mod session_cards;
 
 use agent_workspace::*;
@@ -153,7 +154,11 @@ async fn main() {
         .route("/asset/{id}/show", get(show_asset))
         .route("/asset/create", post(create_asset))
         .route("/asset/{id}/delete", get(delete_asset))
-        .route("/check_user", get(check_user));
+        .route("/check_user", get(check_user))
+        .route(
+            "/service/text_to_embedding",
+            post(services::text_to_embedding),
+        );
 
     let app_config = tron_app::AppConfigure {
         cognito_login: false,
@@ -439,7 +444,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let ctx_guard = context.read().await;
                 let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
                 let asset_list = get_active_asset_list(&user_data.username).await;
-                let mut asset_options = vec![r#"<option value=0 selected>No Asset Needed</option>"#.to_string()];
+                let mut asset_options = vec![r#"<option value=0 selected>No Asset</option>"#.to_string()];
                 asset_options.extend(asset_list.into_iter().map(|(id, name)| {
                     format!(r#" <option value={}>{}</option>"#, id, encode_text(&name)) } ));
                 let template = SetupAgentTemplate { model_options, asset_options };
@@ -453,7 +458,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let ctx_guard = context.read().await;
                 let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
                 let asset_list = get_active_asset_list(&user_data.username).await;
-                let mut asset_options = vec![r#"<option value=0 selected>No Asset Needed</option>"#.to_string()];
+                let mut asset_options = vec![r#"<option value=0 selected>No Asset</option>"#.to_string()];
                 asset_options.extend(asset_list.into_iter().map(|(id, name)| {
                     format!(r#" <option value={}>{}</option>"#, id, encode_text(&name)) } ));
 
@@ -605,7 +610,7 @@ WHERE u.username = $1 AND a.agent_id = $2;",
 
     let asset_id = row.asset_id.unwrap_or(0);
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
-    let mut asset_list = vec![(0_i32, "No Asset Need".to_string())];
+    let mut asset_list = vec![(0_i32, "No Asset".to_string())];
     asset_list.extend(get_active_asset_list(&user_data.username).await);
     let asset_options = asset_list
         .into_iter()

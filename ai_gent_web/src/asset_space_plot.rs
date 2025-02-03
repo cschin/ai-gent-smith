@@ -20,7 +20,7 @@ use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 
 use crate::embedding_service::{
-    get_all_points, vector_query_and_sort_points, TwoDPoint, DOCUMENT_CHUNKS,
+    get_all_points, vector_query_and_sort_points, TwoDPoint,
 };
 
 use tokio::runtime::Runtime;
