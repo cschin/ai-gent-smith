@@ -105,9 +105,12 @@ impl TextChunkingService {
                     .cloned()
                     .collect::<Vec<(usize, usize)>>();
 
-                let next_segment_bgn;
+                let mut next_segment_bgn = 0_usize;
                 loop {
-                    if chunk_bgn == 0 || chunk_end < offsets.len() {
+                    if offsets.is_empty() {
+                        break
+                    }
+                    if  chunk_bgn == 0 || chunk_end < offsets.len() {
                         let text_bgn = offsets[chunk_bgn].0;
                         if chunk_end > offsets.len() {
                             chunk_end = offsets.len();
@@ -294,9 +297,6 @@ pub struct DocumentChunks {
 pub static EMBEDDING_SERVICE: OnceCell<EmbeddingService> = OnceCell::const_new();
 pub static TEXT_CHUNKING_SERVICE: OnceCell<TextChunkingService> = OnceCell::const_new();
 
-
-
-
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 
@@ -309,8 +309,6 @@ impl DocumentChunk {
 }
 
 impl DocumentChunks {
-
-
     pub fn from_gz_file(filename: String) -> Option<DocumentChunks> {
         let mut chunks = Vec::new();
         let file = BufReader::new(File::open(filename).unwrap());

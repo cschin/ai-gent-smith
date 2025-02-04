@@ -386,6 +386,18 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         if event.e_trigger != AGENT_QUERY_BUTTON {
             return None;
         };
+        
+        let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
+
+        let query_text = if let TnComponentValue::String(query_text) = query_text {
+            encode_text(&query_text).to_string()
+        } else {
+            return None
+        };
+
+        if query_text.is_empty() {
+            return None
+        }
 
         let asset_ref = context.get_asset_ref().await;
         let asset_guarad = asset_ref.read().await;
@@ -430,7 +442,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             panic!("chat_id not found");
         };
 
-        let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
+
 
         let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config).unwrap().build().unwrap();
 
@@ -512,9 +524,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             }
         });
 
-        if let TnComponentValue::String(query) = query_text {
-            let query = encode_text(&query);
-            let query_context = encode_text(&search_asset(&query, asset_id, 8).await).to_string();
+        {
+            let query_context = encode_text(&search_asset(&query_text, asset_id, 8).await).to_string();
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
@@ -529,10 +540,10 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             )
             .await;
             let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
-            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query.to_string())).await;
+            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query_text.to_string())).await;
             context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
-            let _ = insert_message(chat_id, user_id, agent_id, &query, "user", "text").await;
-            match agent.process_message(&query, Some(tx)).await {
+            let _ = insert_message(chat_id, user_id, agent_id, &query_text, "user", "text").await;
+            match agent.process_message(&query_text, Some(tx)).await {
                 Ok(res) => {
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
                     let _ = update_chat_summary(chat_id, &agent.summary).await;
