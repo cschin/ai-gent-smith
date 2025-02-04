@@ -84,7 +84,7 @@ struct AdvAgentSettingForm {
     description: String,
     model_name: String,
     asset_id: String,
-    agent_config: String,
+    fsm_agent_config: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -997,7 +997,7 @@ async fn create_adv_agent(
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        fsm_agent_config: agent_setting_form.agent_config,
+        fsm_agent_config: agent_setting_form.fsm_agent_config,
     };
 
     let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
@@ -1127,7 +1127,7 @@ async fn update_adv_agent(
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
         description: agent_setting_form.description.clone(),
-        fsm_agent_config: agent_setting_form.agent_config,
+        fsm_agent_config: agent_setting_form.fsm_agent_config,
     };
 
     let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
