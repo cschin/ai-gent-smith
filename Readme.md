@@ -144,6 +144,12 @@ Brief overview of the main directories and their purposes:
 - `/database`: For database support
 - `/misc`: Miscellaneous 
 
+## Create Asset
+
+The web server provides API for some generic text chunking and get embedding vector from
+PDF file. You can use the script `supporting_scripts/pdf_to_embedding` to generate the 
+`jsonl` file for creating new asset for a new RAG agent.
+
 ## Supported LLM Vendors and Models
 
 - OpenAI: gpt-4o, gpt-4o-mini, gpt-3.5-turbo, o3-mini
