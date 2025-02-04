@@ -49,7 +49,7 @@
                                 </div>
                             </div>
                             <div class="collapse collapse-arrow">
-                                <input type="radio" name="side-accordion"/>
+                                <input type="radio" name="side-accordion" />
                                 <div class="collapse-title text-xl font-medium">User Setting</div>
                                 <div class="collapse-content">
                                     <button class="btn btn-sm btn-block m-1 min-w-36"
@@ -122,7 +122,7 @@
     </div>
 </dialog>
 
-<!-- This needs to be in app_page.html, or it fails to work the 2nd time.--> 
+<!-- This needs to be in app_page.html, or it fails to work the 2nd time.-->
 <dialog id="create_asset_notification" class="modal">
     <div class="modal-box">
         <div id="create_asset_notification_msg">
@@ -138,17 +138,22 @@
 </dialog>
 
 <script>
-function checkSession() {
-    fetch('/api/service/session-check')
-        .then(response => {
-            if (response.status === 401) { // 401 Unauthorized means session expired
-                alert('Your session has expired. Please log in again.');
-                window.location.href = '/'; // Redirect to login page
+    function checkSession() {
+        fetch('/api/service/session-check')
+            .then(response => {
+                if (response.status === 401) { // 401 Unauthorized means session expired
+                    alert('Your session has expired. Click to reload the window to get a new session.');
+                    window.location.replace('/'); // Redirect to login page
+                }
+            })
+            .catch(error => {
+                // When using Cognito, the fetch() will fail when the session is ended.
+                alert('Your session has expired and you are logged out. Please log in again.');
+                window.location.replace('/');
             }
-        })
-        .catch(error => console.error('Session check failed:', error));
-}
-setInterval(checkSession, 1 * 30 * 1000);
+            );
+    }
+    setInterval(checkSession, 1 * 30 * 1000);
 </script>
 
 <footer style="align-items: flex-end; text-align: right; background: #585858;">
@@ -156,4 +161,3 @@ setInterval(checkSession, 1 * 30 * 1000);
         OmicSight
     <p>
 </footer>
-
