@@ -1673,9 +1673,8 @@ async fn session_check(
     let mut response_headers = HeaderMap::new();
     response_headers.insert(header::CONTENT_TYPE, "text/html".parse().unwrap());
 
-    if let Some(_session_id) = session.id() {
+    if session.id().is_some() {
         (StatusCode::OK, response_headers, Body::default())
-        
     } else {
         (StatusCode::UNAUTHORIZED, response_headers, Body::default())
     }
