@@ -4,6 +4,7 @@ use askama::Template;
 use bytes::{BufMut, Bytes, BytesMut};
 use ordered_float::OrderedFloat;
 use serde_json::Value;
+use sqlx::PgPool;
 use tron_app::{
     send_sse_msg_to_client,
     tron_components::{
@@ -19,8 +20,9 @@ use std::collections::HashMap;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 
-use crate::embedding_service::{
-    get_all_points, vector_query_and_sort_points, TwoDPoint,
+use crate::{
+    embedding_service::{get_all_points, vector_query_and_sort_points, TwoDPoint},
+    DB_POOL,
 };
 
 use tokio::runtime::Runtime;
@@ -50,6 +52,13 @@ static CMAP: [&str; 97] = [
 pub struct AssetSpacePlot<'a: 'static> {
     base: TnComponentBase<'a>,
     html: String,
+    db_pool: Option<PgPool>,
+}
+
+impl<'a: 'static> AssetSpacePlot<'a> {
+    pub async fn init_db_pool(&mut self) {
+        self.db_pool = Some(DB_POOL.clone());
+    }
 }
 
 #[derive(Template)] // this will generate the code...
@@ -58,6 +67,7 @@ pub struct AssetSpacePlotTemplate {
     d3_plot: String,
     top_hit_div: String,
     reset_button: String,
+    html_table: String,
 }
 
 impl<'a: 'static> AssetSpacePlotBuilder<'a> {
@@ -168,7 +178,11 @@ where
                     panic!("no chat id found")
                 }
             };
-            let all_chunks = get_all_points(asset_id).await.iter().map(|p| p.chunk.clone()).collect::<Vec<_>>();
+            let all_chunks = get_all_points(asset_id)
+                .await
+                .iter()
+                .map(|p| p.chunk.clone())
+                .collect::<Vec<_>>();
             two_d_embeddding.extend([all_chunks
                 .iter()
                 .map(|c| {
@@ -194,11 +208,49 @@ where
                 // tracing::info!(target: "tron_app", "stream_data {:?}", data.1[0].len());
             }
         }
+        if self.db_pool.as_mut().is_none() {
+            self.init_db_pool().await;
+        }
+        let html_table = {
+            let asset_id = {
+                let assets_guard = ctx.assets.read().await;
+                if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                    *chat_id as i32
+                } else {
+                    panic!("no chat id found")
+                }
+            };
 
+            let query = sqlx::query!(
+                r#"SELECT t.filename, t.title, COUNT(*) as count
+                FROM text_embedding t 
+                JOIN assets a ON t.asset_id = a.asset_id
+                WHERE a.asset_id = $1
+                GROUP BY t.filename, t.title
+                "#,
+                asset_id
+            )
+            .fetch_all(self.db_pool.as_ref().unwrap())
+            .await
+            .expect("db error: getting assets");
+
+            let mut html_table = String::from(r#"<table class="table p-4"><tr><th>Filename</th><th>Title</th><th>Count</th></tr>"#);
+            for row in query {
+                html_table.push_str(&format!(
+                    "<tr><td>{}</td><td>{}</td><td>{}</td></tr>",
+                    row.filename.unwrap(), row.title.unwrap(), row.count.unwrap()
+                ));
+            }
+            html_table.push_str("</table>");
+
+            html_table
+
+        };
         self.html = AssetSpacePlotTemplate {
             d3_plot: d3_plot_output_html,
             top_hit_div: top_hit_div_output_html,
             reset_button: reset_button_output_html,
+            html_table
         }
         .render()
         .unwrap()
@@ -313,7 +365,7 @@ fn d3_plot_clicked(context: TnContext, _event: TnEvent, payload: Value) -> TnFut
         // tracing::info!(target: "tron_app", "e_x {:?}", evt_x);
         // tracing::info!(target: "tron_app", "e_y {:?}", evt_y);
         //let filename_to_id = &DOCUMENT_CHUNKS.get().unwrap().filename_to_id;
-        
+
         let asset_id = {
             let context_guard = context.read().await;
             let assets_guard = context_guard.assets.read().await;
@@ -328,7 +380,7 @@ fn d3_plot_clicked(context: TnContext, _event: TnEvent, payload: Value) -> TnFut
         let all_doc = get_all_points(asset_id).await;
         all_doc.iter().for_each(|p| {
             let c = p.chunk.clone();
-            let two_d_embedding = c.two_d_embedding.unwrap(); 
+            let two_d_embedding = c.two_d_embedding.unwrap();
             let x = two_d_embedding.0 as f64;
             let y = two_d_embedding.1 as f64;
             let d = OrderedFloat::from((evt_x - x).powi(2) + (evt_y - y).powi(2));
@@ -373,13 +425,13 @@ fn reset_button_clicked(
                         panic!("no chat id found")
                     }
                 };
-        
+
                 let all_chunks = get_all_points(asset_id).await.iter().map(|p| p.chunk.clone()).collect::<Vec<_>>();
                 two_d_embeddding.extend([all_chunks
                     .iter()
                     .map(|c| {
                         let fid = c.get_fid();
-                        let two_d_embedding = c.two_d_embedding.unwrap(); 
+                        let two_d_embedding = c.two_d_embedding.unwrap();
                         format!(
                             "{},{},{},0.8",
                             two_d_embedding.0,
