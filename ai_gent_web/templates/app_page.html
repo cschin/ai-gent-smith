@@ -137,8 +137,23 @@
     </div>
 </dialog>
 
+<script>
+function checkSession() {
+    fetch('/api/service/session-check')
+        .then(response => {
+            if (response.status === 401) { // 401 Unauthorized means session expired
+                alert('Your session has expired. Please log in again.');
+                window.location.href = '/'; // Redirect to login page
+            }
+        })
+        .catch(error => console.error('Session check failed:', error));
+}
+setInterval(checkSession, 1 * 30 * 1000);
+</script>
+
 <footer style="align-items: flex-end; text-align: right; background: #585858;">
     <p class="my-1 mx-4">
         OmicSight
     <p>
 </footer>
+

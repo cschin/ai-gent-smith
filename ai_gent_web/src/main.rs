@@ -22,11 +22,7 @@ use pgvector::Vector;
 use session_cards::{SessionCards, SessionCardsBuilder};
 
 use axum::{
-    extract::{Json, Path, State},
-    http::{HeaderMap, Method},
-    response::{Html, IntoResponse, Redirect},
-    routing::{get, post, trace},
-    Router,
+    body::Body, extract::{Json, Path, State}, http::{header, HeaderMap, Method, StatusCode}, response::{Html, IntoResponse, Redirect}, routing::{get, post, trace}, Router
 };
 use serde::{Deserialize, Serialize};
 //use serde::{Deserialize, Serialize};
@@ -34,7 +30,7 @@ use tokio::sync::{mpsc::Sender, Mutex, RwLock};
 
 use serde_json::{json, Value};
 
-use tower_sessions::Session;
+use tower_sessions::{cookie::time::Time, Session};
 use tracing::debug;
 use tron_app::{
     tron_components::{
@@ -134,6 +130,9 @@ static MOCK_USER: Lazy<UserData> = Lazy::new(|| UserData {
     email: "user@test.com".into(),
 });
 
+
+use time::Duration;
+
 // This is the main entry point of the application
 // It sets up the application configuration and state
 // and then starts the application by calling tron_app::run
@@ -141,6 +140,7 @@ static MOCK_USER: Lazy<UserData> = Lazy::new(|| UserData {
 async fn main() {
     embedding_service::initialize_embedding_model().await;
     let ui_action_routes = Router::<Arc<AppData>>::new()
+        .route("/service/session-check", get(session_check))
         .route("/agent/create", post(create_basic_agent))
         .route("/agent/create_adv", post(create_adv_agent))
         .route("/agent/{id}/update", post(update_basic_agent))
@@ -169,6 +169,7 @@ async fn main() {
             http: 8080,
         },
         api_router: Some(ui_action_routes),
+        session_expiry: Some(Duration::minutes(10)),
         ..Default::default()
     };
     // set app state
@@ -1662,4 +1663,20 @@ async fn get_active_asset_list(username: &str) -> Vec<(i32, String)> {
         })
         .collect::<Vec<_>>();
     rtn
+}
+
+
+async fn session_check(
+    session: Session,
+) -> impl IntoResponse {
+
+    let mut response_headers = HeaderMap::new();
+    response_headers.insert(header::CONTENT_TYPE, "text/html".parse().unwrap());
+
+    if let Some(_session_id) = session.id() {
+        (StatusCode::OK, response_headers, Body::default())
+        
+    } else {
+        (StatusCode::UNAUTHORIZED, response_headers, Body::default())
+    }
 }
