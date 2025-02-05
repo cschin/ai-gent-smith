@@ -142,13 +142,13 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .build();
 
         let threshold_slider = TnRangeSlider::builder()
-            .init(THRESHOLD_SLIDER.into(), 75.0, 60.0, 100.0)
+            .init(THRESHOLD_SLIDER.into(), 70.0, 60.0, 80.0)
             .set_attr("class", "flex-1 ml-auto w-full")
             .set_action(TnActionExecutionMethod::Await, threshold_value_update)
             .build();
 
         let temperature_slider = TnRangeSlider::builder()
-            .init(TEMPERATURE_SLIDER.into(), 5.0, 0.0, 50.0)
+            .init(TEMPERATURE_SLIDER.into(), 5.0, 0.0, 100.0)
             .set_attr("class", "flex-1 ml-auto w-full")
             .set_action(TnActionExecutionMethod::Await, temperature_value_update)
             .build();
