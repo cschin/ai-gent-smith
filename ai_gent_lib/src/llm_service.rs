@@ -58,8 +58,6 @@ pub async fn genai_stream_service(
         }
     };
 
-    tracing::info!(target: "tron_app", "XXXX1: {:?}", temperature );
-
     let llm_stream = client
         .exec_chat_stream(model, chat_req.clone(), Some(&chat_option))
         .await
@@ -133,8 +131,6 @@ pub async fn genai_service(
             ..Default::default()
         }
     };
-
-    tracing::info!(target: "tron_app", "XXXX1: {:?}", temperature );
 
     let llm_output = client
         .exec_chat(model, chat_req.clone(), Some(&chat_option))
