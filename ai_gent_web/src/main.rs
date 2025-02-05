@@ -3,7 +3,7 @@
 
 mod agent_workspace;
 mod asset_cards;
-mod asset_space_plot;
+mod show_single_asset;
 mod embedding_service;
 mod library_cards;
 mod llm_agent;
@@ -14,7 +14,7 @@ use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
 use askama::Template;
 use asset_cards::{AssetCards, AssetCardsBuilder};
-use asset_space_plot::AssetSpacePlot;
+use show_single_asset::AssetSpacePlot;
 use embedding_service::{DocumentChunk, DocumentChunks};
 use futures_util::Future;
 use library_cards::{LibraryCards, LibraryCardsBuilder};

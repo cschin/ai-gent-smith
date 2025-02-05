@@ -62,8 +62,9 @@ impl<'a: 'static> AssetSpacePlot<'a> {
 }
 
 #[derive(Template)] // this will generate the code...
-#[template(path = "asset_space_plot.html", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
-pub struct AssetSpacePlotTemplate {
+#[template(path = "asset_space.html", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
+pub struct ShowSingleAssetTemplate {
+    asset_name: String,
     d3_plot: String,
     top_hit_div: String,
     reset_button: String,
@@ -211,16 +212,31 @@ where
         if self.db_pool.as_mut().is_none() {
             self.init_db_pool().await;
         }
-        let html_table = {
-            let asset_id = {
-                let assets_guard = ctx.assets.read().await;
-                if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
-                    *chat_id as i32
-                } else {
-                    panic!("no chat id found")
-                }
-            };
 
+        let asset_id = {
+            let assets_guard = ctx.assets.read().await;
+            if let Some(TnAsset::U32(chat_id)) = assets_guard.get("asset_id") {
+                *chat_id as i32
+            } else {
+                panic!("no asset id found")
+            }
+        };
+
+        let asset_name = {
+            let query = sqlx::query!(
+                r#"SELECT a.name
+                FROM assets a 
+                WHERE asset_id = $1
+                "#,
+                asset_id
+            )
+            .fetch_one(self.db_pool.as_ref().unwrap())
+            .await
+            .expect("db error: getting asset's name");
+            query.name
+        };
+
+        let html_table = {
             let query = sqlx::query!(
                 r#"SELECT t.filename, t.title, COUNT(*) as count
                 FROM text_embedding t 
@@ -246,11 +262,12 @@ where
             html_table
 
         };
-        self.html = AssetSpacePlotTemplate {
+        self.html = ShowSingleAssetTemplate {
             d3_plot: d3_plot_output_html,
             top_hit_div: top_hit_div_output_html,
             reset_button: reset_button_output_html,
-            html_table
+            html_table,
+            asset_name
         }
         .render()
         .unwrap()
