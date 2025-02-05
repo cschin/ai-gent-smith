@@ -463,41 +463,58 @@ pub async fn vector_query_and_sort_points(
     asset_id: i32,
     ref_vec: &[f32],
     top_k: Option<i32>,
+    threshold: Option<f32>
 ) -> Vec<TwoDPoint> {
     //tracing::info!(target:"tron_app", "ref_vec:{:?}", ref_vec);
     let mut all_points = Vec::new();
 
     let v0 = Vector::from(ref_vec.to_vec());
     let db_pool = DB_POOL.clone();
+    let threshold = threshold.unwrap_or( 0.0_f32);
 
     let results = if let Some(top_k) = top_k {
         sqlx::query(
-            r#"SELECT filename, title, text, span, embedding_vector, 
-                   COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
-                   1.0 - (embedding_vector <=> $1) AS similarity
+            r#"WITH similarity_cte AS (
+                   SELECT filename, title, text, span, embedding_vector, 
+                          COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding,
+                          1.0 - (embedding_vector <=> $1) AS similarity
                    FROM text_embedding
                    WHERE asset_id = $2
-                   ORDER BY similarity DESC LIMIT $3;"#,
+               )
+               SELECT *
+               FROM similarity_cte
+               WHERE similarity > $3
+               ORDER BY similarity DESC
+               LIMIT $4;"#,
         )
         .bind(v0)
         .bind(asset_id)
+        .bind(threshold)
         .bind(top_k)
         .fetch_all(&db_pool)
         .await
     } else {
         sqlx::query(
-            r#"SELECT filename, title, text, span, embedding_vector, 
-                       COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
-                       1.0 - (embedding_vector <=> $1) AS similarity
-               FROM text_embedding
-               WHERE asset_id = $2
+            r#"WITH similarity_cte AS (
+                   SELECT filename, title, text, span, embedding_vector, 
+                          COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding,
+                          1.0 - (embedding_vector <=> $1) AS similarity
+                   FROM text_embedding
+                   WHERE asset_id = $2
+               )
+               SELECT *
+               FROM similarity_cte
+               WHERE similarity > $3
                ORDER BY similarity DESC;"#,
         )
         .bind(v0)
         .bind(asset_id)
+        .bind(threshold)
         .fetch_all(&db_pool)
         .await
     };
+
+    tracing::info!(target: TRON_APP, "qqqq {:?}", results);
 
     if let Ok(rows) = results {
         for r in rows {

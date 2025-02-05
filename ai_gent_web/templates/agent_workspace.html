@@ -18,29 +18,49 @@
                         </div>
                         <div class="p-1">
                             <a href="/api/chat/{{chat_id}}/download" download="chat.json">
-                                <button class="btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item"> Download </button>
+                                <button class="btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item"> Download
+                                </button>
                             </a>
                         </div>
                         <div class="p-1">
                             <button class="btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item"
-                                hx-get="/api/agent/{{agent_id}}/use" hx-swap="none" hx-trigger="click"> New Session </button>
+                                hx-get="/api/agent/{{agent_id}}/use" hx-swap="none" hx-trigger="click"> New Session
+                            </button>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
         <div class="basis-1/4 flex flex-col p-1 w-full min-h-[80svh]">
-            <label class="text-xl text-gray-100 p-2 mb-2"> Supporting Context </label>
-            {{asset_search_output}}
+            <div class="flex-1 flex-row">
+                <label class="text-xl text-gray-100 p-2 mb-2"> Supporting Context </label>
+                {{asset_search_output}}
+            </div>
+            <div class="flex-1"> 
+                <label class="flex-1 text-s text-gray-100 p-2"> top k: </label>
+                <span id="top_k_value"> 8 </span>
+                {{topk_slider_html}}
+            </div>
+            <div class="flex-1"> 
+                <label class="flex-1 text-s text-gray-100 p-2 mb-2"> threshold: </label>
+                <span id="threshold_value"> 0.75 </span>
+                {{threshold_slider_html}}
+            </div>
+            <div class="flex-1"> 
+                <label class="flex-1 text-s text-gray-100 p-2 mb-2"> temperature: </label>
+                <span id="temperature_value"> 0.05 </span>
+                {{temperature_slider_html}}
+            </div>
+
         </div>
     </div>
 </div>
 <script>
     // this enable sending the query message by click "Enter"
     let attach_event = function () {
-        document.getElementById("agent_query_text_input").addEventListener("keydown", 
-            function(event) {
-                if (event.key === "Enter"  && !event.shiftKey) {  // Check if Enter is pressed
+        document.getElementById("agent_query_text_input").addEventListener("keydown",
+            function (event) {
+                if (event.key === "Enter" && !event.shiftKey) {  // Check if Enter is pressed
                     event.preventDefault();   // Prevent default behavior (e.g., newline in a textarea)
                     // make sure the textarea updated its content to the server
                     const change_event = new Event("change", { bubbles: true });
@@ -48,10 +68,10 @@
                     htmx.trigger("#agent_query_button", "click");
                 }
             });
-        };
+    };
 
     attach_event();
-    document.body.addEventListener("htmx:afterSwap", function(event) {
+    document.body.addEventListener("htmx:afterSwap", function (event) {
         // we do a outerHTML swap, so we need set up this hook every time the textarea is swapped in
         if (event.detail.target.id === "agent_query_text_input") {
             attach_event();
@@ -60,7 +80,7 @@
 </script>
 
 <style>
-pre {
-    white-space: pre-wrap;
-}
+    pre {
+        white-space: pre-wrap;
+    }
 </style>

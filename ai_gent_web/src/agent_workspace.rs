@@ -3,6 +3,8 @@ use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use askama::Template;
 use async_trait::async_trait;
+use axum::http::HeaderMap;
+use axum::response::Html;
 use candle_core::WithDType;
 use html_escape::encode_text;
 use ordered_float::OrderedFloat;
@@ -17,6 +19,7 @@ use tron_app::tron_components::text::update_and_send_textarea_with_context;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
+use tron_app::TRON_APP;
 
 use super::DB_POOL;
 use crate::embedding_service::vector_query_and_sort_points;
@@ -41,6 +44,9 @@ pub const AGENT_QUERY_TEXT_INPUT: &str = "agent_query_text_input";
 pub const AGENT_QUERY_BUTTON: &str = "agent_query_button";
 pub const ASSET_SEARCH_BUTTON: &str = "asset_search_button";
 pub const ASSET_SEARCH_OUTPUT: &str = "asset_search_output";
+pub const TOPK_SLIDER: &str = "topk_slider";
+pub const THRESHOLD_SLIDER: &str = "threshold_slider";
+pub const TEMPERATURE_SLIDER: &str = "temperature_slider";
 //pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
 
 #[non_exhaustive]
@@ -62,7 +68,10 @@ struct AgentWorkspaceTemplate {
     stream_output: String,
     query_button: String,
     asset_search_button: String,
-    asset_search_output: String, //new_session_button: String,
+    asset_search_output: String,
+    topk_slider_html: String,
+    threshold_slider_html: String,
+    temperature_slider_html: String,
 }
 
 impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
@@ -123,8 +132,26 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let asset_search_output = text::TnTextArea::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex-1 border-2 overflow-x-scroll text-nowrap mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[70svh]")
+        .set_attr("class", "flex-1 border-2 overflow-x-scroll text-nowrap mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[60svh] w-full")
         .build();
+
+        let topk_slider = TnRangeSlider::builder()
+            .init(TOPK_SLIDER.into(), 8.0, 4.0, 16.0)
+            .set_attr("class", "flex-1 ml-auto w-full")
+            .set_action(TnActionExecutionMethod::Await, top_k_value_update)
+            .build();
+
+        let threshold_slider = TnRangeSlider::builder()
+            .init(THRESHOLD_SLIDER.into(), 75.0, 60.0, 100.0)
+            .set_attr("class", "flex-1 ml-auto w-full")
+            .set_action(TnActionExecutionMethod::Await, threshold_value_update)
+            .build();
+
+        let temperature_slider = TnRangeSlider::builder()
+            .init(TEMPERATURE_SLIDER.into(), 5.0, 0.0, 50.0)
+            .set_attr("class", "flex-1 ml-auto w-full")
+            .set_action(TnActionExecutionMethod::Await, temperature_value_update)
+            .build();
 
         // let new_session_button = TnButton::builder()
         //     .init(
@@ -144,6 +171,9 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
         context.add_component(query_button);
         context.add_component(asset_search_button);
         context.add_component(asset_search_output);
+        context.add_component(topk_slider);
+        context.add_component(threshold_slider);
+        context.add_component(temperature_slider);
         //context.add_component(new_session_button);
 
         self
@@ -235,7 +265,6 @@ where
             }
         };
 
-
         let asset_id = {
             let assets_guard = ctx.assets.read().await;
             if let Some(TnAsset::U32(asset_id)) = assets_guard.get("asset_id") {
@@ -282,6 +311,30 @@ where
             .initial_render()
             .await;
 
+        let topk_slider_html = comp_guard
+            .get(TOPK_SLIDER)
+            .unwrap()
+            .read()
+            .await
+            .initial_render()
+            .await;
+
+        let threshold_slider_html = comp_guard
+            .get(THRESHOLD_SLIDER)
+            .unwrap()
+            .read()
+            .await
+            .initial_render()
+            .await;
+
+        let temperature_slider_html = comp_guard
+            .get(TEMPERATURE_SLIDER)
+            .unwrap()
+            .read()
+            .await
+            .initial_render()
+            .await;
+
         self.html = AgentWorkspaceTemplate {
             agent_name,
             agent_id,
@@ -293,7 +346,9 @@ where
             asset_search_button: asset_search_button_html,
             query_button: query_button_html,
             asset_search_output: asset_search_output_html,
-            //new_session_button: new_session_button_html,
+            topk_slider_html,
+            threshold_slider_html,
+            temperature_slider_html,
         }
         .render()
         .unwrap()
@@ -386,7 +441,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         if event.e_trigger != AGENT_QUERY_BUTTON {
             return None;
         };
-        
+
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
         let query_text = if let TnComponentValue::String(query_text) = query_text {
@@ -525,7 +580,21 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         });
 
         {
-            let query_context = encode_text(&search_asset(&query_text, asset_id, 8).await).to_string();
+            let asset = context.get_asset_ref().await;
+            let asset_guard = asset.read().await;
+            let top_k: u32 = if let Some(TnAsset::U32(top_k)) = asset_guard.get("top_k_value") {
+                *top_k
+            } else {
+                8
+            };
+            let threshold_value: f32 = if let Some(TnAsset::F32(top_k)) = asset_guard.get("threshold_value") {
+                *top_k
+            } else {
+                0.75
+            };
+
+
+            let query_context = encode_text(&search_asset(&query_text, asset_id, top_k as usize, threshold_value).await).to_string();
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
@@ -559,10 +628,9 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
     }
 }
 
-async fn search_asset(query: &str, asset_id: i32, top_k: usize) -> String {
-
+async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) -> String {
     if asset_id == 0 {
-       return  "".to_string()
+        return "".to_string();
     };
 
     let tk_service = TextChunkingService::new(None, 128, 0, 4096);
@@ -577,25 +645,37 @@ async fn search_asset(query: &str, asset_id: i32, top_k: usize) -> String {
         .expect("Failed to get embeddings");
     let mut min_d = OrderedFloat::from(f64::MAX);
     let mut best_sorted_points = Vec::<TwoDPoint>::new();
-    for c in chunks.into_iter() { 
+    for c in chunks.into_iter() {
         let ev = c.embedding_vec.unwrap().clone();
-        let sorted_points = vector_query_and_sort_points(asset_id, &ev, None).await;
+        let sorted_points =
+            vector_query_and_sort_points(asset_id, &ev, Some(top_k as i32), Some(threshold)).await;
+        if sorted_points.is_empty() {
+            break
+        };
         let d = sorted_points.first().unwrap().d;
         if d < min_d {
             min_d = d;
             best_sorted_points = sorted_points;
         }
-    };
+    }
 
-    let top_k = if top_k > best_sorted_points.len() { best_sorted_points.len() } else {top_k}; 
+    let top_k = if top_k > best_sorted_points.len() {
+        best_sorted_points.len()
+    } else {
+        top_k
+    };
     let top_hits: Vec<TwoDPoint> = best_sorted_points[..top_k].into();
     let out = top_hits
         .iter()
         .map(|p| {
-            let c= &p.chunk;
+            let c = &p.chunk;
             format!(
                 "DOCUMET TITLE:\n{}\n\n (Similarity: {:0.5}, span: {}-{}) \n\nCONTEXT:\n{}",
-                c.title, 1.0 - p.d.to_f64(), c.span.0, c.span.1, c.text
+                c.title,
+                1.0 - p.d.to_f64(),
+                c.span.0,
+                c.span.1,
+                c.text
             )
         })
         .collect::<Vec<String>>()
@@ -657,13 +737,98 @@ fn search_asset_clicked(
             }
         };
 
+        let asset = context.get_asset_ref().await;
+        let asset_guard = asset.read().await;
+        let top_k: u32 = if let Some(TnAsset::U32(top_k)) = asset_guard.get("top_k_value") {
+            *top_k
+        } else {
+            8
+        };
+        let threshold_value: f32 = if let Some(TnAsset::F32(top_k)) = asset_guard.get("threshold_value") {
+            *top_k
+        } else {
+            0.75
+        };
+
         // tracing::info!(target:"tron_app", "query_text: {}", query_text);
-        let out = search_asset(&query_text, asset_id, 8).await;
+        let out = search_asset(&query_text, asset_id, top_k as usize, threshold_value).await;
         text::clean_textarea_with_context(
             &context,
             ASSET_SEARCH_OUTPUT,
         ).await;
         update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &out).await;
         None
+    }
+}
+
+fn top_k_value_update(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
+    tn_future! {
+        let slider = context.get_component(&event.e_trigger).await;
+        let value = if let TnComponentValue::String(value) = slider.read().await.value() {
+            let new_str = format!("{} -- Value {};", event.e_trigger, value);
+            tracing::info!(target: TRON_APP, "{}", new_str);
+            let asset = context.get_asset_ref().await;
+            let mut asset_guard = asset.write().await;
+            let v = value.parse::<u32>().unwrap();
+            asset_guard.insert("top_k_value".into(), TnAsset::U32(v));
+            value.to_string()
+
+        } else {
+            "error".into()
+        };
+        let mut h = HeaderMap::new();
+        h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
+        h.insert("Hx-Retarget", "#top_k_value".parse().unwrap());
+        Some((h, Html::from(value)))
+    }
+}
+
+fn threshold_value_update(
+    context: TnContext,
+    event: TnEvent,
+    _payload: Value,
+) -> TnFutureHTMLResponse {
+    tn_future! {
+        let slider = context.get_component(&event.e_trigger).await;
+        let value = if let TnComponentValue::String(value) = slider.read().await.value() {
+            let new_str = format!("{} -- Value {};", event.e_trigger, value);
+            tracing::info!(target: TRON_APP, "{}", new_str);
+            let v = value.parse::<f32>().unwrap() / 100.0;
+            let asset = context.get_asset_ref().await;
+            let mut asset_guard = asset.write().await;
+            asset_guard.insert("threshold_value".into(), TnAsset::F32(v));
+            format!("{:0.2}", v)
+        } else {
+            "error".into()
+        };
+        let mut h = HeaderMap::new();
+        h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
+        h.insert("Hx-Retarget", "#threshold_value".parse().unwrap());
+        Some((h, Html::from(value)))
+    }
+}
+
+fn temperature_value_update(
+    context: TnContext,
+    event: TnEvent,
+    _payload: Value,
+) -> TnFutureHTMLResponse {
+    tn_future! {
+        let slider = context.get_component(&event.e_trigger).await;
+        let value = if let TnComponentValue::String(value) = slider.read().await.value() {
+            let new_str = format!("{} -- Value {};", event.e_trigger, value);
+            tracing::info!(target: TRON_APP, "{}", new_str);
+            let v = value.parse::<f32>().unwrap() / 100.0;
+            let asset = context.get_asset_ref().await;
+            let mut asset_guard = asset.write().await;
+            asset_guard.insert("temperature_value".into(), TnAsset::F32(v));
+            format!("{:0.2}", v)
+        } else {
+            "error".into()
+        };
+        let mut h = HeaderMap::new();
+        h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
+        h.insert("Hx-Retarget", "#temperature_value".parse().unwrap());
+        Some((h, Html::from(value)))
     }
 }

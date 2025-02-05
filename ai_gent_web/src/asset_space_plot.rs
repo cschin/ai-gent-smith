@@ -395,7 +395,7 @@ fn d3_plot_clicked(context: TnContext, _event: TnEvent, payload: Value) -> TnFut
         all_points.reverse();
 
         let ref_eb_vec = all_points.first().unwrap().chunk.embedding_vec.clone().unwrap();
-        let all_points_sorted = vector_query_and_sort_points(asset_id, &ref_eb_vec, None).await;
+        let all_points_sorted = vector_query_and_sort_points(asset_id, &ref_eb_vec, None, None).await;
         let top_10: Vec<TwoDPoint> = all_points_sorted[..10].into();
 
         update_plot_and_top_k(context, all_points_sorted, top_10).await;
