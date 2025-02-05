@@ -22,7 +22,12 @@ use pgvector::Vector;
 use session_cards::{SessionCards, SessionCardsBuilder};
 
 use axum::{
-    body::Body, extract::{Json, Path, State}, http::{header, HeaderMap, Method, StatusCode}, response::{Html, IntoResponse, Redirect}, routing::{get, post, trace}, Router
+    body::Body,
+    extract::{Json, Path, State},
+    http::{header, HeaderMap, Method, StatusCode},
+    response::{Html, IntoResponse, Redirect},
+    routing::{get, post, trace},
+    Router,
 };
 use serde::{Deserialize, Serialize};
 //use serde::{Deserialize, Serialize};
@@ -129,7 +134,6 @@ static MOCK_USER: Lazy<UserData> = Lazy::new(|| UserData {
     username: "user".into(),
     email: "user@test.com".into(),
 });
-
 
 use time::Duration;
 
@@ -654,7 +658,7 @@ fn show_basic_agent_setting(
     let model_name = agent_setting.model_name;
     let fsm_agent_config = agent_setting.fsm_agent_config;
 
-    let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config)
+    let fsm_config = FSMAgentConfigBuilder::from_toml(&fsm_agent_config)
         .unwrap_or_default()
         .build()
         .unwrap_or_default();
@@ -899,6 +903,19 @@ struct SimpleAgentConfigTemplate {
     follow_up: String,
 }
 
+fn get_basic_fsm_agent_config_toml_string(prompt: String, follow_up: Option<String>) -> String {
+    let prompt = serde_json::to_string_pretty(&prompt).unwrap();
+    let follow_up = serde_json::to_string_pretty(
+        &follow_up.unwrap_or(r#"
+        Your goal to see if you have enough information to address the user's question,
+        if not, please ask more questions for the information you need."#.to_string())).unwrap();
+    let simple_agent_config = SimpleAgentConfigTemplate { prompt, follow_up }
+        .render()
+        .unwrap();
+    let c = FSMAgentConfigBuilder::from_json(&simple_agent_config).unwrap().build().unwrap();
+    toml::to_string(&c).unwrap()
+}
+
 async fn create_basic_agent(
     _method: Method,
     State(appdata): State<Arc<AppData>>,
@@ -915,11 +932,9 @@ async fn create_basic_agent(
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
-    let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap();
-    let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap();
-    let simple_agent_config = SimpleAgentConfigTemplate { prompt, follow_up }
-        .render()
-        .unwrap();
+    let prompt = agent_setting_form.prompt;
+    let follow_up = agent_setting_form.follow_up_prompt;
+    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up); 
 
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {
@@ -993,6 +1008,12 @@ async fn create_adv_agent(
         None
     };
 
+    if  toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
+        return Html::from(
+            r#"<p class="py-4">FSM Agent Config Parsing Failure, check the format!! </p>"#.to_string()
+        )
+    } 
+
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
         model_name: agent_setting_form.model_name.clone(),
@@ -1043,13 +1064,10 @@ async fn update_basic_agent(
     let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
-    let prompt = serde_json::to_string_pretty(&agent_setting_form.prompt).unwrap();
-    let follow_up = serde_json::to_string_pretty(&agent_setting_form.follow_up_prompt.unwrap_or("Your goal to see if you have enough information to address the user's question, if not, please ask more questions for the information you need.".into())).unwrap();
-    // tracing::info!(target: "tron_app", "prompt: {}", prompt);
-    // tracing::info!(target: "tron_app", "follow_up: {}", follow_up);
-    let simple_agent_config = SimpleAgentConfigTemplate { prompt, follow_up }
-        .render()
-        .unwrap();
+
+    let prompt = agent_setting_form.prompt;
+    let follow_up = agent_setting_form.follow_up_prompt;
+    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up); 
 
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {
@@ -1088,7 +1106,7 @@ async fn update_basic_agent(
     .await;
 
     Html::from(format!(
-        r#"<p class="py-4">The agent "{}" is updated "#,
+        r#"<p class="py-4">The agent "{}" is updated </p>"#,
         agent_setting_form.name
     ))
 }
@@ -1121,7 +1139,11 @@ async fn update_adv_agent(
         None
     };
 
-    // TODO: validate agent_config
+    if  toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
+        return Html::from(
+            r#"<p class="py-4">FSM Agent Config Parsing Failure, check the format!! </p>"#.to_string()
+        )
+    } 
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
@@ -1150,7 +1172,7 @@ async fn update_adv_agent(
 
     //let uuid = Uuid::new_v4();
     Html::from(format!(
-        r#"<p class="py-4">The agent "{}" is updated "#,
+        r#"<p class="py-4">The agent "{}" is updated </p>"#,
         agent_setting_form.name
     ))
 }
@@ -1668,11 +1690,7 @@ async fn get_active_asset_list(username: &str) -> Vec<(i32, String)> {
     rtn
 }
 
-
-async fn session_check(
-    session: Session,
-) -> impl IntoResponse {
-
+async fn session_check(session: Session) -> impl IntoResponse {
     let mut response_headers = HeaderMap::new();
     response_headers.insert(header::CONTENT_TYPE, "text/html".parse().unwrap());
 

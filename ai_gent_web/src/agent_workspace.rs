@@ -444,7 +444,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
 
 
-        let fsm_config = FSMAgentConfigBuilder::from_json(&fsm_agent_config).unwrap().build().unwrap();
+        let fsm_config = FSMAgentConfigBuilder::from_toml(&fsm_agent_config).unwrap().build().unwrap();
 
         let fsm = FSMBuilder::from_config(&fsm_config).unwrap().build().unwrap();
 

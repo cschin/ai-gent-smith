@@ -31,3 +31,4 @@ once_cell = { workspace = true }
 tokio-test = { workspace = true }
 rustyline = { workspace = true }
 genai = { workspace = true }
+toml = { workspace = true }

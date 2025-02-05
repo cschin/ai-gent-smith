@@ -98,6 +98,20 @@ impl FSMAgentConfigBuilder {
         })
     }
 
+    pub fn from_toml(toml_str: &str) -> Result<Self, toml::de::Error> {
+        let config: FSMAgentConfig = toml::from_str(toml_str)?;
+        Ok(Self {
+            states: config.states,
+            transitions: config.transitions,
+            initial_state: Some(config.initial_state),
+            prompts: config.prompts,
+            fsm_prompt: config.fsm_prompt,
+            sys_prompt: config.sys_prompt,
+            summary_prompt: config.summary_prompt,
+        })
+    }
+
+
     pub fn build(self) -> Result<FSMAgentConfig, &'static str> {
         if self.states.is_empty() {
             return Err("At least one state is required");
