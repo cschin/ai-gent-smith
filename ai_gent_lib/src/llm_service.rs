@@ -3,7 +3,7 @@
 use std::pin::Pin;
 
 use genai::adapter::AdapterKind;
-use genai::chat::{ChatMessage, ChatRequest, ChatStreamEvent, StreamChunk};
+use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ChatStreamEvent, StreamChunk};
 use genai::resolver::{AuthData, AuthResolver, ModelMapper};
 use genai::{Client, ModelIden};
 
@@ -16,6 +16,7 @@ pub async fn genai_stream_service(
     msgs: &[(String, String)],
     model: &str,
     api_key: &str,
+    temperature: f32,
 ) -> LLMStreamOut {
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
 
@@ -48,21 +49,30 @@ pub async fn genai_stream_service(
         .with_model_mapper(model_mapper)
         .build();
 
+    let chat_option = if model.starts_with("o3") {
+        ChatOptions::default()
+    } else {
+        ChatOptions {
+            temperature: Some(temperature as f64),
+            ..Default::default()
+        }
+    };
+
+    tracing::info!(target: "tron_app", "XXXX1: {:?}", temperature );
+
     let llm_stream = client
-        .exec_chat_stream(model, chat_req.clone(), None)
+        .exec_chat_stream(model, chat_req.clone(), Some(&chat_option))
         .await
         .unwrap()
         .stream;
 
     let llm_output = StreamExt::then(llm_stream, |result| async {
         match result {
-            Ok(response) => {
-                match response {
-                    ChatStreamEvent::Start => Some("".to_string()),
-                    ChatStreamEvent::Chunk(StreamChunk { content }) => Some(content.to_string()),
-                    ChatStreamEvent::End(_end_event) => None,
-                }
-            }
+            Ok(response) => match response {
+                ChatStreamEvent::Start => Some("".to_string()),
+                ChatStreamEvent::Chunk(StreamChunk { content }) => Some(content.to_string()),
+                ChatStreamEvent::End(_end_event) => None,
+            },
             Err(_err) => {
                 tracing::info!(target: "log", "LLM stream error");
                 None
@@ -78,6 +88,7 @@ pub async fn genai_service(
     msgs: &[(String, String)],
     model: &str,
     api_key: &str,
+    temperature: f32,
 ) -> String {
     // tracing::info!(target: "tron_app", "in genai_service, prompt: {}", prompt );
     // tracing::info!(target: "tron_app", "in genai_service, msg: {:?}", msgs );
@@ -114,7 +125,20 @@ pub async fn genai_service(
         .with_model_mapper(model_mapper)
         .build();
 
-    let llm_output = client.exec_chat(model, chat_req.clone(), None).await;
+    let chat_option = if model.starts_with("o3") {
+        ChatOptions::default()
+    } else {
+        ChatOptions {
+            temperature: Some(temperature as f64),
+            ..Default::default()
+        }
+    };
+
+    tracing::info!(target: "tron_app", "XXXX1: {:?}", temperature );
+
+    let llm_output = client
+        .exec_chat(model, chat_req.clone(), Some(&chat_option))
+        .await;
     // tracing::info!(target: "tron_app", "in genai_service, llm_output: {:?}", llm_output );
 
     llm_output.unwrap().content_text_into_string().unwrap()

@@ -111,7 +111,6 @@ impl FSMAgentConfigBuilder {
         })
     }
 
-
     pub fn build(self) -> Result<FSMAgentConfig, &'static str> {
         if self.states.is_empty() {
             return Err("At least one state is required");
@@ -151,13 +150,24 @@ pub struct LLMAgent<C: LLMClient> {
     pub summary_prompt: String,
     pub summary: String,
     pub context: Option<String>,
+    pub temperature: Option<f32>,
     pub messages: Vec<(String, String)>, // (role, message)
 }
 
 #[async_trait]
 pub trait LLMClient {
-    async fn generate(&self, prompt: &str, msg: &[(String, String)]) -> String;
-    async fn generate_stream(&self, prompt: &str, msg: &[(String, String)]) -> LLMStreamOut;
+    async fn generate(
+        &self,
+        prompt: &str,
+        msg: &[(String, String)],
+        temperature: Option<f32>,
+    ) -> String;
+    async fn generate_stream(
+        &self,
+        prompt: &str,
+        msg: &[(String, String)],
+        temperature: Option<f32>,
+    ) -> LLMStreamOut;
 }
 
 impl<C: LLMClient> LLMAgent<C> {
@@ -171,6 +181,7 @@ impl<C: LLMClient> LLMAgent<C> {
             fsm_prompt: fsm_config.fsm_prompt.clone(),
             summary_prompt: fsm_config.summary_prompt.clone(),
             messages: Vec::default(),
+            temperature: None,
             context: None,
         }
     }
@@ -183,7 +194,11 @@ impl<C: LLMClient> LLMAgent<C> {
         &mut self,
         user_input: &str,
         tx: Option<Sender<(String, String)>>,
+        temperature: Option<f32>
+
     ) -> Result<String, String> {
+
+        self.temperature = temperature;
         let mut last_message = Vec::<(String, String)>::new();
 
         let current_state_name = self.fsm.current_state().ok_or("No current state")?;
@@ -228,12 +243,17 @@ impl<C: LLMClient> LLMAgent<C> {
             // tracing::info!(target: "tron_app", "prompt: {}\n\n", prompt);
 
             let llm_output = if let Some(tx) = tx.clone() {
-                let _ = tx.send(("message".into(), "LLM request sent, waiting for response\n".into())).await;
+                let _ = tx
+                    .send((
+                        "message".into(),
+                        "LLM request sent, waiting for response\n".into(),
+                    ))
+                    .await;
                 let mut llm_output = String::default();
 
                 let mut llm_stream = self
                     .llm_client
-                    .generate_stream(&prompt, &self.messages)
+                    .generate_stream(&prompt, &self.messages, self.temperature)
                     .await;
                 while let Some(result) = llm_stream.next().await {
                     if let Some(output) = result {
@@ -244,7 +264,7 @@ impl<C: LLMClient> LLMAgent<C> {
                 let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
                 llm_output
             } else {
-                self.llm_client.generate(&prompt, &self.messages).await
+                self.llm_client.generate(&prompt, &self.messages, self.temperature).await
             };
 
             self.messages.push(("assistant".into(), llm_output.clone()));
@@ -262,11 +282,11 @@ impl<C: LLMClient> LLMAgent<C> {
                     .await;
             };
 
-            let next_state = self.llm_client.generate(&fsm_prompt, &self.messages).await;
+            let next_state = self.llm_client.generate(&fsm_prompt, &self.messages, self.temperature).await;
 
             self.summary = self
                 .llm_client
-                .generate(&summary_prompt, &last_message)
+                .generate(&summary_prompt, &last_message, self.temperature)
                 .await;
             // tracing::info!(target: "tron_app", "summary_prompt: {}", summary_prompt);
             // tracing::info!(target: "tron_app", "last_message: {:?}", last_message);
@@ -298,7 +318,9 @@ impl<C: LLMClient> LLMAgent<C> {
                         response.next_state.unwrap_or("Error".into()),
                     ))
                     .await;
-                let _ = tx.send(("message".into(), "You can send new query now.".into())).await;
+                let _ = tx
+                    .send(("message".into(), "You can send new query now.".into()))
+                    .await;
             }
 
             Ok(response.message)
@@ -398,11 +420,11 @@ mod tests {
 
     #[async_trait]
     impl LLMClient for MockLLMClient {
-        async fn generate(&self, _prompt: &str, _msg: &[(String, String)]) -> String {
+        async fn generate(&self, _prompt: &str, _msg: &[(String, String)], _temperature: Option<f32>) -> String {
             r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
                 .to_string()
         }
-        async fn generate_stream(&self, _prompt: &str, _msg: &[(String, String)]) -> LLMStreamOut {
+        async fn generate_stream(&self, _prompt: &str, _msg: &[(String, String)], _temperature: Option<f32>) -> LLMStreamOut {
             unimplemented!()
         }
     }
@@ -439,7 +461,7 @@ mod tests {
 
         let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
 
-        let result = agent.process_message("Test input", None).await;
+        let result = agent.process_message("Test input", None, None).await;
         assert!(result.is_ok());
         assert_eq!(
             result.unwrap(),

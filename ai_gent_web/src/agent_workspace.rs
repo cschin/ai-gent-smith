@@ -587,11 +587,18 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             } else {
                 8
             };
-            let threshold_value: f32 = if let Some(TnAsset::F32(top_k)) = asset_guard.get("threshold_value") {
-                *top_k
+            let threshold_value: f32 = if let Some(TnAsset::F32(threshold_value)) = asset_guard.get("threshold_value") {
+                *threshold_value
             } else {
                 0.75
             };
+
+            let temperature_value: Option<f32> = if let Some(TnAsset::F32(temperature)) = asset_guard.get("temperature_value") {
+                Some(*temperature)
+            } else {
+                None 
+            };
+
 
 
             let query_context = encode_text(&search_asset(&query_text, asset_id, top_k as usize, threshold_value).await).to_string();
@@ -612,7 +619,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query_text.to_string())).await;
             context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
             let _ = insert_message(chat_id, user_id, agent_id, &query_text, "user", "text").await;
-            match agent.process_message(&query_text, Some(tx)).await {
+            match agent.process_message(&query_text, Some(tx), temperature_value).await {
                 Ok(res) => {
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
                     let _ = update_chat_summary(chat_id, &agent.summary).await;

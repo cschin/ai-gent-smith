@@ -514,8 +514,6 @@ pub async fn vector_query_and_sort_points(
         .await
     };
 
-    tracing::info!(target: TRON_APP, "qqqq {:?}", results);
-
     if let Ok(rows) = results {
         for r in rows {
             let p = pgrow_to_point(r);
