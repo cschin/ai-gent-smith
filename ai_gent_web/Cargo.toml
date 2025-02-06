@@ -49,3 +49,4 @@ tron_app = { git = "https://github.com/cschin/tron.git" }
 #tron_app = { path = "../../tron/tron_app" }
 toml = { workspace = true }
 ammonia = "4.0.0"
+comrak = "0.35.0"

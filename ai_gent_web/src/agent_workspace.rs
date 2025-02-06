@@ -36,7 +36,6 @@ use sqlx::{any::AnyRow, prelude::FromRow, query as sqlx_query};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
 use crate::embedding_service::EMBEDDING_SERVICE;
-use pulldown_cmark::{html, Options, Parser};
 
 pub const AGENT_CHAT_TEXTAREA: &str = "agent_chat_textarea";
 pub const AGENT_STREAM_OUTPUT: &str = "agent_stream_output";
@@ -282,9 +281,12 @@ where
             for (role, _m_type, content) in messages.into_iter() {
                 match role.as_str() {
                     "bot" => {
-                        let parser = Parser::new_ext(&content, Options::all());
-                        let mut html_output = String::new();
-                        html::push_html(&mut html_output, parser);
+                        let html_output = [
+                            r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
+                            comrak::markdown_to_html(&content, &comrak::Options::default()),
+                            r#"<article>"#.to_string(),
+                        ]
+                        .join("\n");
                         chatbox::append_chatbox_value(chat_textarea.clone(), (role, html_output))
                             .await;
                     }
@@ -539,11 +541,13 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     )
                     .await},
                     "llm_output" => {
-                        // tracing::info!(target: "tron_app", "LLM Response: {}", r);
-                        let parser = Parser::new_ext(&r, Options::all());
-                        let mut html_output = String::new();
-                        html::push_html(&mut html_output, parser);
                         let query_result_area = context_cloned.get_component(AGENT_CHAT_TEXTAREA).await;
+                        let html_output = [
+                            r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
+                            comrak::markdown_to_html(&r, &comrak::Options::default()),
+                            r#"<article>"#.to_string(),
+                        ]
+                        .join("\n");
                         chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
                         context_cloned.set_ready_for(AGENT_CHAT_TEXTAREA).await;
                     },
@@ -690,28 +694,35 @@ async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) 
         .collect::<Vec<String>>()
         .join("\n========================\n\n");
 
-
     out
 }
 
 async fn extend_query_with_llm(query: &str) -> String {
     let llm_name = "gpt-3.5-turbo";
     let api_key = match llm_name {
-        "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
-            env_name: "OPENAI_API_KEY".to_string()}).unwrap() },
-        "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => { std::env::var("ANTHROPIC_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
-            env_name: "ANTHROPIC_API_KEY".to_string()}).unwrap()
-        },
-        _ => {"".into()}
-
+        "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => std::env::var("OPENAI_API_KEY")
+            .map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+                env_name: "OPENAI_API_KEY".to_string(),
+            })
+            .unwrap(),
+        "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => {
+            std::env::var("ANTHROPIC_API_KEY")
+                .map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+                    env_name: "ANTHROPIC_API_KEY".to_string(),
+                })
+                .unwrap()
+        }
+        _ => "".into(),
     };
 
     let llm_client = GenaiLlmclient {
         model: llm_name.to_string(),
-        api_key
+        api_key,
     };
     let prompt = "find the relevant information about the questions and summary it into a small response less in 100 words.";
-    llm_client.generate(prompt, &[("user".into(), query.into())], Some(0.05)).await
+    llm_client
+        .generate(prompt, &[("user".into(), query.into())], Some(0.05))
+        .await
 }
 
 fn search_asset_clicked(
