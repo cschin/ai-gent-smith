@@ -3,23 +3,23 @@
 
 mod agent_workspace;
 mod asset_cards;
-mod show_single_asset;
 mod embedding_service;
 mod library_cards;
 mod llm_agent;
 mod services;
 mod session_cards;
+mod show_single_asset;
 
 use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
 use askama::Template;
 use asset_cards::{AssetCards, AssetCardsBuilder};
-use show_single_asset::AssetSpacePlot;
 use embedding_service::{DocumentChunk, DocumentChunks};
 use futures_util::Future;
 use library_cards::{LibraryCards, LibraryCardsBuilder};
 use pgvector::Vector;
 use session_cards::{SessionCards, SessionCardsBuilder};
+use show_single_asset::AssetSpacePlot;
 
 use axum::{
     body::Body,
@@ -897,22 +897,45 @@ async fn use_agent(
 use uuid::{timestamp::context, Uuid};
 
 #[derive(Template)] // this will generate the code...
-#[template(path = "simple_agent_config.json.template", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
+#[template(path = "simple_agent_config.toml.template", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct SimpleAgentConfigTemplate {
-    prompt: String,
+    sys_prompt: String,
     follow_up: String,
 }
 
-fn get_basic_fsm_agent_config_toml_string(prompt: String, follow_up: Option<String>) -> String {
-    let prompt = serde_json::to_string_pretty(&prompt).unwrap();
-    let follow_up = serde_json::to_string_pretty(
-        &follow_up.unwrap_or(r#"
+
+#[derive(Serialize)]
+struct SysPromptInConfig {
+    sys_prompt: String,
+}
+
+#[allow(non_snake_case)]
+#[derive(Serialize)]
+struct FollowUpPromptInConfig {
+    FollowUp: String,
+}
+
+
+fn get_basic_fsm_agent_config_toml_string(sys_prompt: String, follow_up: Option<String>) -> String {
+    let sys_prompt = toml::to_string(&SysPromptInConfig {sys_prompt}).unwrap();
+    //toml::ser::ValueSerializer::new(&mut prompt);
+    tracing::info!(target: TRON_APP, "debug toml string: {}", sys_prompt);
+    let follow_up = if let Some(follow_up) = follow_up {
+        toml::to_string(&FollowUpPromptInConfig {FollowUp: follow_up}).unwrap()
+    } else {
+        let follow_up_prompt = r#"
         Your goal to see if you have enough information to address the user's question,
-        if not, please ask more questions for the information you need."#.to_string())).unwrap();
-    let simple_agent_config = SimpleAgentConfigTemplate { prompt, follow_up }
+        if not, please ask more questions for the information you need."#
+                    .to_string();
+        toml::to_string(&FollowUpPromptInConfig {FollowUp: follow_up_prompt}).unwrap()
+    };
+    let simple_agent_config = SimpleAgentConfigTemplate { sys_prompt, follow_up }
         .render()
         .unwrap();
-    let c = FSMAgentConfigBuilder::from_json(&simple_agent_config).unwrap().build().unwrap();
+    let c = FSMAgentConfigBuilder::from_toml(&simple_agent_config)
+        .unwrap()
+        .build()
+        .unwrap();
     toml::to_string(&c).unwrap()
 }
 
@@ -934,7 +957,7 @@ async fn create_basic_agent(
 
     let prompt = agent_setting_form.prompt;
     let follow_up = agent_setting_form.follow_up_prompt;
-    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up); 
+    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up);
 
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {
@@ -1008,11 +1031,12 @@ async fn create_adv_agent(
         None
     };
 
-    if  toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
+    if toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
         return Html::from(
-            r#"<p class="py-4">FSM Agent Config Parsing Failure, check the format!! </p>"#.to_string()
-        )
-    } 
+            r#"<p class="py-4">FSM Agent Config Parsing Failure, check the format!! </p>"#
+                .to_string(),
+        );
+    }
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
@@ -1067,7 +1091,7 @@ async fn update_basic_agent(
 
     let prompt = agent_setting_form.prompt;
     let follow_up = agent_setting_form.follow_up_prompt;
-    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up); 
+    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up);
 
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {
@@ -1139,11 +1163,12 @@ async fn update_adv_agent(
         None
     };
 
-    if  toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
+    if toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
         return Html::from(
-            r#"<p class="py-4">FSM Agent Config Parsing Failure, check the format!! </p>"#.to_string()
-        )
-    } 
+            r#"<p class="py-4">FSM Agent Config Parsing Failure, check the format!! </p>"#
+                .to_string(),
+        );
+    }
 
     let agent_setting = AgentSetting {
         name: agent_setting_form.name.clone(),
