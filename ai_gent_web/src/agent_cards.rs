@@ -2,6 +2,7 @@ use askama::Template;
 use async_trait::async_trait;
 use sqlx::Acquire;
 use sqlx::Postgres;
+use tron_app::TRON_APP;
 use std::collections::HashMap;
 use std::sync::Arc;
 use tron_app::tron_components::*;
@@ -61,13 +62,12 @@ impl<'a> TnComponentRenderTrait<'a> for LibraryCards<'a>
 where
     'a: 'static,
 {
-    /// Generates the internal HTML representation of the button component.
     async fn render(&self) -> String {
         let query = format!(
             "SELECT a.agent_id, a.name, a.description
             FROM agents a
             JOIN users u ON a.user_id = u.user_id
-            WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.agent_id ASC;",
+            WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.name ASC;",
             self.user_data, self.status_to_render
         );
         let pool = self

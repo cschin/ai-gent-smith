@@ -4,7 +4,7 @@
 mod agent_workspace;
 mod asset_cards;
 mod embedding_service;
-mod library_cards;
+mod agent_cards;
 mod llm_agent;
 mod services;
 mod session_cards;
@@ -17,7 +17,7 @@ use askama::Template;
 use asset_cards::{AssetCards, AssetCardsBuilder};
 use embedding_service::{DocumentChunk, DocumentChunks};
 use futures_util::Future;
-use library_cards::{LibraryCards, LibraryCardsBuilder};
+use agent_cards::{LibraryCards, LibraryCardsBuilder};
 use pgvector::Vector;
 use session_cards::{SessionCards, SessionCardsBuilder};
 use show_single_asset::AssetSpacePlot;
@@ -101,7 +101,7 @@ struct AgentSetting {
 }
 
 static BUTTON: &str = "button";
-static LIBRARY_CARDS: &str = "lib_cards";
+static AGENT_CARDS: &str = "lib_cards";
 static SESSION_CARDS: &str = "session_cards";
 static ASSET_CARDS: &str = "asset_cards";
 static AGENT_WORKSPACE: &str = "agent_workspace";
@@ -190,7 +190,7 @@ fn build_context() -> TnContext {
     let mut context = TnContextBase::default();
 
     LibraryCards::builder()
-        .init(LIBRARY_CARDS.into(), "cards".into(), "active")
+        .init(AGENT_CARDS.into(), "cards".into(), "active")
         .set_attr("class", "btn btn-sm btn-outline btn-primary flex-1")
         .add_to_context(&mut context);
 
@@ -355,7 +355,7 @@ struct AppPageTemplate {
 fn layout(context: TnContext) -> TnFutureString {
     tn_future! {
         let context_guard = context.read().await;
-        let library_cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
+        let library_cards = context_guard.get_initial_rendered_string(AGENT_CARDS).await;
         let mut agent_buttons = Vec::<String>::new();
         for btn in [SHOW_AGENT_LIB_BTN,
                     BASIC_AGENT_DESIGN_BTN,
@@ -437,7 +437,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
 
             SHOW_AGENT_LIB_BTN => {
                 let context_guard = context.read().await;
-                let cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
+                let cards = context_guard.get_initial_rendered_string(AGENT_CARDS).await;
                 Some(cards)
             },
 
@@ -474,7 +474,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
             SEARCH_AGENT_BTN => {
                 // TODO: need a chat system to find the right agent
                 let context_guard = context.read().await;
-                let cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
+                let cards = context_guard.get_initial_rendered_string(AGENT_CARDS).await;
                 Some(cards)
 
             },
@@ -483,6 +483,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let context_guard = context.read().await;
                 let mut assets_guard = context_guard.assets.write().await;
                 assets_guard.insert("since_then_in_days".into(), TnAsset::U32(1));
+                assets_guard.insert("session_title".into(), TnAsset::String("last 24 hours".to_string()));
                 let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
                 Some(cards)
             },
@@ -491,6 +492,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let context_guard = context.read().await;
                 let mut assets_guard = context_guard.assets.write().await;
                 assets_guard.insert("since_then_in_days".into(), TnAsset::U32(2));
+                assets_guard.insert("session_title".into(), TnAsset::String("last 48 hours".to_string()));
                 let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
                 Some(cards)
             },
@@ -499,6 +501,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let context_guard = context.read().await;
                 let mut assets_guard = context_guard.assets.write().await;
                 assets_guard.insert("since_then_in_days".into(), TnAsset::U32(7));
+                assets_guard.insert("session_title".into(), TnAsset::String("last week".to_string()));
                 let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
                 Some(cards)
             },
@@ -508,6 +511,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let mut assets_guard = context_guard.assets.write().await;
                 //assets_guard.remove("since_then_in_days");
                 assets_guard.insert("since_then_in_days".into(), TnAsset::U32(3650));
+                assets_guard.insert("session_title".into(), TnAsset::String("all".to_string()));
                 let cards = context_guard.get_initial_rendered_string(SESSION_CARDS).await;
                 Some(cards)
             },
@@ -556,7 +560,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
 
             _ => {
                 let context_guard = context.read().await;
-                let cards = context_guard.get_initial_rendered_string(LIBRARY_CARDS).await;
+                let cards = context_guard.get_initial_rendered_string(AGENT_CARDS).await;
                 Some(cards)
             }
         };
@@ -903,7 +907,6 @@ struct SimpleAgentConfigTemplate {
     follow_up: String,
 }
 
-
 #[derive(Serialize)]
 struct SysPromptInConfig {
     sys_prompt: String,
@@ -915,23 +918,31 @@ struct FollowUpPromptInConfig {
     FollowUp: String,
 }
 
-
 fn get_basic_fsm_agent_config_toml_string(sys_prompt: String, follow_up: Option<String>) -> String {
-    let sys_prompt = toml::to_string(&SysPromptInConfig {sys_prompt}).unwrap();
+    let sys_prompt = toml::to_string(&SysPromptInConfig { sys_prompt }).unwrap();
     //toml::ser::ValueSerializer::new(&mut prompt);
     tracing::info!(target: TRON_APP, "debug toml string: {}", sys_prompt);
     let follow_up = if let Some(follow_up) = follow_up {
-        toml::to_string(&FollowUpPromptInConfig {FollowUp: follow_up}).unwrap()
+        toml::to_string(&FollowUpPromptInConfig {
+            FollowUp: follow_up,
+        })
+        .unwrap()
     } else {
         let follow_up_prompt = r#"
         Your goal to see if you have enough information to address the user's question,
         if not, please ask more questions for the information you need."#
-                    .to_string();
-        toml::to_string(&FollowUpPromptInConfig {FollowUp: follow_up_prompt}).unwrap()
+            .to_string();
+        toml::to_string(&FollowUpPromptInConfig {
+            FollowUp: follow_up_prompt,
+        })
+        .unwrap()
     };
-    let simple_agent_config = SimpleAgentConfigTemplate { sys_prompt, follow_up }
-        .render()
-        .unwrap();
+    let simple_agent_config = SimpleAgentConfigTemplate {
+        sys_prompt,
+        follow_up,
+    }
+    .render()
+    .unwrap();
     let c = FSMAgentConfigBuilder::from_toml(&simple_agent_config)
         .unwrap()
         .build()
@@ -998,10 +1009,23 @@ async fn create_basic_agent(
     .await;
 
     //let uuid = Uuid::new_v4();
-    Html::from(format!(
-        r#"<p class="py-4">An agent "{}" is created </p>"#,
-        agent_setting_form.name
-    ))
+    let html_rtn = format!(
+        r##"        
+    <div id="update_agent_notification_msg">
+        <div>
+            <p class="py-4">The agent "{}" is created </a>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm" onclick='document.querySelector("#show_agent_btn").click()'>Close</button>
+            </form>
+        </div>
+    </div>"##,
+        clean_text(&agent_setting_form.name)
+    );
+
+    Html::from(html_rtn)
 }
 
 async fn create_adv_agent(
@@ -1033,8 +1057,18 @@ async fn create_adv_agent(
 
     if toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
         return Html::from(
-            r#"<p class="py-4">FSM Agent Config Parsing Failure, check the format!! </p>"#
-                .to_string(),
+            r##"
+        <div id="update_agent_notification_msg">
+            <div>
+                <p class="py-4">FSM Agent Config Parsing Failure, check the format!!</p>
+            </div>
+            <div class="modal-action">
+                <form method="dialog">
+                    <!-- if there is a button in form, it will close the modal -->
+                    <button class="btn btn-sm">Close</button>
+                </form>
+            </div>
+        </div>"##.to_string()
         );
     }
 
@@ -1066,10 +1100,24 @@ async fn create_adv_agent(
     .await;
 
     //let uuid = Uuid::new_v4();
-    Html::from(format!(
-        r#"<p class="py-4">An agent "{}" is created </p>"#,
+
+    let html_rtn = format!(
+        r##"        
+    <div id="update_agent_notification_msg">
+        <div>
+            <p class="py-4">The agent "{}" is created </a>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm" onclick='document.querySelector("#show_agent_btn").click()'>Close</button>
+            </form>
+        </div>
+    </div>"##,
         clean_text(&agent_setting_form.name)
-    ))
+    );
+
+    Html::from(html_rtn)
 }
 
 async fn update_basic_agent(
@@ -1129,10 +1177,24 @@ async fn update_basic_agent(
     .fetch_one(&db_pool)
     .await;
 
-    Html::from(format!(
-        r#"<p class="py-4">The agent "{}" is updated </p>"#,
+
+    let html_rtn = format!(
+        r##"        
+    <div id="update_agent_notification_msg">
+        <div>
+            <p class="py-4">The agent "{}" is updated </a>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm" onclick='document.querySelector("#show_agent_btn").click()'>Close</button>
+            </form>
+        </div>
+    </div>"##,
         clean_text(&agent_setting_form.name)
-    ))
+    );
+
+    Html::from(html_rtn)
 }
 
 async fn update_adv_agent(
@@ -1165,8 +1227,18 @@ async fn update_adv_agent(
 
     if toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
         return Html::from(
-            r#"<p class="py-4">FSM Agent Config Parsing Failure, check the format!! </p>"#
-                .to_string(),
+            r##"
+        <div id="update_agent_notification_msg">
+            <div>
+                <p class="py-4">FSM Agent Config Parsing Failure, check the format!!</p>
+            </div>
+            <div class="modal-action">
+                <form method="dialog">
+                    <!-- if there is a button in form, it will close the modal -->
+                    <button class="btn btn-sm">Close</button>
+                </form>
+            </div>
+        </div>"##.to_string()
         );
     }
 
@@ -1195,11 +1267,23 @@ async fn update_adv_agent(
     .fetch_one(&db_pool)
     .await;
 
-    //let uuid = Uuid::new_v4();
-    Html::from(format!(
-        r#"<p class="py-4">The agent "{}" is updated </p>"#,
+    let html_rtn = format!(
+        r##"        
+    <div id="update_agent_notification_msg">
+        <div>
+            <p class="py-4">The agent "{}" is updated </a>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm" onclick='document.querySelector("#show_agent_btn").click()'>Close</button>
+            </form>
+        </div>
+    </div>"##,
         clean_text(&agent_setting_form.name)
-    ))
+    );
+
+    Html::from(html_rtn)
 }
 
 async fn deactivate_agent(
@@ -1228,10 +1312,21 @@ async fn deactivate_agent(
     .await
     .expect("sql query error");
 
-    Html::from(format!(
-        r#"<p class="py-4">The agent "{}" is deactivated"#,
+    let html_rtn = format!(
+        r##"        
+        <div id="update_agent_notification_msg">
+            <p class="py-4">The agent "{}" is deactivated </a>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm" onclick='document.querySelector("#show_agent_btn").click()'>Close</button>
+            </form>
+        </div>"##,
         clean_text(&row.name)
-    ))
+    );
+
+    Html::from(html_rtn)
 }
 
 async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, session: Session) {

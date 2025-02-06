@@ -27,6 +27,7 @@ pub struct SessionCards<'a: 'static> {
     username: String,
     status_to_render: String,
     since_then: Option<DateTime<Utc>>,
+    session_title: String
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -61,6 +62,7 @@ impl<'a: 'static> SessionCards<'a> {
 #[template(path = "sessions.html", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct ChatSessionTemplate {
     cards: Vec<(i32, String, String, String)>,
+    session_title: String
 }
 
 #[async_trait]
@@ -68,7 +70,6 @@ impl<'a> TnComponentRenderTrait<'a> for SessionCards<'a>
 where
     'a: 'static,
 {
-    /// Generates the internal HTML representation of the button component.
     async fn render(&self) -> String {
         let since_then = if let Some(since_then) = self.since_then {
             since_then 
@@ -110,7 +111,7 @@ where
             })
             .collect::<Vec<_>>();
         
-        let html = ChatSessionTemplate { cards };
+        let html = ChatSessionTemplate { cards, session_title: self.session_title.clone() };
         html.render().unwrap()
     }
 
@@ -140,6 +141,9 @@ where
         let assets_guard = ctx.assets.read().await;
         if let Some(TnAsset::U32(since_then_in_days)) = assets_guard.get("since_then_in_days") {
             self.since_then =  Some(Utc::now() - chrono::Duration::days(*since_then_in_days as i64));
+        } 
+        if let Some(TnAsset::String(session_title)) = assets_guard.get("session_title") {
+            self.session_title =  session_title.to_string();
         } 
     }
 

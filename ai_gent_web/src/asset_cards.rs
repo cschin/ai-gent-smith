@@ -63,13 +63,12 @@ impl<'a> TnComponentRenderTrait<'a> for AssetCards<'a>
 where
     'a: 'static,
 {
-    /// Generates the internal HTML representation of the button component.
     async fn render(&self) -> String {
         let query = format!(
             "SELECT a.asset_id, a.name, a.description
             FROM assets a
             JOIN users u ON a.user_id = u.user_id
-            WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.asset_id ASC;",
+            WHERE u.username = '{}' AND a.status = '{}' ORDER BY a.name ASC;",
             self.user_data,
             self.status_to_render
         );
