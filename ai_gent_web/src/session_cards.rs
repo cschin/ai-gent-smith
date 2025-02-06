@@ -2,7 +2,6 @@ use askama::Template;
 use async_trait::async_trait;
 use chrono::DateTime;
 use chrono::Local;
-use html_escape::encode_text;
 use sqlx::query;
 use sqlx::Acquire;
 use sqlx::Postgres;
@@ -98,7 +97,7 @@ where
             .iter()
             .map(|row| {
                 let id: i32 = row.chat_id;
-                let name: String = encode_text(&row.agent_name).to_string();
+                let name: String = ammonia::clean_text(&row.agent_name).to_string();
                 let when: String = if let Some(utc_dt) = row.updated_at {
                     let local_dt = utc_dt.with_timezone(&Local); // Convert to local timezone
                     let formatted_time = local_dt.format("%b %d %H:%M").to_string();
@@ -106,7 +105,7 @@ where
                 } else {
                     "".into()
                 };
-                let description: String = encode_text(&row.summary.clone().unwrap_or_default()).to_string();
+                let description: String = ammonia::clean_text(&row.summary.clone().unwrap_or_default()).to_string();
                 (id, name, when, description)
             })
             .collect::<Vec<_>>();

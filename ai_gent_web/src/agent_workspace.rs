@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use axum::http::HeaderMap;
 use axum::response::Html;
 use candle_core::WithDType;
-use html_escape::encode_text;
 use ordered_float::OrderedFloat;
 use serde_json::Value;
 use std::collections::HashMap;
@@ -446,7 +445,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
         let query_text = if let TnComponentValue::String(query_text) = query_text {
-            encode_text(&query_text).to_string()
+            ammonia::clean_text(&query_text).to_string()
         } else {
             return None
         };
@@ -600,7 +599,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
 
 
-            let query_context = encode_text(&search_asset(&query_text, asset_id, top_k as usize, threshold_value).await).to_string();
+            let query_context = ammonia::clean_text(&search_asset(&query_text, asset_id, top_k as usize, threshold_value).await).to_string();
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,

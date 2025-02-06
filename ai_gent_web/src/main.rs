@@ -12,6 +12,7 @@ mod show_single_asset;
 
 use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
+use ammonia::clean_text;
 use askama::Template;
 use asset_cards::{AssetCards, AssetCardsBuilder};
 use embedding_service::{DocumentChunk, DocumentChunks};
@@ -61,7 +62,6 @@ use std::{
     collections::HashMap, default, fs::File, ops::Bound, pin::Pin, sync::Arc, task::Context,
 };
 
-use html_escape::encode_text;
 use once_cell::sync::Lazy;
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
@@ -451,7 +451,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let asset_list = get_active_asset_list(&user_data.username).await;
                 let mut asset_options = vec![r#"<option value=0 selected>No Asset</option>"#.to_string()];
                 asset_options.extend(asset_list.into_iter().map(|(id, name)| {
-                    format!(r#" <option value={}>{}</option>"#, id, encode_text(&name)) } ));
+                    format!(r#" <option value={}>{}</option>"#, id, ammonia::clean_text(&name)) } ));
                 let template = SetupAgentTemplate { model_options, asset_options };
                 Some(template.render().unwrap())
             },
@@ -465,7 +465,7 @@ fn change_workspace(context: TnContext, event: TnEvent, _payload: Value) -> TnFu
                 let asset_list = get_active_asset_list(&user_data.username).await;
                 let mut asset_options = vec![r#"<option value=0 selected>No Asset</option>"#.to_string()];
                 asset_options.extend(asset_list.into_iter().map(|(id, name)| {
-                    format!(r#" <option value={}>{}</option>"#, id, encode_text(&name)) } ));
+                    format!(r#" <option value={}>{}</option>"#, id, ammonia::clean_text(&name)) } ));
 
                 let template = SetupAdvAgentTemplate { model_options, asset_options};
                 Some(template.render().unwrap())
@@ -624,10 +624,10 @@ WHERE u.username = $1 AND a.agent_id = $2;",
                 format!(
                     r#" <option value={} selected>{}</option>"#,
                     id,
-                    encode_text(&name)
+                    clean_text(&name)
                 )
             } else {
-                format!(r#" <option value={}>{}</option>"#, id, encode_text(&name))
+                format!(r#" <option value={}>{}</option>"#, id, clean_text(&name))
             }
         })
         .collect();
@@ -1068,7 +1068,7 @@ async fn create_adv_agent(
     //let uuid = Uuid::new_v4();
     Html::from(format!(
         r#"<p class="py-4">An agent "{}" is created </p>"#,
-        agent_setting_form.name
+        clean_text(&agent_setting_form.name)
     ))
 }
 
@@ -1131,7 +1131,7 @@ async fn update_basic_agent(
 
     Html::from(format!(
         r#"<p class="py-4">The agent "{}" is updated </p>"#,
-        agent_setting_form.name
+        clean_text(&agent_setting_form.name)
     ))
 }
 
@@ -1198,7 +1198,7 @@ async fn update_adv_agent(
     //let uuid = Uuid::new_v4();
     Html::from(format!(
         r#"<p class="py-4">The agent "{}" is updated </p>"#,
-        agent_setting_form.name
+        clean_text(&agent_setting_form.name)
     ))
 }
 
@@ -1230,7 +1230,7 @@ async fn deactivate_agent(
 
     Html::from(format!(
         r#"<p class="py-4">The agent "{}" is deactivated"#,
-        row.name
+        clean_text(&row.name)
     ))
 }
 
@@ -1637,7 +1637,7 @@ async fn create_asset(
         //let uuid = Uuid::new_v4();
         Html::from(format!(
             r#"<p class="py-4">An Asset Collection "{}" is created </p>"#,
-            asset_setting_form.name
+            clean_text(&asset_setting_form.name)
         ))
     } else {
         Html::from(r#"<p class="py-4">No Valid Asset Data Uploaded</p>"#.to_string())
