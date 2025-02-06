@@ -1,6 +1,7 @@
 use ai_gent_lib::fsm::FSMBuilder;
 use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
+use ai_gent_lib::llm_agent::LLMClient;
 use askama::Template;
 use async_trait::async_trait;
 use axum::http::HeaderMap;
@@ -512,8 +513,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             _ => {"".into()}
 
         };
-            std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
-            env_name: "OPENAI_API_KEY".to_string()}).unwrap();
 
         let llm_client = GenaiLlmclient {
             model: llm_name,
@@ -596,7 +595,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             let temperature_value: Option<f32> = if let Some(TnAsset::F32(temperature)) = asset_guard.get("temperature_value") {
                 Some(*temperature)
             } else {
-                None 
+                None
             };
 
 
@@ -640,6 +639,10 @@ async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) 
         return "".to_string();
     };
 
+    // use LLM to extend the context for simple question
+    // let query = &extend_query_with_llm(query).await;
+
+    tracing::info!(target: TRON_APP, "extended query: {}", query);
     let tk_service = TextChunkingService::new(None, 128, 0, 4096);
 
     let mut chunks = tk_service.text_to_chunks(query);
@@ -657,7 +660,7 @@ async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) 
         let sorted_points =
             vector_query_and_sort_points(asset_id, &ev, Some(top_k as i32), Some(threshold)).await;
         if sorted_points.is_empty() {
-            break
+            break;
         };
         let d = sorted_points.first().unwrap().d;
         if d < min_d {
@@ -688,7 +691,28 @@ async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) 
         .collect::<Vec<String>>()
         .join("\n========================\n\n");
 
+
     out
+}
+
+async fn extend_query_with_llm(query: &str) -> String {
+    let llm_name = "gpt-3.5-turbo";
+    let api_key = match llm_name {
+        "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+            env_name: "OPENAI_API_KEY".to_string()}).unwrap() },
+        "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => { std::env::var("ANTHROPIC_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+            env_name: "ANTHROPIC_API_KEY".to_string()}).unwrap()
+        },
+        _ => {"".into()}
+
+    };
+
+    let llm_client = GenaiLlmclient {
+        model: llm_name.to_string(),
+        api_key
+    };
+    let prompt = "find the relevant information about the questions and summary it into a small response less in 100 words.";
+    llm_client.generate(prompt, &[("user".into(), query.into())], Some(0.05)).await
 }
 
 fn search_asset_clicked(
