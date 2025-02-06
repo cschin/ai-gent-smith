@@ -70,6 +70,7 @@ pub async fn genai_stream_service(
                 ChatStreamEvent::Start => Some("".to_string()),
                 ChatStreamEvent::Chunk(StreamChunk { content }) => Some(content.to_string()),
                 ChatStreamEvent::End(_end_event) => None,
+                ChatStreamEvent::ReasoningChunk(StreamChunk { content }) => Some(content.to_string()),
             },
             Err(_err) => {
                 tracing::info!(target: "log", "LLM stream error");
