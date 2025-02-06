@@ -195,7 +195,6 @@ impl<C: LLMClient> LLMAgent<C> {
         user_input: &str,
         tx: Option<Sender<(String, String)>>,
         temperature: Option<f32>
-
     ) -> Result<String, String> {
 
         self.temperature = temperature;
@@ -454,7 +453,9 @@ mod tests {
             .unwrap();
         let llm_client = MockLLMClient;
 
-        let fsm_config = FSMAgentConfigBuilder::from_json("")
+        let fsm_config_str = include_str!("../../ai_gent_tools/dev_config/fsm_config.json");
+
+        let fsm_config = FSMAgentConfigBuilder::from_json(fsm_config_str)
             .unwrap()
             .build()
             .unwrap();
