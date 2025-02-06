@@ -413,9 +413,9 @@ pub async fn initialize_embedding_model() {
 
     let _result = TEXT_CHUNKING_SERVICE
         .get_or_init(|| async {
-            println!("load embedding model");
+            println!("load text chunking service");
             let es = TextChunkingService::new(None, 1024, 256, 4096);
-            println!("finish loading embedding model");
+            println!("finish loading text chunking service");
             es
         })
         .await;
