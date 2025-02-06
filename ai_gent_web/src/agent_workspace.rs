@@ -447,7 +447,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
 
         let query_text = if let TnComponentValue::String(query_text) = query_text {
-            ammonia::clean_text(&query_text).to_string()
+            query_text
         } else {
             return None
         };
@@ -618,7 +618,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             )
             .await;
             let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
-            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), query_text.to_string())).await;
+            chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), ammonia::clean_text(&query_text))).await;
             context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
             let _ = insert_message(chat_id, user_id, agent_id, &query_text, "user", "text").await;
             match agent.process_message(&query_text, Some(tx), temperature_value).await {
