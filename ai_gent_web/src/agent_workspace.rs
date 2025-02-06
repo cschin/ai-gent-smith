@@ -283,7 +283,7 @@ where
                     "bot" => {
                         let html_output = [
                             r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
-                            comrak::markdown_to_html(&content, &comrak::Options::default()),
+                            comrak::markdown_to_html(&ammonia::clean_text(&content), &comrak::Options::default()),
                             r#"<article>"#.to_string(),
                         ]
                         .join("\n");
@@ -291,7 +291,7 @@ where
                             .await;
                     }
                     _ => {
-                        chatbox::append_chatbox_value(chat_textarea.clone(), (role, content)).await;
+                        chatbox::append_chatbox_value(chat_textarea.clone(), (role,  ammonia::clean_text(&content))).await;
                     }
                 }
             }
@@ -544,7 +544,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         let query_result_area = context_cloned.get_component(AGENT_CHAT_TEXTAREA).await;
                         let html_output = [
                             r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
-                            comrak::markdown_to_html(&r, &comrak::Options::default()),
+                            comrak::markdown_to_html( &ammonia::clean_text(&r), &comrak::Options::default()),
                             r#"<article>"#.to_string(),
                         ]
                         .join("\n");
