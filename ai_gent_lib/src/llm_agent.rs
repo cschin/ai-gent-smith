@@ -208,11 +208,12 @@ impl<C: LLMClient> LLMAgent<C> {
         self.temperature = temperature;
         let mut last_message = Vec::<(String, String)>::new();
 
-        let current_state_name = self.fsm.current_state().ok_or("No current state")?;
 
         self.messages.push(("user".into(), user_input.into()));
         last_message.push(("user".into(), user_input.into()));
 
+        // Handle FSM state transition
+        let current_state_name = self.fsm.current_state().ok_or("No current state")?;
         if let Some(tx) = tx.clone() {
             let _ = tx.send(("clear".into(), "".into())).await;
             let _ = tx
@@ -254,6 +255,7 @@ impl<C: LLMClient> LLMAgent<C> {
         let next_state_name = self.fsm.current_state().ok_or("No current state")?;
         let next_state = self.fsm.states.get(&next_state_name).unwrap();
 
+        // Process the last message for chat
         if let Some(prompt) = next_state.get_attribute("prompt").await {
             let prompt = if let Some(context) = self.context.as_ref() {
                 [
@@ -276,11 +278,6 @@ impl<C: LLMClient> LLMAgent<C> {
             }
             .join("\n");
 
-            let summary_prompt = [self.summary_prompt.as_str(), self.summary.as_str()].join("\n");
-
-            // tracing::info!(target: "tron_app", "summary prompt: {}\n\n", summary_prompt);
-            // tracing::info!(target: "tron_app", "prompt: {}\n\n", prompt);
-
             let llm_output = if let Some(tx) = tx.clone() {
                 let _ = tx
                     .send((
@@ -294,6 +291,7 @@ impl<C: LLMClient> LLMAgent<C> {
                     .llm_client
                     .generate_stream(&prompt, &self.messages, self.temperature)
                     .await;
+
                 while let Some(result) = llm_stream.next().await {
                     if let Some(output) = result {
                         llm_output.push_str(&output);
@@ -308,6 +306,7 @@ impl<C: LLMClient> LLMAgent<C> {
                     .await
             };
 
+            // Generate Summary
             self.messages.push(("assistant".into(), llm_output.clone()));
             last_message.push(("assistant".into(), llm_output.clone()));
 
@@ -318,11 +317,14 @@ impl<C: LLMClient> LLMAgent<C> {
                     .await;
             };
 
+            let summary_prompt = [self.summary_prompt.as_str(), self.summary.as_str()].join("\n");
+
             self.summary = self
                 .llm_client
                 .generate(&summary_prompt, &last_message, self.temperature)
                 .await;
 
+            // Status update
             if let Some(tx) = tx {
                 let _ = tx
                     .send((
