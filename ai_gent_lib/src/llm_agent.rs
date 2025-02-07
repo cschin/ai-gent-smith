@@ -470,7 +470,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let fsm = FSMBuilder::from_config(&fsm_config)
+        let fsm = FSMBuilder::from_config::<crate::fsm::DefaultFSMChatState>(&fsm_config, HashMap::default())
             .unwrap()
             .build()
             .unwrap();

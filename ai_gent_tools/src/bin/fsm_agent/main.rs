@@ -47,13 +47,14 @@ const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
 //     Ok(())
 // }
 
+use std::collections::HashMap;
 use std::io::{stdout, Write}; //for flush()
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG)?.build()?;
 
-    let fsm = FSMBuilder::from_config(&fsm_config)?.build()?;
+    let fsm = FSMBuilder::from_config::<ai_gent_lib::fsm::DefaultFSMChatState>(&fsm_config, HashMap::default())?.build()?;
 
     let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
         env_name: "OPENAI_API_KEY".to_string()}).unwrap();

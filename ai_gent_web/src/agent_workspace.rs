@@ -1,4 +1,7 @@
+use ai_gent_lib::fsm::DefaultFSMChatState;
 use ai_gent_lib::fsm::FSMBuilder;
+use ai_gent_lib::fsm::FSMState;
+use ai_gent_lib::fsm::FSMStateInit;
 use ai_gent_lib::llm_agent::FSMAgentConfig;
 use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
@@ -10,6 +13,7 @@ use axum::response::Html;
 use candle_core::WithDType;
 use ordered_float::OrderedFloat;
 use serde_json::Value;
+use tokio::sync::RwLock;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::default;
@@ -49,6 +53,63 @@ pub const TOPK_SLIDER: &str = "topk_slider";
 pub const THRESHOLD_SLIDER: &str = "threshold_slider";
 pub const TEMPERATURE_SLIDER: &str = "temperature_slider";
 //pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
+
+#[derive(Debug, Clone)]
+pub struct FSMChatState {
+    name: String,
+    attributes: Arc<RwLock<HashMap<String, String>>>,
+}
+
+impl FSMStateInit for FSMChatState {
+    fn new(name: &str, prompt: &str) -> Self {
+        let mut attributes = HashMap::new();
+        attributes.insert("prompt".to_string(), prompt.to_string()); 
+        let attributes= Arc::new(RwLock::new(attributes)); 
+        FSMChatState {
+            name: name.to_string(),
+            attributes,
+        }
+    }
+}
+
+
+#[async_trait]
+impl FSMState for FSMChatState {
+    async fn on_enter(&self) {
+        tracing::info!(target: TRON_APP, "Entering state: {}", self.name);
+    }
+
+    async fn on_exit(&self) {
+        tracing::info!(target: TRON_APP, "Exiting state: {}", self.name);
+    }
+
+    async fn on_enter_mut(&mut self) {
+        tracing::info!(target: TRON_APP, "Entering state (mut): {}", self.name);
+    }
+
+    async fn on_exit_mut(&mut self) {
+        tracing::info!(target: TRON_APP, "Exiting state (mut): {}", self.name);
+    }
+
+    async fn set_attribute(&mut self, k: &str, v: String) {
+        let mut guard = self.attributes.write().await;
+        guard.insert(k.to_string(), v);
+    }
+
+    async fn get_attribute(&self, k: &str) -> Option<String> {
+        let guard = self.attributes.read().await;
+        guard.get(k).cloned()
+    }
+
+    async fn clone_attribute(&self, k: &str) -> Option<String> {
+        let guard = self.attributes.read().await;
+        guard.get(k).cloned()
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+}
 
 #[non_exhaustive]
 #[derive(ComponentBase)]
@@ -584,7 +645,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let fsm_config = FSMAgentConfigBuilder::from_toml(&fsm_agent_config).unwrap().build().unwrap();
 
-        let fsm = FSMBuilder::from_config(&fsm_config).unwrap().build().unwrap();
+        let fsm = FSMBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
 
         let api_key = match llm_name.as_str() {
             "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
@@ -688,7 +749,7 @@ async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) 
     // use LLM to extend the context for simple question
     // let query = &extend_query_with_llm(query).await;
     // tracing::info!(target: TRON_APP, "extended query: {}", query);
-    
+
     let tk_service = TextChunkingService::new(None, 128, 0, 4096);
 
     let mut chunks = tk_service.text_to_chunks(query);

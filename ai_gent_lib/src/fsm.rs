@@ -18,13 +18,19 @@ pub trait FSMState: Send + Sync {
     async fn on_enter_mut(&mut self) {}
     async fn on_exit_mut(&mut self) {}
     async fn set_attribute(&mut self, _k: &str, _v: String) {}
-    async fn get_attribute(&self, _k: &str) -> Option<String> { None }
+    async fn get_attribute(&self, _k: &str) -> Option<String> {
+        None
+    }
     async fn clone_attribute(&self, _k: &str) -> Option<String> {
         unimplemented!()
     }
     fn name(&self) -> String {
         unimplemented!()
     }
+}
+
+pub trait FSMStateInit {
+    fn new(name: &str, prompt: &str) -> Self;
 }
 
 pub struct FSM {
@@ -51,34 +57,23 @@ pub struct DefaultFSMChatState {
     attributes: HashMap<String, String>,
 }
 
-impl DefaultFSMChatState {
-    pub fn new(name: String, prompt: String) -> Self {
+impl FSMStateInit for DefaultFSMChatState {
+    fn new(name: &str, prompt: &str) -> Self {
         let mut attributes = HashMap::new();
-        attributes.insert("prompt".to_string(), prompt); 
-        DefaultFSMChatState {
-            name,
-            attributes,
-        }
+        attributes.insert("prompt".to_string(), prompt.to_string());
+        DefaultFSMChatState { name: name.to_string(), attributes }
     }
 }
 
 #[async_trait]
 impl FSMState for DefaultFSMChatState {
-    async fn on_enter(&self) {
-        tracing::info!(target: "tron_app", "Entering state: {}", self.name);
-    }
+    async fn on_enter(&self) {}
 
-    async fn on_exit(&self) {
-        tracing::info!(target: "tron_app", "Exiting state: {}", self.name);
-    }
+    async fn on_exit(&self) {}
 
-    async fn on_enter_mut(&mut self) {
-        tracing::info!(target: "tron_app", "Entering state (mut): {}", self.name);
-    }
+    async fn on_enter_mut(&mut self) {}
 
-    async fn on_exit_mut(&mut self) {
-        tracing::info!(target: "tron_app", "Exiting state (mut): {}", self.name);
-    }
+    async fn on_exit_mut(&mut self) {}
 
     async fn set_attribute(&mut self, k: &str, v: String) {
         self.attributes.insert(k.to_string(), v);
@@ -96,7 +91,6 @@ impl FSMState for DefaultFSMChatState {
         self.name.clone()
     }
 }
-
 
 impl FSMBuilder {
     pub fn new() -> Self {
@@ -122,7 +116,10 @@ impl FSMBuilder {
         self
     }
 
-    pub fn from_config(config: &FSMAgentConfig) -> Result<Self, &'static str> {
+    pub fn from_config<S: FSMStateInit + FSMState + 'static>(
+        config: &FSMAgentConfig,
+        mut state_map: HashMap<String, S>,
+    ) -> Result<Self, &'static str> {
         let mut builder = FSMBuilder {
             states: HashMap::new(),
             transitions: HashMap::new(),
@@ -131,16 +128,20 @@ impl FSMBuilder {
 
         // Add states
         for state_name in &config.states {
-            let prompt = config.prompts.get(state_name)
+            let prompt = config
+                .prompts
+                .get(state_name)
                 .ok_or("Missing prompt for state")?
                 .clone();
-            let state = DefaultFSMChatState::new(state_name.clone(), prompt);
+            let state = state_map
+                .remove(state_name).unwrap_or(S::new(state_name, &prompt));
             builder.states.insert(state_name.clone(), Box::new(state));
         }
 
         // Add transitions
         for (from, to) in &config.transitions {
-            builder.transitions
+            builder
+                .transitions
                 .entry(from.clone())
                 .or_default()
                 .insert(to.clone());
