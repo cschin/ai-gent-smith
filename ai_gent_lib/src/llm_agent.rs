@@ -199,6 +199,11 @@ impl<C: LLMClient> LLMAgent<C> {
         }
     }
 
+    pub async fn get_current_state(&self) -> Option<String> {
+        self.fsm.current_state()
+    }
+
+
     pub async fn process_message(
         &mut self,
         user_input: &str,

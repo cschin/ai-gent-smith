@@ -1450,6 +1450,7 @@ async fn show_chat(
 struct SingleChatMessage {
     time_stamp: String,
     role: String,
+    fsm_state: Option<String>,
     content: String,
 }
 
@@ -1475,7 +1476,7 @@ async fn download_chat(
     let pool = DB_POOL.clone();
     let results = sqlx::query!(
         r#"
-        SELECT m.timestamp, m.role, m.content
+        SELECT m.timestamp, m.role, m.content, m.fsm_state
         FROM messages m 
         JOIN chats c ON c.chat_id = m.chat_id 
         JOIN users u ON c.user_id = u.user_id
@@ -1494,6 +1495,7 @@ async fn download_chat(
         .into_iter()
         .map(|row| SingleChatMessage {
             time_stamp: row.timestamp.unwrap_or_default().to_string(),
+            fsm_state: row.fsm_state,
             role: row.role.unwrap_or_default(),
             content: row.content,
         })

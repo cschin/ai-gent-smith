@@ -439,12 +439,13 @@ async fn insert_message(
     content: &str,
     role: &str,
     message_type: &str,
+    fsm_state: Option<String>
 ) -> Result<i32, sqlx::Error> {
     let pool = DB_POOL.clone();
     let result = sqlx::query!(
         r#"
-        INSERT INTO messages (chat_id, user_id, agent_id, content, role, message_type)
-        VALUES ($1, $2, $3, $4, $5, $6)
+        INSERT INTO messages (chat_id, user_id, agent_id, content, role, message_type, fsm_state)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING message_id
         "#,
         chat_id,
@@ -452,7 +453,20 @@ async fn insert_message(
         agent_id,
         content,
         role,
-        message_type
+        message_type,
+        fsm_state
+    )
+    .fetch_one(&pool)
+    .await?;
+
+    let _ = sqlx::query!(
+        r#"
+        UPDATE chats 
+        SET last_fsm_state = $1
+        WHERE chat_id = $2
+        "#,
+        fsm_state,
+        chat_id
     )
     .fetch_one(&pool)
     .await?;
@@ -701,12 +715,12 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
             chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), ammonia::clean_text(&query_text))).await;
             context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
-
-            let _ = insert_message(chat_id, user_id, agent_id, &query_text, "user", "text").await;
+            let _ = insert_message(chat_id, user_id, agent_id, &query_text, "user", "text", None).await;
 
             match agent.process_message(&query_text, Some(tx), temperature_value).await {
                 Ok(res) => {
-                    let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;
+                    let current_state = agent.get_current_state().await;
+                    let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text", current_state).await;
                     let _ = update_chat_summary(chat_id, &agent.summary).await;
                 },
                 Err(err) => tracing::info!(target: "tron_app", "LLM error, please retry your question. {:?}", err),
