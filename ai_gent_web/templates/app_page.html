@@ -154,6 +154,14 @@
             );
     }
     setInterval(checkSession, 1 * 30 * 1000);
+
+    window.addEventListener("pageshow", function (event) {
+        if (event.persisted) {
+            // If the page is restored from the cache (back/forward navigation), force a reload
+            window.location.replace('/');
+            //window.location.reload();
+        }
+    });
 </script>
 
 <footer style="align-items: flex-end; text-align: right; background: #585858;">
