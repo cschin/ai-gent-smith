@@ -169,7 +169,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(AGENT_STREAM_OUTPUT.into(), Vec::new())
             .set_attr(
                 "class",
-                "flex-1 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400 text-black",
+                "min-h-[55px] flex-1 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400 text-black",
             )
             .set_attr("style", r#"resize:none"#)
             .build();
@@ -178,7 +178,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(AGENT_QUERY_BUTTON.into(), "Send".into())
             .set_attr(
                 "class",
-                "btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item",
+                "btn btn-xs btn-outline btn-primary w-full h-min p-1 join-item",
             )
             .set_action(TnActionExecutionMethod::Await, query)
             .build();
@@ -187,14 +187,14 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(ASSET_SEARCH_BUTTON.into(), "Search Asset".into())
             .set_attr(
                 "class",
-                "btn btn-sm btn-outline btn-primary w-full h-min p-1 join-item",
+                "btn btn-xs btn-outline btn-primary w-full h-min p-1 join-item",
             )
             .set_action(TnActionExecutionMethod::Await, search_asset_clicked)
             .build();
 
         let asset_search_output = text::TnTextArea::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex-1 border-2 overflow-x-scroll text-nowrap mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[60svh] w-full")
+        .set_attr("class", "flex-1 border-2 overflow-x-scroll text-nowrap mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[540px] max-h-[540px] w-full")
         .build();
 
         let topk_slider = TnRangeSlider::builder()
