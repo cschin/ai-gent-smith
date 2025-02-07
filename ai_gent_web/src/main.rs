@@ -1,15 +1,16 @@
 #![allow(dead_code)]
 #![allow(unused_imports)]
 
+mod agent_cards;
 mod agent_workspace;
 mod asset_cards;
 mod embedding_service;
-mod agent_cards;
 mod llm_agent;
 mod services;
 mod session_cards;
 mod show_single_asset;
 
+use agent_cards::{LibraryCards, LibraryCardsBuilder};
 use agent_workspace::*;
 use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
 use ammonia::clean_text;
@@ -17,7 +18,6 @@ use askama::Template;
 use asset_cards::{AssetCards, AssetCardsBuilder};
 use embedding_service::{DocumentChunk, DocumentChunks};
 use futures_util::Future;
-use agent_cards::{LibraryCards, LibraryCardsBuilder};
 use pgvector::Vector;
 use session_cards::{SessionCards, SessionCardsBuilder};
 use show_single_asset::AssetSpacePlot;
@@ -1068,7 +1068,8 @@ async fn create_adv_agent(
                     <button class="btn btn-sm">Close</button>
                 </form>
             </div>
-        </div>"##.to_string()
+        </div>"##
+                .to_string(),
         );
     }
 
@@ -1177,7 +1178,6 @@ async fn update_basic_agent(
     .fetch_one(&db_pool)
     .await;
 
-
     let html_rtn = format!(
         r##"        
     <div id="update_agent_notification_msg">
@@ -1238,7 +1238,8 @@ async fn update_adv_agent(
                     <button class="btn btn-sm">Close</button>
                 </form>
             </div>
-        </div>"##.to_string()
+        </div>"##
+                .to_string(),
         );
     }
 
@@ -1430,7 +1431,7 @@ async fn show_chat(
         if let Some(last_fsm_state) = last_fsm_state {
             assets_guard.insert("fsm_state".into(), TnAsset::String(last_fsm_state));
         } else {
-            assets_guard.remove("fsm_state"); 
+            assets_guard.remove("fsm_state");
         };
         assets_guard.insert("agent_configuration".into(), TnAsset::String(configuration));
     }
@@ -1465,6 +1466,7 @@ struct SingleChatMessage {
 struct ChatDownload {
     messages: Vec<SingleChatMessage>,
     summary: String,
+    agent_config: AgentSetting,
 }
 
 async fn download_chat(
@@ -1510,8 +1512,9 @@ async fn download_chat(
 
     let result = sqlx::query!(
         r#" 
-        SELECT summary FROM chats c
-        JOIN users u on c.user_id = u.user_id 
+        SELECT summary, a.configuration FROM chats c
+        JOIN users u on c.user_id = u.user_id
+        JOIN agents a on c.agent_id = a.agent_id 
         WHERE c.chat_id = $1 AND c.status = $2 AND u.username = $3"#,
         chat_id,
         "active",
@@ -1522,7 +1525,14 @@ async fn download_chat(
     .unwrap();
 
     let summary = result.summary.unwrap_or_default();
-    let chat_download = ChatDownload { messages, summary };
+
+    let agent_config = serde_json::from_value(result.configuration.unwrap()).unwrap();
+
+    let chat_download = ChatDownload {
+        messages,
+        summary,
+        agent_config,
+    };
     let chat_download = serde_json::to_string_pretty(&chat_download).unwrap();
 
     axum::response::Response::builder()
