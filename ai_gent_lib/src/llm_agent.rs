@@ -190,10 +190,10 @@ impl<C: LLMClient> LLMAgent<C> {
         self.context = Some(context.to_string());
     }
 
-    pub async fn set_current_state(&mut self, state: Option<String>) {
+    pub async fn set_current_state(&mut self, state: Option<String>, exec_state_actions: bool) {
         if let Some(state) = state {
             self.fsm
-                .set_initial_state(state)
+                .set_initial_state(state, exec_state_actions)
                 .await
                 .expect("fsm set_current_state error");
         }
@@ -209,20 +209,52 @@ impl<C: LLMClient> LLMAgent<C> {
         let mut last_message = Vec::<(String, String)>::new();
 
         let current_state_name = self.fsm.current_state().ok_or("No current state")?;
-        let current_state = self.fsm.states.get(&current_state_name).unwrap();
-        // println!("current_state: {:?} {:?}", current_state,  self.prompts.get(&current_state));
 
         self.messages.push(("user".into(), user_input.into()));
         last_message.push(("user".into(), user_input.into()));
-        if let Some(prompt) = current_state.get_attribute("prompt").await {
-            let msg = format!(
-                "Current State: {}\nAvailable Transitions: {:?}",
-                current_state_name,
-                self.fsm.available_transitions(),
-            );
 
-            let fsm_prompt = [self.fsm_prompt.as_str(), msg.as_str()].join("\n");
+        if let Some(tx) = tx.clone() {
+            let _ = tx.send(("clear".into(), "".into())).await;
+            let _ = tx
+                .send((
+                    "message".into(),
+                    "determining the agent's next state".into(),
+                ))
+                .await;
+        };
 
+        let available_transitions = self
+            .fsm
+            .available_transitions()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect::<Vec<String>>()
+            .join("/");
+
+        let msg = format!(
+            "Current State: {}\nAvailable Next Steps: {}\n Summary of the previous chat:{} \n\n ",
+            current_state_name, available_transitions, self.summary
+        );
+
+        let fsm_prompt = [self.fsm_prompt.as_str(), msg.as_str()].join("\n");
+
+        let next_state = self
+            .llm_client
+            .generate(&fsm_prompt, &self.messages, self.temperature)
+            .await;
+
+        let next_fsm_step_response: LLMResponse = serde_json::from_str(&next_state)
+            .map_err(|e| format!("Failed to parse LLM output: {e}, {}", next_state))?;
+
+        if let Some(next_state) = &next_fsm_step_response.next_state {
+            self.transition_state(next_state).await?;
+        }
+
+        let next_state_name = self.fsm.current_state().ok_or("No current state")?;
+        let next_state = self.fsm.states.get(&next_state_name).unwrap();
+
+        if let Some(prompt) = next_state.get_attribute("prompt").await {
             let prompt = if let Some(context) = self.context.as_ref() {
                 [
                     self.sys_prompt.as_str(),
@@ -279,63 +311,38 @@ impl<C: LLMClient> LLMAgent<C> {
             self.messages.push(("assistant".into(), llm_output.clone()));
             last_message.push(("assistant".into(), llm_output.clone()));
 
-            // tracing::info!(target: "tron_app", "raw output: {}\n", llm_output);
-
             if let Some(tx) = tx.clone() {
                 let _ = tx.send(("clear".into(), "".into())).await;
                 let _ = tx
-                    .send((
-                        "message".into(),
-                        "determining the agent's next state and generating chat summary".into(),
-                    ))
+                    .send(("message".into(), "generating chat summary".into()))
                     .await;
             };
-
-            let next_state = self
-                .llm_client
-                .generate(&fsm_prompt, &self.messages, self.temperature)
-                .await;
 
             self.summary = self
                 .llm_client
                 .generate(&summary_prompt, &last_message, self.temperature)
                 .await;
-            // tracing::info!(target: "tron_app", "summary_prompt: {}", summary_prompt);
-            // tracing::info!(target: "tron_app", "last_message: {:?}", last_message);
-            // tracing::info!(target: "tron_app", "summary: {}", self.summary);
-            // tracing::info!(target: "tron_app", "next_state raw: {}", next_state);
-
-            let mut response: LLMResponse = serde_json::from_str(&next_state)
-                .map_err(|e| format!("Failed to parse LLM output: {e}, {}", next_state))?;
-
-            response.message = llm_output;
-
-            // tracing::info!(
-            //     "resp: {:?} /n NEXT STATE:{:?}\n",
-            //     response,
-            //     response.next_state
-            // );
-
-            // placeholder for tool usage
-
-            // Transition state if specified
-            if let Some(next_state) = &response.next_state {
-                self.transition_state(next_state).await?;
-            }
 
             if let Some(tx) = tx {
                 let _ = tx
                     .send((
-                        "fsm_state".into(),
-                        response.next_state.unwrap_or("Error".into()),
+                        "message".into(),
+                        "Summary generation complete. You can send new query now.".into(),
                     ))
                     .await;
+
                 let _ = tx
-                    .send(("message".into(), "You can send new query now.".into()))
+                    .send((
+                        "message".into(),
+                        format!(
+                            "state transition: {} -> {}",
+                            current_state_name, next_state_name
+                        ),
+                    ))
                     .await;
             }
 
-            Ok(response.message)
+            Ok(llm_output)
         } else {
             Ok("".to_string())
         }
@@ -470,10 +477,13 @@ mod tests {
             .build()
             .unwrap();
 
-        let fsm = FSMBuilder::from_config::<crate::fsm::DefaultFSMChatState>(&fsm_config, HashMap::default())
-            .unwrap()
-            .build()
-            .unwrap();
+        let fsm = FSMBuilder::from_config::<crate::fsm::DefaultFSMChatState>(
+            &fsm_config,
+            HashMap::default(),
+        )
+        .unwrap()
+        .build()
+        .unwrap();
         let llm_client = MockLLMClient;
 
         let fsm_config_str = include_str!("../../ai_gent_tools/dev_config/fsm_config.json");

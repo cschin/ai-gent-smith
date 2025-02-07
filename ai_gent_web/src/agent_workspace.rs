@@ -339,17 +339,7 @@ where
         {   // reset the FSM state to its initial state whenever a seesion is started or restarted, 
             // we may use the database to store the state for session re-use in the future
             let mut assets_guard = ctx.assets.write().await;
-            if let TnAsset::String(agent_config) = assets_guard.get("agent_configuration").unwrap()
-            {
-                let model_setting: AgentSetting =
-                    serde_json::from_str::<AgentSetting>(agent_config).unwrap();
-                let fsm_agent_config: FSMAgentConfig =
-                    toml::from_str::<FSMAgentConfig>(&model_setting.fsm_agent_config).unwrap();
-                assets_guard.insert(
-                    "fsm_state".into(),
-                    TnAsset::String(fsm_agent_config.initial_state.clone()),
-                );
-            }
+            assets_guard.remove("fsm_state"); // reset the fsm_state, we may read it from a database in the future 
         };
 
         let messages = get_messages(chat_id).await.unwrap_or_default();
@@ -566,15 +556,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         )
                         .await
                     }
-                    "fsm_state" => {
-                        let fsm_state = format!("\nFSM State: {}", r);
-                        text::append_and_update_stream_textarea_with_context(
-                            &context_cloned,
-                            AGENT_STREAM_OUTPUT,
-                            &fsm_state,
-                        )
-                        .await
-                    }
                     _ => {}
                 }
             }
@@ -663,21 +644,22 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         };
 
 
-        let fsm_state = {
+        let (fsm_state, exec_state_actions) = {
             let asset = context.get_asset_ref().await;
             let asset_guard = asset.read().await;
             if let Some(TnAsset::String(fsm_state)) = asset_guard.get("fsm_state") {
-                Some(fsm_state.clone())
+                (Some(fsm_state.clone()), false)
             } else {
-                fsm.current_state() // default initial state from fsm_config
+                (fsm.current_state(), true) // default initial state from fsm_config
             }
         };
 
 
-        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config);
+        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config); // we start a new agent every query now, we may want to implement session/static agent
         {
+            agent.set_current_state(fsm_state.clone(), exec_state_actions).await;
             agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
-            agent.set_current_state(fsm_state.clone()).await;
+            // we may want to load a couple of last message from the database for the agent providing some memory beyond the summary
         }
 
         {
@@ -715,10 +697,13 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 AGENT_QUERY_TEXT_INPUT,
             )
             .await;
+
             let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
             chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), ammonia::clean_text(&query_text))).await;
             context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
+
             let _ = insert_message(chat_id, user_id, agent_id, &query_text, "user", "text").await;
+
             match agent.process_message(&query_text, Some(tx), temperature_value).await {
                 Ok(res) => {
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text").await;

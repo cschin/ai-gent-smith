@@ -61,7 +61,10 @@ impl FSMStateInit for DefaultFSMChatState {
     fn new(name: &str, prompt: &str) -> Self {
         let mut attributes = HashMap::new();
         attributes.insert("prompt".to_string(), prompt.to_string());
-        DefaultFSMChatState { name: name.to_string(), attributes }
+        DefaultFSMChatState {
+            name: name.to_string(),
+            attributes,
+        }
     }
 }
 
@@ -134,7 +137,8 @@ impl FSMBuilder {
                 .ok_or("Missing prompt for state")?
                 .clone();
             let state = state_map
-                .remove(state_name).unwrap_or(S::new(state_name, &prompt));
+                .remove(state_name)
+                .unwrap_or(S::new(state_name, &prompt));
             builder.states.insert(state_name.clone(), Box::new(state));
         }
 
@@ -218,19 +222,17 @@ impl FSM {
         self.current_state.clone()
     }
 
-    pub async fn set_initial_state(&mut self, state: String) -> Result<(), String> {
+    pub async fn set_initial_state(
+        &mut self,
+        state: String,
+        exec_enter_actions: bool,
+    ) -> Result<(), String> {
         if self.states.contains_key(&state) {
-            if let Some(current_state) = &self.current_state {
-                self.states
-                    .get_mut(current_state)
-                    .unwrap()
-                    .on_exit_mut()
-                    .await;
-                self.states.get(current_state).unwrap().on_exit().await;
-            }
             self.current_state = Some(state.clone());
-            self.states.get_mut(&state).unwrap().on_enter_mut().await;
-            self.states.get(&state).unwrap().on_enter().await;
+            if exec_enter_actions {
+                self.states.get_mut(&state).unwrap().on_enter_mut().await;
+                self.states.get(&state).unwrap().on_enter().await;
+            }
             Ok(())
         } else {
             Err("State does not exist".to_string())
@@ -363,7 +365,10 @@ mod tests {
         fsm.add_transition("State2".to_string(), "State3".to_string());
         fsm.add_transition("State3".to_string(), "State1".to_string());
 
-        assert!(fsm.set_initial_state("State1".to_string()).await.is_ok());
+        assert!(fsm
+            .set_initial_state("State1".to_string(), false)
+            .await
+            .is_ok());
         assert_eq!(fsm.current_state, Some("State1".to_string()));
 
         match fsm.transition("State2".to_string()).await {
