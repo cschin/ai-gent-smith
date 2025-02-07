@@ -65,19 +65,19 @@ impl DefaultFSMChatState {
 #[async_trait]
 impl FSMState for DefaultFSMChatState {
     async fn on_enter(&self) {
-        tracing::info!("Entering state: {}", self.name);
+        tracing::info!(target: "tron_app", "Entering state: {}", self.name);
     }
 
     async fn on_exit(&self) {
-        tracing::info!("Exiting state: {}", self.name);
+        tracing::info!(target: "tron_app", "Exiting state: {}", self.name);
     }
 
     async fn on_enter_mut(&mut self) {
-        tracing::info!("Entering state (mut): {}", self.name);
+        tracing::info!(target: "tron_app", "Entering state (mut): {}", self.name);
     }
 
     async fn on_exit_mut(&mut self) {
-        tracing::info!("Exiting state (mut): {}", self.name);
+        tracing::info!(target: "tron_app", "Exiting state (mut): {}", self.name);
     }
 
     async fn set_attribute(&mut self, k: &str, v: String) {

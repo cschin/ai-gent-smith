@@ -1,4 +1,5 @@
 use ai_gent_lib::fsm::FSMBuilder;
+use ai_gent_lib::llm_agent::FSMAgentConfig;
 use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use ai_gent_lib::llm_agent::LLMClient;
@@ -11,6 +12,7 @@ use ordered_float::OrderedFloat;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
+use std::default;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
@@ -273,6 +275,22 @@ where
             }
         };
 
+        {   // reset the FSM state to its initial state whenever a seesion is started or restarted, 
+            // we may use the database to store the state for session re-use in the future
+            let mut assets_guard = ctx.assets.write().await;
+            if let TnAsset::String(agent_config) = assets_guard.get("agent_configuration").unwrap()
+            {
+                let model_setting: AgentSetting =
+                    serde_json::from_str::<AgentSetting>(agent_config).unwrap();
+                let fsm_agent_config: FSMAgentConfig =
+                    toml::from_str::<FSMAgentConfig>(&model_setting.fsm_agent_config).unwrap();
+                assets_guard.insert(
+                    "fsm_state".into(),
+                    TnAsset::String(fsm_agent_config.initial_state.clone()),
+                );
+            }
+        };
+
         let messages = get_messages(chat_id).await.unwrap_or_default();
 
         {
@@ -291,7 +309,11 @@ where
                             .await;
                     }
                     _ => {
-                        chatbox::append_chatbox_value(chat_textarea.clone(), (role,  ammonia::clean_text(&content))).await;
+                        chatbox::append_chatbox_value(
+                            chat_textarea.clone(),
+                            (role, ammonia::clean_text(&content)),
+                        )
+                        .await;
                     }
                 }
             }
@@ -436,97 +458,13 @@ async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::E
     Ok(result.chat_id)
 }
 
-//const FSM_PROMPT: &str = include_str!("../dev_config/fsm_prompt"); // this should be generated from fsm_agent_config
-//const SUMMARY_PROMPT: &str = include_str!("../dev_config/summary_prompt");
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
     tn_future! {
         if event.e_trigger != AGENT_QUERY_BUTTON {
             return None;
         };
 
-        let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
-
-        let query_text = if let TnComponentValue::String(query_text) = query_text {
-            query_text
-        } else {
-            return None
-        };
-
-        if query_text.is_empty() {
-            return None
-        }
-
-        let asset_ref = context.get_asset_ref().await;
-        let asset_guarad = asset_ref.read().await;
-        let fsm_agent_config;
-        let llm_name;
-        //let provider;
-        let _agent_config = if let TnAsset::String(agent_config) = asset_guarad.get("agent_configuration").unwrap() {
-            let model_setting: AgentSetting =
-                serde_json::from_str::<AgentSetting>(agent_config).unwrap();
-                llm_name = model_setting.model_name;
-                //provider = model_setting.provider;
-                fsm_agent_config = model_setting.fsm_agent_config;
-            agent_config
-        } else {
-            llm_name = "gpt-4o".into();
-            //provider = "OpenAI".into();
-            fsm_agent_config = "{}".into();
-            &"".into()
-        };
-
-        let user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
-            *user_id as i32
-        } else {
-            panic!("chat_id not found");
-        };
-
-        let agent_id = if let TnAsset::U32(agent_id) =  asset_guarad.get("agent_id").unwrap() {
-            *agent_id as i32
-        } else {
-            panic!("chat_id not found");
-        };
-
-        let chat_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("chat_id").unwrap() {
-            *chat_id as i32
-        } else {
-            panic!("chat_id not found");
-        };
-
-        let asset_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("asset_id").unwrap() {
-            *chat_id as i32
-        } else {
-            panic!("chat_id not found");
-        };
-
-
-
-        let fsm_config = FSMAgentConfigBuilder::from_toml(&fsm_agent_config).unwrap().build().unwrap();
-
-        let fsm = FSMBuilder::from_config(&fsm_config).unwrap().build().unwrap();
-
-        let api_key = match llm_name.as_str() {
-            "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
-                env_name: "OPENAI_API_KEY".to_string()}).unwrap() },
-            "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => { std::env::var("ANTHROPIC_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
-                env_name: "ANTHROPIC_API_KEY".to_string()}).unwrap()
-            },
-            _ => {"".into()}
-
-        };
-
-        let llm_client = GenaiLlmclient {
-            model: llm_name,
-            api_key
-        };
-
-        let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
-
-        agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
-
-        // let mut options = Options::empty();
-        // options.insert(Options::ENABLE_STRIKETHROUGH);
-
+        // spawn a handler for processing the output of the stream service
         let (tx, mut rx) = mpsc::channel::<(String, String)>(8);
         let context_cloned = context.clone();
         let handle = tokio::spawn(async move {
@@ -581,6 +519,106 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             }
         });
 
+        let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
+
+        let query_text = if let TnComponentValue::String(query_text) = query_text {
+            query_text
+        } else {
+            return None
+        };
+
+        if query_text.is_empty() {
+            return None
+        }
+
+        let fsm_agent_config;
+        let llm_name;
+        let user_id;
+        let agent_id;
+        let chat_id;
+        let asset_id;
+
+        {
+            let asset_ref = context.get_asset_ref().await;
+            let asset_guard = asset_ref.read().await;
+
+            //let provider;
+            let _agent_config = if let TnAsset::String(agent_config) = asset_guard.get("agent_configuration").unwrap() {
+                let model_setting: AgentSetting =
+                    serde_json::from_str::<AgentSetting>(agent_config).unwrap();
+                    llm_name = model_setting.model_name;
+                    //provider = model_setting.provider;
+                    fsm_agent_config = model_setting.fsm_agent_config;
+                agent_config
+            } else {
+                llm_name = "gpt-4o".into();
+                //provider = "OpenAI".into();
+                fsm_agent_config = "{}".into();
+                &"".into()
+            };
+
+            user_id = if let TnAsset::U32(user_id) =  asset_guard.get("user_id").unwrap() {
+                *user_id as i32
+            } else {
+                panic!("chat_id not found");
+            };
+
+            agent_id = if let TnAsset::U32(agent_id) =  asset_guard.get("agent_id").unwrap() {
+                *agent_id as i32
+            } else {
+                panic!("chat_id not found");
+            };
+
+            chat_id = if let TnAsset::U32(chat_id) =  asset_guard.get("chat_id").unwrap() {
+                *chat_id as i32
+            } else {
+                panic!("chat_id not found");
+            };
+
+            asset_id = if let TnAsset::U32(chat_id) =  asset_guard.get("asset_id").unwrap() {
+                *chat_id as i32
+            } else {
+                panic!("chat_id not found");
+            };
+        }
+
+        let fsm_config = FSMAgentConfigBuilder::from_toml(&fsm_agent_config).unwrap().build().unwrap();
+
+        let fsm = FSMBuilder::from_config(&fsm_config).unwrap().build().unwrap();
+
+        let api_key = match llm_name.as_str() {
+            "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+                env_name: "OPENAI_API_KEY".to_string()}).unwrap() },
+            "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => { std::env::var("ANTHROPIC_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
+                env_name: "ANTHROPIC_API_KEY".to_string()}).unwrap()
+            },
+            _ => {"".into()}
+
+        };
+
+        let llm_client = GenaiLlmclient {
+            model: llm_name,
+            api_key
+        };
+
+
+        let fsm_state = {
+            let asset = context.get_asset_ref().await;
+            let asset_guard = asset.read().await;
+            if let Some(TnAsset::String(fsm_state)) = asset_guard.get("fsm_state") {
+                Some(fsm_state.clone())
+            } else {
+                fsm.current_state() // default initial state from fsm_config
+            }
+        };
+
+
+        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config);
+        {
+            agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
+            agent.set_current_state(fsm_state.clone()).await;
+        }
+
         {
             let asset = context.get_asset_ref().await;
             let asset_guard = asset.read().await;
@@ -600,7 +638,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             } else {
                 None
             };
-
 
 
             let query_context = ammonia::clean_text(&search_asset(&query_text, asset_id, top_k as usize, threshold_value).await).to_string();
@@ -630,7 +667,13 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             };
         }
 
+
         handle.abort();
+        {
+            let asset = context.get_asset_ref().await;
+            let mut asset_guard = asset.write().await;
+            asset_guard.insert("fsm_state".into(), TnAsset::String(agent.fsm.current_state().unwrap()) );
+        }
 
 
         None
@@ -644,8 +687,8 @@ async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) 
 
     // use LLM to extend the context for simple question
     // let query = &extend_query_with_llm(query).await;
-
-    tracing::info!(target: TRON_APP, "extended query: {}", query);
+    // tracing::info!(target: TRON_APP, "extended query: {}", query);
+    
     let tk_service = TextChunkingService::new(None, 128, 0, 4096);
 
     let mut chunks = tk_service.text_to_chunks(query);

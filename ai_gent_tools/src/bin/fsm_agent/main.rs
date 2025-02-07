@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_key
     };
     let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG).unwrap().build().unwrap();
-    let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
+    let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config);
 
     // tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
 

@@ -171,7 +171,7 @@ pub trait LLMClient {
 }
 
 impl<C: LLMClient> LLMAgent<C> {
-    pub fn new(fsm: FSM, llm_client: C, fsm_config: &FSMAgentConfig) -> Self {
+    pub fn new(llm_client: C, fsm: FSM, fsm_config: &FSMAgentConfig) -> Self {
         // Initialize prompts for each state here
         Self {
             fsm,
@@ -186,17 +186,25 @@ impl<C: LLMClient> LLMAgent<C> {
         }
     }
 
-    pub fn set_context(mut self, context: &str) {
+    pub fn set_context(&mut self, context: &str) {
         self.context = Some(context.to_string());
+    }
+
+    pub async fn set_current_state(&mut self, state: Option<String>) {
+        if let Some(state) = state {
+            self.fsm
+                .set_initial_state(state)
+                .await
+                .expect("fsm set_current_state error");
+        }
     }
 
     pub async fn process_message(
         &mut self,
         user_input: &str,
         tx: Option<Sender<(String, String)>>,
-        temperature: Option<f32>
+        temperature: Option<f32>,
     ) -> Result<String, String> {
-
         self.temperature = temperature;
         let mut last_message = Vec::<(String, String)>::new();
 
@@ -263,7 +271,9 @@ impl<C: LLMClient> LLMAgent<C> {
                 let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
                 llm_output
             } else {
-                self.llm_client.generate(&prompt, &self.messages, self.temperature).await
+                self.llm_client
+                    .generate(&prompt, &self.messages, self.temperature)
+                    .await
             };
 
             self.messages.push(("assistant".into(), llm_output.clone()));
@@ -281,7 +291,10 @@ impl<C: LLMClient> LLMAgent<C> {
                     .await;
             };
 
-            let next_state = self.llm_client.generate(&fsm_prompt, &self.messages, self.temperature).await;
+            let next_state = self
+                .llm_client
+                .generate(&fsm_prompt, &self.messages, self.temperature)
+                .await;
 
             self.summary = self
                 .llm_client
@@ -419,11 +432,21 @@ mod tests {
 
     #[async_trait]
     impl LLMClient for MockLLMClient {
-        async fn generate(&self, _prompt: &str, _msg: &[(String, String)], _temperature: Option<f32>) -> String {
+        async fn generate(
+            &self,
+            _prompt: &str,
+            _msg: &[(String, String)],
+            _temperature: Option<f32>,
+        ) -> String {
             r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
                 .to_string()
         }
-        async fn generate_stream(&self, _prompt: &str, _msg: &[(String, String)], _temperature: Option<f32>) -> LLMStreamOut {
+        async fn generate_stream(
+            &self,
+            _prompt: &str,
+            _msg: &[(String, String)],
+            _temperature: Option<f32>,
+        ) -> LLMStreamOut {
             unimplemented!()
         }
     }
@@ -460,7 +483,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let mut agent = LLMAgent::new(fsm, llm_client, &fsm_config);
+        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config);
 
         let result = agent.process_message("Test input", None, None).await;
         assert!(result.is_ok());
