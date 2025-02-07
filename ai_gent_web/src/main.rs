@@ -1385,6 +1385,7 @@ async fn show_chat(
     let agent_name;
     let user_data;
     let configuration;
+    let last_fsm_state;
     {
         let ctx_guard = ctx.read().await;
         user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
@@ -1392,7 +1393,7 @@ async fn show_chat(
         let db_pool = DB_POOL.clone();
 
         let row = sqlx::query!(
-            "SELECT c.agent_id, c.user_id, a.name, a.configuration, a.asset_id FROM chats c
+            "SELECT c.agent_id, c.user_id, c.last_fsm_state, a.name, a.configuration, a.asset_id FROM chats c
             JOIN users u ON c.user_id = u.user_id
             JOIN agents a ON c.agent_id = a.agent_id
             WHERE u.username = $1 AND c.chat_id = $2;",
@@ -1416,6 +1417,7 @@ async fn show_chat(
         } else {
             0_u32
         };
+        last_fsm_state = row.last_fsm_state;
     }
     {
         let ctx_guard = ctx.read().await;
@@ -1425,6 +1427,11 @@ async fn show_chat(
         assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
         assets_guard.insert("chat_id".into(), TnAsset::U32(chat_id as u32));
         assets_guard.insert("asset_id".into(), TnAsset::U32(asset_id));
+        if let Some(last_fsm_state) = last_fsm_state {
+            assets_guard.insert("fsm_state".into(), TnAsset::String(last_fsm_state));
+        } else {
+            assets_guard.remove("fsm_state"); 
+        };
         assets_guard.insert("agent_configuration".into(), TnAsset::String(configuration));
     }
     let mut h = HeaderMap::new();

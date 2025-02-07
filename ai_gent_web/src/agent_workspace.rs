@@ -336,12 +336,6 @@ where
             }
         };
 
-        {   // reset the FSM state to its initial state whenever a seesion is started or restarted, 
-            // we may use the database to store the state for session re-use in the future
-            let mut assets_guard = ctx.assets.write().await;
-            assets_guard.remove("fsm_state"); // reset the fsm_state, we may read it from a database in the future 
-        };
-
         let messages = get_messages(chat_id).await.unwrap_or_default();
 
         {
