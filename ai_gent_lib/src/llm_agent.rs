@@ -203,7 +203,6 @@ impl<C: LLMClient> LLMAgent<C> {
         self.fsm.current_state()
     }
 
-
     pub async fn process_message(
         &mut self,
         user_input: &str,
@@ -212,7 +211,6 @@ impl<C: LLMClient> LLMAgent<C> {
     ) -> Result<String, String> {
         self.temperature = temperature;
         let mut last_message = Vec::<(String, String)>::new();
-
 
         self.messages.push(("user".into(), user_input.into()));
         last_message.push(("user".into(), user_input.into()));
@@ -239,7 +237,7 @@ impl<C: LLMClient> LLMAgent<C> {
             .join("/");
 
         let msg = format!(
-            "Current State: {}\nAvailable Next Steps: {}\n Summary of the previous chat:{} \n\n ",
+            "Current State: {}\nAvailable Next Steps: {}\n Summary of the previous chat:<summary>{}</summary> \n\n ",
             current_state_name, available_transitions, self.summary
         );
 
@@ -266,22 +264,27 @@ impl<C: LLMClient> LLMAgent<C> {
                 [
                     self.sys_prompt.as_str(),
                     prompt.as_str(),
-                    "\nHere is the current summary:\n",
+                    "\nHere is the summary of previous chat:\n",
+                    "<summary>",
                     &self.summary,
+                    "</summary>",
                     "\nHere is the current reference context:\n",
+                    "<context>",
                     context,
+                    "</context>",
                 ]
+                .join("\n")
             } else {
                 [
                     self.sys_prompt.as_str(),
                     prompt.as_str(),
-                    "\nHere is the current summary:\n",
+                    "\nHere is the summary of previous chat:\n",
+                    "<summary>",
                     &self.summary,
-                    "",
-                    "",
+                    "</summary>",
                 ]
-            }
-            .join("\n");
+                .join("\n")
+            };
 
             let llm_output = if let Some(tx) = tx.clone() {
                 let _ = tx
@@ -322,7 +325,13 @@ impl<C: LLMClient> LLMAgent<C> {
                     .await;
             };
 
-            let summary_prompt = [self.summary_prompt.as_str(), self.summary.as_str()].join("\n");
+            let summary_prompt = [
+                self.summary_prompt.as_str(),
+                "<summary>",
+                self.summary.as_str(),
+                "</summary>",
+            ]
+            .join("\n");
 
             self.summary = self
                 .llm_client

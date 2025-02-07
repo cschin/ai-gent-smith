@@ -652,7 +652,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         };
 
 
-        let (fsm_state, exec_state_actions) = {
+        let (fsm_state, exec_entry_actions) = {
             let asset = context.get_asset_ref().await;
             let asset_guard = asset.read().await;
             if let Some(TnAsset::String(fsm_state)) = asset_guard.get("fsm_state") {
@@ -665,7 +665,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config); // we start a new agent every query now, we may want to implement session/static agent
         {
-            agent.set_current_state(fsm_state.clone(), exec_state_actions).await;
+            agent.set_current_state(fsm_state.clone(), exec_entry_actions).await;
             agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
             // we may want to load a couple of last message from the database for the agent providing some memory beyond the summary
         }
