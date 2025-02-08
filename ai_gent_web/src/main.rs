@@ -856,6 +856,7 @@ async fn use_agent(
         assets_guard.insert("agent_name".into(), TnAsset::String(name.clone()));
         assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
         assets_guard.insert("asset_id".into(), TnAsset::U32(asset_id));
+        assets_guard.remove("fsm_state");
         let uuid = Uuid::new_v4();
         let title = format!("{}:{}", name, uuid);
         let db_pool = DB_POOL.clone();
