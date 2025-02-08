@@ -13,13 +13,13 @@ use axum::response::Html;
 use candle_core::WithDType;
 use ordered_float::OrderedFloat;
 use serde_json::Value;
-use tokio::sync::RwLock;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::default;
 use std::sync::Arc;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
+use tokio::sync::RwLock;
 use tron_app::tron_components::text::append_textarea_value;
 use tron_app::tron_components::text::update_and_send_textarea_with_context;
 use tron_app::tron_components::*;
@@ -63,15 +63,14 @@ pub struct FSMChatState {
 impl FSMStateInit for FSMChatState {
     fn new(name: &str, prompt: &str) -> Self {
         let mut attributes = HashMap::new();
-        attributes.insert("prompt".to_string(), prompt.to_string()); 
-        let attributes= Arc::new(RwLock::new(attributes)); 
+        attributes.insert("prompt".to_string(), prompt.to_string());
+        let attributes = Arc::new(RwLock::new(attributes));
         FSMChatState {
             name: name.to_string(),
             attributes,
         }
     }
 }
-
 
 #[async_trait]
 impl FSMState for FSMChatState {
@@ -433,7 +432,7 @@ async fn insert_message(
     content: &str,
     role: &str,
     message_type: &str,
-    fsm_state: Option<String>
+    fsm_state: Option<String>,
 ) -> Result<i32, sqlx::Error> {
     let pool = DB_POOL.clone();
     let result = sqlx::query!(
@@ -665,7 +664,10 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config); // we start a new agent every query now, we may want to implement session/static agent
         {
-            agent.set_current_state(fsm_state.clone(), exec_entry_actions).await;
+            if let Err(_e) = agent.set_current_state(fsm_state.clone(), exec_entry_actions).await {
+                let fsm_state = agent.fsm.current_state();
+                agent.set_current_state(fsm_state, true).await.expect("set current state fail");
+            };
             agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
             // we may want to load a couple of last message from the database for the agent providing some memory beyond the summary
         }

@@ -190,12 +190,13 @@ impl<C: LLMClient> LLMAgent<C> {
         self.context = Some(context.to_string());
     }
 
-    pub async fn set_current_state(&mut self, state: Option<String>, exec_state_actions: bool) {
+    pub async fn set_current_state(&mut self, state: Option<String>, exec_state_actions: bool) -> Result<(), String> {
         if let Some(state) = state {
             self.fsm
                 .set_initial_state(state, exec_state_actions)
                 .await
-                .expect("fsm set_current_state error");
+        } else {
+            Err("fms set_current_state fail".into())
         }
     }
 
