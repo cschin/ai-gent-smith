@@ -241,6 +241,11 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
     }
 }
 
+
+use comrak::plugins::syntect::SyntectAdapterBuilder;
+use comrak::{markdown_to_html_with_plugins, Options, Plugins};
+
+
 #[async_trait]
 impl<'a> TnComponentRenderTrait<'a> for AgentWorkSpace<'a>
 where
@@ -339,13 +344,17 @@ where
 
         {
             let chat_textarea = comp_guard.get(AGENT_CHAT_TEXTAREA).unwrap();
+            let syntect_adapter = SyntectAdapterBuilder::new().theme("base16-ocean.dark").build();
+            let comrak_options = Options::default();
+            let mut comrak_plugins = Plugins::default();
+            comrak_plugins.render.codefence_syntax_highlighter = Some(&syntect_adapter);
             chatbox::clean_chatbox_value(chat_textarea.clone()).await;
             for (role, _m_type, content) in messages.into_iter() {
                 match role.as_str() {
                     "bot" => {
                         let html_output = [
                             r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
-                            comrak::markdown_to_html(&content, &comrak::Options::default()),
+                            markdown_to_html_with_plugins(&content, &comrak_options, &comrak_plugins),
                             r#"<article>"#.to_string(),
                         ]
                         .join("\n");
@@ -526,6 +535,10 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let (tx, mut rx) = mpsc::channel::<(String, String)>(8);
         let context_cloned = context.clone();
         let handle = tokio::spawn(async move {
+            let syntect_adapter = SyntectAdapterBuilder::new().theme("base16-ocean.dark").build();
+            let comrak_options = Options::default();
+            let mut comrak_plugins = Plugins::default();
+            comrak_plugins.render.codefence_syntax_highlighter = Some(&syntect_adapter);
             while let Some((t, r)) = rx.recv().await {
                 match t.as_str() {
                     "token" =>  {
@@ -540,7 +553,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         let query_result_area = context_cloned.get_component(AGENT_CHAT_TEXTAREA).await;
                         let html_output = [
                             r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
-                            comrak::markdown_to_html(&r, &comrak::Options::default()),
+                            markdown_to_html_with_plugins(&r, &comrak_options, &comrak_plugins),
                             r#"<article>"#.to_string(),
                         ]
                         .join("\n");
