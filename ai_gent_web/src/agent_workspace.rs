@@ -203,7 +203,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .build();
 
         let threshold_slider = TnRangeSlider::builder()
-            .init(THRESHOLD_SLIDER.into(), 70.0, 60.0, 80.0)
+            .init(THRESHOLD_SLIDER.into(), 65.0, 60.0, 80.0)
             .set_attr("class", "flex-1 ml-auto w-full")
             .set_action(TnActionExecutionMethod::Await, threshold_value_update)
             .build();
@@ -683,7 +683,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             let threshold_value: f32 = if let Some(TnAsset::F32(threshold_value)) = asset_guard.get("threshold_value") {
                 *threshold_value
             } else {
-                0.75
+                0.65
             };
 
             let temperature_value: Option<f32> = if let Some(TnAsset::F32(temperature)) = asset_guard.get("temperature_value") {

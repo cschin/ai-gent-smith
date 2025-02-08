@@ -173,7 +173,7 @@ async fn main() {
             http: 8080,
         },
         api_router: Some(ui_action_routes),
-        session_expiry: Some(Duration::minutes(15)),
+        session_expiry: Some(Duration::minutes(30)),
         ..Default::default()
     };
     // set app state
