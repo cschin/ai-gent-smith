@@ -1,26 +1,38 @@
-<link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.1/dist/full.min.css"
-      rel="stylesheet"
+<link href="https://cdn.jsdelivr.net/npm/daisyui@4.10.1/dist/full.min.css" rel="stylesheet" type="text/css" />
+<link href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown.min.css" rel="stylesheet"
       type="text/css" />
-<link href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown.min.css"
-      rel="stylesheet"
-      type="text/css" />
-      
+
 <script src="https://cdn.tailwindcss.com"></script>
-<script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.16.0/cdn/components/split-panel/split-panel.js"></script>
+<script type="module"
+      src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.16.0/cdn/components/split-panel/split-panel.js"></script>
 <style>
-.split-panel-snapping {
-      position: relative;
-}
-.card-description {
-      scrollbar-width:thin;
-}
+      .split-panel-snapping {
+            position: relative;
+      }
 
-#m_panel {
-        height: calc(100svh - 32px)
-}
+      .card-description {
+            scrollbar-width: thin;
+      }
 
-.markdown-body pre>code {
-  word-wrap: break-word;
-  white-space: pre-wrap;
-}
-</style>    
+      #m_panel {
+            height: calc(100svh - 32px)
+      }
+
+      .markdown-body pre>code {
+            word-wrap: break-word;
+            white-space: pre-wrap;
+      }
+</style>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/theme/dracula.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/6.65.7/mode/toml/toml.min.js"></script>
+
+<style>
+      .cm-m-toml {
+            &.cm-string.cm-property {
+                  color: var(--syntax-string-color);
+            }
+      }
+</style>

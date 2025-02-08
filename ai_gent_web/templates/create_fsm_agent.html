@@ -40,15 +40,31 @@
             </div>
             <div class="form-control mb-4">
                 <label for="config_json" class="label">
-                    <span class="label-text">Configuration <a class="link" href="https://toml.io/" target="_blank" rel="noopener noreferrer">TOML</a>:</span>
+                    <span class="label-text">Configuration <a class="link" href="https://toml.io/" target="_blank"
+                            rel="noopener noreferrer">TOML</a>:</span>
                 </label>
-                <textarea name="fsm_agent_config" id="fsm_agent_config" class="textarea textarea-bordered whitespace-pre font-mono" rows="32" required
+                <textarea id="fsm_agent_config_text" class="textarea textarea-bordered whitespace-pre font-mono"
+                    rows="24"
                     placeholder="Please Fill in The Finite State Agent Configuration in the TOML Format"></textarea>
+                <input type="hidden" name="fsm_agent_config" id="fsm_agent_config" required>
             </div>
 
-            <button type="submit" class="btn btn-primary w-full">Create Agent</button>
+            <button type="submit" class="btn btn-primary w-full" onclick="syncEditor()">Create Agent</button>
         </form>
     </div>
 </div>
+
+<script>
+    var editor = CodeMirror.fromTextArea(document.getElementById("fsm_agent_config_text"), {
+        mode: "toml",
+        lineNumbers: true,
+        theme: "dracula",
+        tabSize: 2
+    });
+
+    function syncEditor() {
+        document.getElementById("fsm_agent_config").value = editor.getValue();
+    }
+</script>
 
 {% endblock %}

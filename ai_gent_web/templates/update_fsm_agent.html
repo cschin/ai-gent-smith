@@ -50,13 +50,15 @@
             </div>
             <div class="form-control mb-4">
                 <label for="config_json" class="label">
-                    <span class="label-text">Configuration <a class="link" href="https://toml.io/" target="_blank" rel="noopener noreferrer">TOML</a>:</span>
+                    <span class="label-text">Configuration <a class="link" href="https://toml.io/" target="_blank"
+                            rel="noopener noreferrer">TOML</a>:</span>
                 </label>
-                <textarea name="fsm_agent_config" id="fsm_agent_config" class="textarea textarea-bordered whitespace-pre font-mono" rows="32" required
-                    placeholder="Please Fill in The Finite State Agent Configuration in the TOML Format">{{ agent_config }}</textarea>
+                <textarea id="fsm_agent_config_text" class="textarea textarea-bordered whitespace-pre font-mono"
+                    rows="24"> {{ agent_config }} </textarea>
+                <input type="hidden" name="fsm_agent_config" id="fsm_agent_config" required>
             </div>
 
-            <button type="submit" class="btn btn-primary w-full">Update Agent</button>
+            <button type="submit" class="btn btn-primary w-full" onclick="syncEditor()">Update Agent</button>
             <div class="container flex mt-4 mx-auto w-full space-x-4 justify-end">
                 <button type="button" class="btn btn-secondary w-1/4" hx-post="/api/agent/{{ agent_id }}/deactivate"
                     hx-ext="json-enc" hx-swap="innerHTML" hx-target="#update_agent_notification_msg"
@@ -65,6 +67,19 @@
         </form>
     </div>
 </div>
+
+<script>
+    var editor = CodeMirror.fromTextArea(document.getElementById("fsm_agent_config_text"), {
+        mode: "toml",
+        lineNumbers: true,
+        theme: "dracula",
+        tabSize: 2
+    });
+
+    function syncEditor() {
+        document.getElementById("fsm_agent_config").value = editor.getValue();
+    }
+</script>
 
 
 {% endblock %}
