@@ -48,21 +48,13 @@ cd ai-gent-smith/
 
 6. create the database: 
 
-You need to have a functional postgreSQL database running with pgvector extension built.
-(You can see an example how to setup a local postgreSQL + pgvetcor in the Docker file `ai_gent_web/docker/Dockerfile` for Ubuntu 24.04.)
+You need to have a functional postgreSQL database running with pgvector extension built. (You can see an example how to setup a local postgreSQL + pgvetcor in the Docker file `ai_gent_web/docker/Dockerfile` for Ubuntu 24.04.)
 
-Set up the environmental variable `DATABASE_URL` for the database location 
-For example if your user name is `db_user`, you can do 
-`export DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt if your 
-user name is `db_user` for a local postgreSQL setup.
+Set up the environmental variable `DATABASE_URL` for the database location.
 
-You can use the script `database/create_empty_db.sh` to create an empty database
-named `ai_gent` as long as you have permission to create and modify a database in
-your PostgreSQL setup. You need to set up the environmental variable `DATABASE_URL`
-so the `sqlx` knows the user name and the database name. You may setup `PGUSER` and
-`PGPASSWORD` if you can use the environmental variables for the authentication to
-use the database. Here is the context of the script and you need to be in the 
-`database` directory so the `sqlx` can access all database migration files:
+For example if your user name is `db_user`, you can do `export DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt if your user name is `db_user` for a local postgreSQL setup.
+
+You can use the script `database/create_empty_db.sh` to create an empty database named `ai_gent` as long as you have permission to create and modify a database in your PostgreSQL setup. You need to set up the environmental variable `DATABASE_URL` so the `sqlx` knows the user name and the database name. You may setup `PGUSER` and `PGPASSWORD` if you can use the environmental variables for the authentication to use the database. Here is the context of the script and you need to be in the `database` directory so the `sqlx` can access all database migration files:
 
 ```
 ## assuming the DATABASE_URL environment variable is setup properly and a database named "ai_gent" does not exist.
@@ -70,10 +62,7 @@ sqlx database create
 sqlx migrate run
 ```
 
-You can also use the script in `bootstraping.sh` in the `database` directory. It uses
-`psql` to create the database and load pre-existing examples of agents, assets, and chat
-sessions. You still need to set the correct `PGUSER` and `PGPASSWORD` or have other means
-to get the authentication to access your database. See `ai-gent-smith/ai_gent_web/docker/load_db.sh` for an example on how to set it up in a Docker container. 
+You can also use the script in `bootstraping.sh` in the `database` directory. It uses `psql` to create the database and load pre-existing examples of agents, assets, and chat sessions. You still need to set the correct `PGUSER` and `PGPASSWORD` or have other means to get the authentication to access your database. See `ai-gent-smith/ai_gent_web/docker/load_db.sh` for an example on how to set it up in a Docker container. 
 
 7. Set up the environment variables for LLM API calls: 
     - `OPENAI_API_KEY` for OpenAI APIs
@@ -94,8 +83,7 @@ cargo run --release
 
 ### For Mac ARM64 (Apple Silicon M1/M2/M3/M4) Docker Users
 
-If you are not an experienced developer of Rust and PostgreSQL, you should just try it out
-using docker as the database installation is taken care of. 
+If you are not an experienced developer of Rust and PostgreSQL, you should just try it out using docker as the database installation is taken care of. 
 
 1. Install Docker Desktop for Mac from [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/)
 
@@ -114,8 +102,7 @@ You can add `ANTHROPIC_API_KEY` too.
 
 ### For Intel/AMD64 architecture Docker Users
 
-If you are not an experienced developer of Rust and PostgreSQL, you should just try it out
-using docker as the database installation is taken care of. 
+If you are not an experienced developer of Rust and PostgreSQL, you should just try it out using docker as the database installation is taken care of. 
 
 1. Install Docker Desktop from [https://www.docker.com/products/docker-desktop/](https://www.docker.com/products/docker-desktop/) or from [CLI] (https://docs.docker.com/engine/install/)
 
@@ -174,15 +161,11 @@ transitions = [
 initial_state = "StandBy"
 ```
 
-In this example, we have a "StandBy" state. Once the agent receives user input, it uses another "FSM" agent  
-and the transition table above to "guess" what the user's role might be. We send the user input along with  
-a special "fsm_prompt" that utilizes an LLM to determine the next finite state machine state.  
+In this example, we have a "StandBy" state. Once the agent receives user input, it uses another "FSM" agent and the transition table above to "guess" what the user's role might be. We send the user input along with a special "fsm_prompt" that utilizes an LLM to determine the next finite state machine state.  
 
-In our case, the states following "StandBy" represent a set of possible roles that a user can have.  
-For example, the user could be a CEO, a Regulatory Consultant, a Customer, or a Scientist.  
+In our case, the states following "StandBy" represent a set of possible roles that a user can have.  For example, the user could be a CEO, a Regulatory Consultant, a Customer, or a Scientist.  
 
-If the user does not provide any specific useful information for the LLM to make a guess,  
-it may transition back to the "StandBy" mode.  
+If the user does not provide any specific useful information for the LLM to make a guess, it may transition back to the "StandBy" mode.  
 
 
 Here is an excerpt of the `fsm_prompt` (see [`ai_gent_web/dev_config/fda_challenge_example_1.toml`](ai_gent_web/dev_config/fda_challenge_example_1.toml) for a full example):  
@@ -204,23 +187,13 @@ them to ask new questions. """
 ...
 ```
 
-Once the state of the agent is determined, a final prompt will be generated using  
-the `sys_prompt` and the state prompt, along with the user's query and  
-search context from the user's input (in the case of retrieval-augmented generation)  
-to get a response from the LLM APIs.  
+Once the state of the agent is determined, a final prompt will be generated using the `sys_prompt` and the state prompt, along with the user's query and search context from the user's input (in the case of retrieval-augmented generation) to get a response from the LLM APIs.  
 
-In the current codebase, we do not send the entire conversation history. Instead,  
-we generate a summary of the conversation each time we receive a response from the LLM.  
-For each user query, we send the previous summary along with the new user query to the LLM.  
+In the current codebase, we do not send the entire conversation history. Instead, we generate a summary of the conversation each time we receive a response from the LLM. For each user query, we send the previous summary along with the new user query to the LLM.  
 
-This means the agent does not have true "long-term memory" if the summarization  
-only considers the latest message.  
+This means the agent does not have true "long-term memory" if the summarization only considers the latest message.  
 
-However, this behavior can be easily modified. We could send the last few messages  
-along with the summary or extend the summary length to retain more context.  
-This is an area worth experimenting with for different use cases.  
-One can control how summarization is done by modifying the `summary_prompt`  
-in the configuration file.  
+However, this behavior can be easily modified. We could send the last few messages along with the summary or extend the summary length to retain more context. This is an area worth experimenting with for different use cases. One can control how summarization is done by modifying the `summary_prompt`  in the configuration file.  
 
 The configuration toml file will be de-serialized to the following Rust struct:
 ```rust
@@ -234,12 +207,9 @@ pub struct FSMAgentConfig {
     pub fsm_prompt: String,
 }
 ```
-If any required field is missing in the configuration file, the UI will not allow  
-the configuration to be loaded when creating a new finite state machine agent through the UI.  
+If any required field is missing in the configuration file, the UI will not allow the configuration to be loaded when creating a new finite state machine agent through the UI.  
 
-We also provide an interface to create a "Basic Agent," which has only three states:  
-`InitialResponse`, `FollowUp`, and `StandBy`. You can customize the prompts used for  
-`InitialResponse` and `FollowUp` directly through the UI.  
+We also provide an interface to create a "Basic Agent," which has only three states:  `InitialResponse`, `FollowUp`, and `StandBy`. You can customize the prompts used for `InitialResponse` and `FollowUp` directly through the UI.  
 
 You can find the configuration for a "Basic Agent" in the file  
 [`ai_gent_web/templates/simple_agent_config.toml.template`](ai_gent_web/templates/simple_agent_config.toml.template).  
@@ -248,26 +218,20 @@ You can find the configuration for a "Basic Agent" in the file
 
 ### Create Asset JSONL file
 
-The web server provides API for some generic text chunking and get embedding vector from
-PDF file. You can use the script `supporting_scripts/pdf_to_embedding` to generate the 
-`jsonl` file for creating new asset for a new RAG agent.
+The web server provides API for some generic text chunking and get embedding vector from PDF file. You can use the script `supporting_scripts/pdf_to_embedding` to generate the `jsonl` file for creating new asset for a new RAG agent.
 
 For example, if you have a collection of the PDF in a directory `pdf_files/`, you can run
+
 ```
 python pdf_to_embedding.py --input-dir=pdf_files/ -o asset.jsonl 
 ```
 
-It generates the `asset.jsonl` that can be used to upload the Ai-Gent Smith through UI. 
-Not that the script connects to the local Ai-Gent Smith server (http://127.0.0.1:8080) 
-through a HTTP request to get the embedding vectors. You need to start the Ai-Gent Simth
-before you can use `pdf_to_embedding.py`. See more in [`supporting_scripts/pdf_to_embedding`](supporting_scripts/pdf_to_embedding).
+It generates the `asset.jsonl` that can be used to upload the Ai-Gent Smith through UI. Not that the script connects to the local Ai-Gent Smith server (http://127.0.0.1:8080) through a HTTP request to get the embedding vectors. You need to start the Ai-Gent Simth before you can use `pdf_to_embedding.py`. See more in [`supporting_scripts/pdf_to_embedding`](supporting_scripts/pdf_to_embedding).
 
 ### Upload the Asset JSONL
 The following screenshot shows how to upload an asset through "Asset Library > Create Asset" on the left panel
 ![CreateAsset1](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset1.png?raw=true)
-If the asset file is big, it may take a while for the system
-to process, please wait until you to see the dialog box like below showing up
-to continue.
+If the asset file is big, it may take a while for the system to process, please wait until you to see the dialog box like below showing up to continue.
 ![CreateAsset2](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset2.png?raw=true)
 
 Once the asset is showing up in the "Asset Library", you can click the "show" button on the asset card to see some of the content in the asset.
@@ -296,8 +260,7 @@ Use the "Agent Library > Create A Basic Agent" button to show the Finite State M
 ![CreateAgent3](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAgent3.png?raw=true)
 
 ### Use The Agents
-Use the "Agent Library > Show Agent Library" to show current available library,
-click the "use" to start work with a chat agent.
+Use the "Agent Library > Show Agent Library" to show current available library, click the "use" to start work with a chat agent.
 ![UseAgent1](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/UseAgent1.png?raw=true)
 
 Once you click the "Use" button, the chat interface will appear. You can enter your queries in the input field at the bottom and click the "Send" button to retrieve the relevant context in the asset associated with the agent and process your query through the LLM.  
