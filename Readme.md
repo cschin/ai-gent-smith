@@ -32,7 +32,7 @@ Currently, we provide a small document dataset from an precision FDA challenge: 
 cargo install sqlx-cli
 ```
 
-3. Install `postgresql` (version 14+) for your system and create a database user with the permission to create a database in your development environment. (see [`ai-gent-smith/ai_gent_web/docker/setup_db.sh`](ai-gent-smith/ai_gent_web/docker/setup_db.sh) for an example). 
+3. Install `postgresql` (version 14+) for your system and create a database user with the permission to create a database in your development environment. (see [`ai_gent_web/docker/setup_db.sh`](ai_gent_web/docker/setup_db.sh) for an example). 
 4. Clone the repository: 
 
 ```
@@ -61,7 +61,7 @@ sqlx database create
 sqlx migrate run
 ```
 
-You can also use the script in `bootstraping.sh` in the `database` directory. It uses `psql` to create the database and load pre-existing examples of agents, assets, and chat sessions. You still need to set the correct `PGUSER` and `PGPASSWORD` or have other means to get the authentication to access your database. See [`ai-gent-smith/ai_gent_web/docker/load_db.sh`](ai-gent-smith/ai_gent_web/docker/load_db.sh) for an example on how to set it up in a Docker container. 
+You can also use the script in `bootstraping.sh` in the `database` directory. It uses `psql` to create the database and load pre-existing examples of agents, assets, and chat sessions. You still need to set the correct `PGUSER` and `PGPASSWORD` or have other means to get the authentication to access your database. See [`ai_gent_web/docker/load_db.sh`](ai_gent_web/docker/load_db.sh) for an example on how to set it up in a Docker container. 
 
 7. Set up the environment variables for LLM API calls: 
     - `OPENAI_API_KEY` for OpenAI APIs
