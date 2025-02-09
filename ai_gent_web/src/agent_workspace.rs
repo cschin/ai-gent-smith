@@ -1,4 +1,3 @@
-use ai_gent_lib::fsm::DefaultFSMChatState;
 use ai_gent_lib::fsm::FSMBuilder;
 use ai_gent_lib::fsm::FSMState;
 use ai_gent_lib::fsm::FSMStateInit;
@@ -57,14 +56,13 @@ pub const TEMPERATURE_SLIDER: &str = "temperature_slider";
 #[derive(Debug, Clone)]
 pub struct FSMChatState {
     name: String,
-    attributes: Arc<RwLock<HashMap<String, String>>>,
+    attributes: HashMap<String, String>,
 }
 
 impl FSMStateInit for FSMChatState {
     fn new(name: &str, prompt: &str) -> Self {
         let mut attributes = HashMap::new();
         attributes.insert("prompt".to_string(), prompt.to_string());
-        let attributes = Arc::new(RwLock::new(attributes));
         FSMChatState {
             name: name.to_string(),
             attributes,
@@ -91,18 +89,15 @@ impl FSMState for FSMChatState {
     }
 
     async fn set_attribute(&mut self, k: &str, v: String) {
-        let mut guard = self.attributes.write().await;
-        guard.insert(k.to_string(), v);
+        self.attributes.insert(k.to_string(), v);
     }
 
     async fn get_attribute(&self, k: &str) -> Option<String> {
-        let guard = self.attributes.read().await;
-        guard.get(k).cloned()
+        self.attributes.get(k).cloned()
     }
 
     async fn clone_attribute(&self, k: &str) -> Option<String> {
-        let guard = self.attributes.read().await;
-        guard.get(k).cloned()
+        self.attributes.get(k).cloned()
     }
 
     fn name(&self) -> String {
