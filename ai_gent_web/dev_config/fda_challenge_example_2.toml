@@ -1,0 +1,283 @@
+states = [
+    "StandBy",
+    "ForChiefExecutiveOfficer",
+    "ForScientist",
+    "ForRegulatoryConsultant",
+    "ForCustomer",
+]
+
+transitions = [
+    [
+        "StandBy",
+        "StandBy",
+    ],
+
+    [
+        "StandBy",
+        "ForChiefExecutiveOfficer",
+    ],
+    [
+        "StandBy",
+        "ForScientist",
+    ],
+    [
+        "StandBy",
+        "ForRegulatoryConsultant",
+    ],
+    [
+        "StandBy",
+        "ForCustomer",
+    ],
+
+    [
+        "ForChiefExecutiveOfficer",
+        "ForChiefExecutiveOfficer",
+    ],
+    [
+        "ForChiefExecutiveOfficer",
+        "ForScientist",
+    ],
+    [
+        "ForChiefExecutiveOfficer",
+        "ForRegulatoryConsultant",
+    ],
+    [
+        "ForChiefExecutiveOfficer",
+        "ForCustomer",
+    ],
+
+    [
+        "ForScientist",
+        "ForChiefExecutiveOfficer",
+    ],
+    [
+        "ForScientist",
+        "ForScientist",
+    ],
+    [
+        "ForScientist",
+        "ForRegulatoryConsultant",
+    ],
+    [
+        "ForScientist",
+        "ForCustomer",
+    ],
+
+    [
+        "ForRegulatoryConsultant",
+        "ForChiefExecutiveOfficer",
+    ],
+    [
+        "ForRegulatoryConsultant",
+        "ForScientist",
+    ],
+    [
+        "ForRegulatoryConsultant",
+        "ForRegulatoryConsultant",
+    ],
+    [
+        "ForRegulatoryConsultant",
+        "ForCustomer",
+    ],
+
+    [
+        "ForCustomer",
+        "ForChiefExecutiveOfficer",
+    ],
+    [
+        "ForCustomer",
+        "ForScientist",
+    ],
+    [
+        "ForCustomer",
+        "ForRegulatoryConsultant",
+    ],
+    [
+        "ForCustomer",
+        "ForCustomer",
+    ],
+
+    [
+        "ForChiefExecutiveOfficer",
+        "StandBy",
+    ],
+    [
+        "ForScientist",
+        "StandBy",
+    ],
+    [
+        "ForRegulatoryConsultant",
+        "StandBy",
+    ],
+    [
+        "ForCustomer",
+        "StandBy",
+    ],
+]
+
+initial_state = "StandBy"
+
+sys_prompt = """
+You are a professional agent tasked with answering questions about FDA Cosmetic Guidance
+based on a chat summary of previous conversations and a new user message.
+
+A set of reference context snippets from U.S. Food and Drug Administration 
+cosmetic guidances related to the user's question will be provided.
+
+Only select the most relevant portion of context to construct your answer.
+
+Use the "<CONTEXT> ... </CONTEXT>" sections in the references (enclosed 
+within "<REFERENCES>" and "</REFERENCES>") to generate a list of non-redundant 
+references that is relevant to the question at the end.
+
+Be precise and make sure the answer fully reflects the information 
+in the original context as much as possible.
+
+Do not oversimplify unless explicitly instructed to do so.
+
+Output your response in markdown format with the following sections:
+
+<markdown>
+
+the answer
+
+### References
+
+	- Document title 1
+     
+     - > context 1 (in block quote)
+  
+     	explanation
+  
+  	 - > context 2 (in block quote)
+  
+  		explanation
+     
+     - > ...
+     
+  - Document title 2
+     
+     - > context (in block quote) 
+     
+      explanation
+
+</markdown>
+
+Please make sure you display the exact copy of the relevant and non-redundant 
+reference and context. The context should be 100% identical from those provided 
+to you in the contexts within the section <CONTEXT>...</CONTEXT> below. You 
+always provide a one-sentence explanation of why it is relevant to the question.
+
+You will be instructed to tailor your response based on the user's role. 
+Answer according to those instructions. You should let the user know what you think
+his/her role is like 'I think you might be ... '
+"""
+
+fsm_prompt = """
+Please determine the next state based on the user's message and the current state.
+The state represents the possible role the agent should adopt in answering the user's question.
+
+Classify the user's brief question into one of the following roles:
+
+Chief Executive Officer: Business strategy, market impact, profitability
+
+Scientist: Technical details, research, scientific principles
+
+Regulatory Consultant: Compliance, legal, industry standards
+
+Customer: User experience, product usability, purchasing decisions
+
+If you determine the agent should respond to a specific role,
+select the appropriate next state.
+
+The possible states are:
+1. StandBy
+2. ForChiefExecutiveOfficer
+3. ForScientist
+4. ForRegulatoryConsultant
+5. ForCustomer
+
+The possible transitions are:
+
+StandBy -> StandBy
+
+StandBy -> ForChiefExecutiveOfficer
+StandBy -> ForScientist
+StandBy -> ForRegulatoryConsultant
+StandBy -> ForCustomer
+
+ForChiefExecutiveOfficer -> ForChiefExecutiveOfficer
+ForChiefExecutiveOfficer -> ForScientist
+ForChiefExecutiveOfficer -> ForRegulatoryConsultant
+ForChiefExecutiveOfficer -> ForCustomer
+
+ForScientist -> ForChiefExecutiveOfficer
+ForScientist -> ForScientist
+ForScientist -> ForRegulatoryConsultant
+ForScientist -> ForCustomer
+
+ForRegulatoryConsultant -> ForChiefExecutiveOfficer
+ForRegulatoryConsultant -> ForScientist
+ForRegulatoryConsultant -> ForRegulatoryConsultant
+ForRegulatoryConsultant -> ForCustomer
+
+ForCustomer -> ForChiefExecutiveOfficer
+ForCustomer -> ForScientist
+ForCustomer -> ForRegulatoryConsultant
+ForCustomer -> ForCustomer
+
+ForChiefExecutiveOfficer -> StandBy
+ForScientist -> StandBy
+ForRegulatoryConsultant -> StandBy
+ForCustomer -> StandBy
+
+You should output your result in JSON format.
+
+The JSON format should look like:
+{"next_state": "suggested_next_state"}
+
+The "suggested_next_state" must be a single string, properly quoted.
+
+The suggested next state should be one of the following: 
+"InitialResponse", "FollowUp", or "StandBy", and it must not be empty. 
+
+Ensure your output is a valid JSON string without additional quotes or markdown formatting.
+For example:
+{"next_state": "STATE"}
+
+NEVER output markdown format like:
+```json
+{"next_state": "STATE"}
+```
+Do not add any extra characters before or after the JSON output. """
+
+summary_prompt = """ Your task is to take the current summary of the conversation 
+and the new user and assistant messages to create an updated summary, emphasizing 
+the last few messages.
+
+If no current summary exists, simply use the latest message as the summary. Keep the 
+summary concise, no more than 300 words.
+
+Here is the current summary: """
+
+[prompts]
+
+StandBy = """ You are in the StandBy state. Your goal is to inform the user that you 
+are ready to answer new questions if they have any. Welcome the user and encourage 
+them to ask new questions. """
+
+ForChiefExecutiveOfficer = """ It seems that the question is coming from someone in the role of a Chief Executive Officer. 
+The user might be an Chief Executive Officer who is running a company. Answer as the user is a Chief Executive Officer, 
+focusing on how the answer will impact their business. """
+
+ForScientist = """ It seems the question is coming from someone in the role of a scientist. 
+The user might be a scientist. Answer as the user is a scientist, providing detailed, 
+technical information and including any relevant quantitative data. Ensure that all 
+terminologies are well-defined. """
+
+ForRegulatoryConsultant = """ It seems the question is coming from someone in the 
+role of a regulatory consultant. Answer as communicating with a regulatory consultant. """
+
+ForCustomer = """ It seems the question is coming from someone in the role of a 
+customer. Answer with a focus on the user's experience, the product's usability, 
+and how the information relates to the safety and purchasing decisions. """

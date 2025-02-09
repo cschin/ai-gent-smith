@@ -821,13 +821,13 @@ fn get_search_context_plain_text(top_hits: &[TwoDPoint]) -> String {
         .map(|p| {
             let c = &p.chunk;
             format!(
-                "<DOCUMET_TITLE>{}</DOCUMENT_TITLE>\n\n<CONTEXT>\n{}\n</CONTEXT>",
+                "<DOCUMENT>\n<DOCUMET_TITLE>{}</DOCUMENT_TITLE>\n\n<CONTEXT>\n{}\n</CONTEXT>\n</DOCUMENT>",
                 c.title,
                 c.text
             )
         })
         .collect::<Vec<String>>()
-        .join("\n========================\n\n")
+        .join("\n")
 }
 
 fn get_search_context_html(top_hits: &[TwoDPoint]) -> String {

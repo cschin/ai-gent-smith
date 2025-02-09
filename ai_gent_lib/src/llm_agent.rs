@@ -266,13 +266,13 @@ impl<C: LLMClient> LLMAgent<C> {
                     self.sys_prompt.as_str(),
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
-                    "<summary>",
+                    "<SUMMARY>",
                     &self.summary,
-                    "</summary>",
+                    "</SUMMARY>",
                     "\nHere is the current reference context:\n",
-                    "<context>",
+                    "<REFERENCES>",
                     context,
-                    "</context>",
+                    "</REFERENCES>",
                 ]
                 .join("\n")
             } else {
@@ -280,12 +280,14 @@ impl<C: LLMClient> LLMAgent<C> {
                     self.sys_prompt.as_str(),
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
-                    "<summary>",
+                    "<SUMMARY>",
                     &self.summary,
-                    "</summary>",
+                    "</SUMMARY>",
                 ]
                 .join("\n")
             };
+
+            tracing::info!(target: "tron_app", "full prompt: {}", prompt);
 
             let llm_output = if let Some(tx) = tx.clone() {
                 let _ = tx
