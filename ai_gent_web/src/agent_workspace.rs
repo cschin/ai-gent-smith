@@ -192,7 +192,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let asset_search_output = TnDiv::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex-1 border-2 overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 text-black rounded-lg p-1 min-h-[540px] max-h-[540px] min-w-[140px] max-w-[280px]")
+        .set_attr("class", "flex-1 border-2 overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 text-black rounded-lg p-1 min-h-[540px] max-h-[540px] min-w-[140px]")
         .build();
 
         let top_k_slider = TnRangeSlider::builder()
