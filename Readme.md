@@ -14,11 +14,11 @@ Currently, we provide a small document dataset from an precision FDA challenge: 
 ## Table of Contents
 
 - [Installation](#installation)
-- [Embedding Map](#embedding-map)
-- [Chat Examples](#chat-examples)
+- [Finite State Machine Agent](#finite-state-machine-agent)
+- [Usage](#usage)
 - [Technologies Used](#technologies-used)
 - [Project Structure](#project-structure)
-- [Supported LLM Vendors and Models](#supported-LLM-vendors-and-models)
+- [Supported LLM Vendors and Models](#supported-llm-vendors-and-models)
 - [License](#license)
 
 ## Installation
