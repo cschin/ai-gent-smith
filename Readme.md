@@ -48,7 +48,7 @@ cd ai-gent-smith/
 
 6. create the database: 
 
-You need to have a functional postgreSQL database running with pgvector extension built. (You can see an example how to setup a local postgreSQL + pgvetcor in the Docker file `ai_gent_web/docker/Dockerfile` for Ubuntu 24.04.)
+You need to have a functional postgreSQL database running with pgvector extension built. (You can see an example how to setup a local postgreSQL + pgvetcor in the Docker file [`ai_gent_web/docker/Dockerfile`](`ai_gent_web/docker/Dockerfile) for Ubuntu 24.04.)
 
 Set up the environmental variable `DATABASE_URL` for the database location.
 
@@ -62,7 +62,7 @@ sqlx database create
 sqlx migrate run
 ```
 
-You can also use the script in `bootstraping.sh` in the `database` directory. It uses `psql` to create the database and load pre-existing examples of agents, assets, and chat sessions. You still need to set the correct `PGUSER` and `PGPASSWORD` or have other means to get the authentication to access your database. See `ai-gent-smith/ai_gent_web/docker/load_db.sh` for an example on how to set it up in a Docker container. 
+You can also use the script in `bootstraping.sh` in the `database` directory. It uses `psql` to create the database and load pre-existing examples of agents, assets, and chat sessions. You still need to set the correct `PGUSER` and `PGPASSWORD` or have other means to get the authentication to access your database. See [`ai-gent-smith/ai_gent_web/docker/load_db.sh`](ai-gent-smith/ai_gent_web/docker/load_db.sh) for an example on how to set it up in a Docker container. 
 
 7. Set up the environment variables for LLM API calls: 
     - `OPENAI_API_KEY` for OpenAI APIs
@@ -218,7 +218,7 @@ You can find the configuration for a "Basic Agent" in the file
 
 ### Create Asset JSONL file
 
-The web server provides API for some generic text chunking and get embedding vector from PDF file. You can use the script `supporting_scripts/pdf_to_embedding` to generate the `jsonl` file for creating new asset for a new RAG agent.
+The web server provides API for some generic text chunking and get embedding vector from PDF file. You can use the script [`supporting_scripts/pdf_to_embedding/pdf_to_embedding.py`](supporting_scripts/pdf_to_embedding/pdf_to_embedding.py) to generate the `jsonl` file for creating new asset for a new RAG agent.
 
 For example, if you have a collection of the PDF in a directory `pdf_files/`, you can run
 
@@ -226,7 +226,7 @@ For example, if you have a collection of the PDF in a directory `pdf_files/`, yo
 python pdf_to_embedding.py --input-dir=pdf_files/ -o asset.jsonl 
 ```
 
-It generates the `asset.jsonl` that can be used to upload the Ai-Gent Smith through UI. Not that the script connects to the local Ai-Gent Smith server (http://127.0.0.1:8080) through a HTTP request to get the embedding vectors. You need to start the Ai-Gent Simth before you can use `pdf_to_embedding.py`. See more in [`supporting_scripts/pdf_to_embedding`](supporting_scripts/pdf_to_embedding).
+It generates the `asset.jsonl` that can be used to upload the Ai-Gent Smith through UI. Not that the script connects to the local Ai-Gent Smith server (http://127.0.0.1:8080) through a HTTP request to get the embedding vectors. You need to start the Ai-Gent Simth before you can use `pdf_to_embedding.py`. See more in [`supporting_scripts/pdf_to_embedding/`](supporting_scripts/pdf_to_embedding/).
 
 A pregenerated asset file for the pFDA challenge is at [`ai_gent_web/dev_config/fda_challenge_example_asset.jsonl.gz`](ai_gent_web/dev_config/fda_challenge_example_asset.jsonl.gz)`. You can upload the file through the UI interface (see below).
 
