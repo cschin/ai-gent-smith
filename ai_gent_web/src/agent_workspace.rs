@@ -20,8 +20,11 @@ use std::sync::OnceLock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
+use tron_app::tron_components::div::clean_div_with_context;
+use tron_app::tron_components::div::update_and_send_div_with_context;
 use tron_app::tron_components::text::append_textarea_value;
-use tron_app::tron_components::text::update_and_send_textarea_with_context;
+use tron_app::tron_components::text::clean_textarea_with_context;
+// use tron_app::tron_components::text::update_and_send_textarea_with_context;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
@@ -187,9 +190,9 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .set_action(TnActionExecutionMethod::Await, search_asset_clicked)
             .build();
 
-        let asset_search_output = TnTextArea::builder()
+        let asset_search_output = TnDiv::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex-1 border-2 overflow-x-scroll text-nowrap mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[540px] max-h-[540px] w-full")
+        .set_attr("class", "flex-1 border-2 overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 text-black rounded-lg p-1 min-h-[540px] max-h-[540px] min-w-[140px] max-w-[280px]")
         .build();
 
         let top_k_slider = TnRangeSlider::builder()
@@ -237,7 +240,6 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
     }
 }
 
-
 use comrak::plugins::syntect::{SyntectAdapter, SyntectAdapterBuilder};
 use comrak::{markdown_to_html_with_plugins, Options, Plugins};
 
@@ -247,7 +249,9 @@ static COMRAK_PLUGINS: OnceLock<Plugins> = OnceLock::new();
 fn get_comrak_plugins() -> &'static Plugins<'static> {
     COMRAK_PLUGINS.get_or_init(|| {
         let syntect_adapter = SYNTECT_ADAPTER.get_or_init(|| {
-            SyntectAdapterBuilder::new().theme("base16-ocean.dark").build()
+            SyntectAdapterBuilder::new()
+                .theme("base16-ocean.dark")
+                .build()
         });
         let mut comrak_plugins = Plugins::default();
         comrak_plugins.render.codefence_syntax_highlighter = Some(syntect_adapter);
@@ -363,7 +367,11 @@ where
                     "bot" => {
                         let html_output = [
                             r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
-                            markdown_to_html_with_plugins(&content, &comrak_options, comrak_plugins),
+                            markdown_to_html_with_plugins(
+                                &content,
+                                &comrak_options,
+                                comrak_plugins,
+                            ),
                             r#"<article>"#.to_string(),
                         ]
                         .join("\n");
@@ -534,7 +542,6 @@ async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::E
     Ok(result.chat_id)
 }
 
-
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
     tn_future! {
         if event.e_trigger != AGENT_QUERY_BUTTON {
@@ -545,7 +552,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let (tx, mut rx) = mpsc::channel::<(String, String)>(8);
         let context_cloned = context.clone();
         let handle = tokio::spawn(async move {
-            
+
             let comrak_options = Options::default();
             let comrak_plugins = get_comrak_plugins();
             while let Some((t, r)) = rx.recv().await {
@@ -715,17 +722,22 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             };
 
 
-            let query_context = ammonia::clean_text(&search_asset(&query_text, asset_id, top_k as usize, threshold_value).await).to_string();
-            agent.context = Some(query_context.clone());
+            let search_asset_results = search_asset(&query_text, asset_id, top_k as usize, threshold_value).await;
 
-            text::clean_textarea_with_context(
+            let query_context = get_search_context_plain_text(&search_asset_results);
+
+            agent.context = Some(query_context);
+
+            let query_context_html = get_search_context_html(&search_asset_results); 
+
+            clean_div_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
             ).await;
-            update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &query_context).await;
+            update_and_send_div_with_context(&context, ASSET_SEARCH_OUTPUT, &query_context_html).await;
 
             context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
-            text::clean_textarea_with_context(
+            clean_textarea_with_context(
                 &context,
                 AGENT_QUERY_TEXT_INPUT,
             )
@@ -759,9 +771,9 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
     }
 }
 
-async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) -> String {
+async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) -> Vec<TwoDPoint> {
     if asset_id == 0 {
-        return "".to_string();
+        return vec![];
     };
 
     // use LLM to extend the context for simple question
@@ -800,23 +812,54 @@ async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) 
         top_k
     };
     let top_hits: Vec<TwoDPoint> = best_sorted_points[..top_k].into();
-    let out = top_hits
+    top_hits
+}
+
+fn get_search_context_plain_text(top_hits: &[TwoDPoint]) -> String {
+    top_hits
         .iter()
         .map(|p| {
             let c = &p.chunk;
             format!(
-                "DOCUMET TITLE:\n{}\n\n (Similarity: {:0.5}, span: {}-{}) \n\nCONTEXT:\n{}",
+                "<DOCUMET_TITLE>{}</DOCUMENT_TITLE>\n\n<CONTEXT>\n{}\n</CONTEXT>",
                 c.title,
-                1.0 - p.d.to_f64(),
-                c.span.0,
-                c.span.1,
                 c.text
             )
         })
         .collect::<Vec<String>>()
-        .join("\n========================\n\n");
+        .join("\n========================\n\n")
+}
 
-    out
+fn get_search_context_html(top_hits: &[TwoDPoint]) -> String {
+    let md_text = top_hits
+        .iter()
+        .map(|p| {
+            let c = &p.chunk;
+            let context = c
+                .text
+                .split("\n")
+                .map(|s| format!("> {}", s))
+                .collect::<Vec<String>>()
+                .join("\n");
+
+            format!(
+                "### {}\n Similarity: {:0.5} \n\n CONTEXT:\n{}",
+                c.title,
+                1.0 - p.d.to_f64(),
+                context
+            )
+        })
+        .collect::<Vec<String>>()
+        .join("\n\n");
+    let mut comrak_options = Options::default();
+    comrak_options.render.width = 20;
+    let comrak_plugins = get_comrak_plugins();
+    [
+        r#"<article class="markdown-body bg-gray-800">"#.to_string(),
+        markdown_to_html_with_plugins(&md_text, &comrak_options, comrak_plugins),
+        r#"<article>"#.to_string(),
+    ]
+    .join("\n")
 }
 
 async fn extend_query_with_llm(query: &str) -> String {
@@ -914,12 +957,15 @@ fn search_asset_clicked(
         };
 
         // tracing::info!(target:"tron_app", "query_text: {}", query_text);
-        let out = search_asset(&query_text, asset_id, top_k as usize, threshold_value).await;
-        text::clean_textarea_with_context(
+
+        let search_asset_results = search_asset(&query_text, asset_id, top_k as usize, threshold_value).await;
+
+        let query_context = get_search_context_html(&search_asset_results);
+        clean_div_with_context(
             &context,
             ASSET_SEARCH_OUTPUT,
         ).await;
-        update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &out).await;
+        update_and_send_div_with_context(&context, ASSET_SEARCH_OUTPUT, &query_context).await;
         None
     }
 }

@@ -11,10 +11,10 @@ use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
 
+use crate::MOCK_USER;
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPool;
 use sqlx::{Column, Row, TypeInfo, ValueRef};
-use crate::MOCK_USER;
 
 use super::DB_POOL;
 use chrono::Utc;
@@ -27,7 +27,7 @@ pub struct SessionCards<'a: 'static> {
     username: String,
     status_to_render: String,
     since_then: Option<DateTime<Utc>>,
-    session_title: String
+    session_title: String,
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -52,9 +52,7 @@ impl<'a: 'static> SessionCardsBuilder<'a> {
 
 impl<'a: 'static> SessionCards<'a> {
     pub async fn init_db_pool(&mut self) {
-        self.db_pool = Some(
-          DB_POOL.clone()
-        );
+        self.db_pool = Some(DB_POOL.clone());
     }
 }
 
@@ -62,7 +60,7 @@ impl<'a: 'static> SessionCards<'a> {
 #[template(path = "sessions.html", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct ChatSessionTemplate {
     cards: Vec<(i32, String, String, String)>,
-    session_title: String
+    session_title: String,
 }
 
 #[async_trait]
@@ -72,17 +70,22 @@ where
 {
     async fn render(&self) -> String {
         let since_then = if let Some(since_then) = self.since_then {
-            since_then 
+            since_then
         } else {
             Utc::now() - chrono::Duration::days(3650)
         };
-        let pool = self.db_pool.as_ref().expect("Database connection not initialized");
+        let pool = self
+            .db_pool
+            .as_ref()
+            .expect("Database connection not initialized");
         let chats = query!(
-            "SELECT c.chat_id, c.title, c.summary, c.updated_at, a.name AS agent_name, u.username AS username
+            "SELECT c.chat_id, c.title, c.summary, c.updated_at, a.name AS agent_name, u.username AS username, COUNT(m.message_id) AS m_count 
              FROM chats c
              JOIN agents a ON c.agent_id = a.agent_id
              JOIN users u ON c.user_id = u.user_id
+             LEFT JOIN messages m on m.chat_id = c.chat_id
              WHERE u.username = $1 AND c.updated_at > $2 AND c.status = $3 AND a.status = $4 
+             GROUP BY c.chat_id, c.title, c.summary, c.updated_at, a.name, u.username
              ORDER BY c.updated_at DESC",
             self.username,
             since_then,
@@ -93,25 +96,37 @@ where
         .await
         .unwrap();
 
-
         let cards = chats
             .iter()
-            .map(|row| {
-                let id: i32 = row.chat_id;
-                let name: String = ammonia::clean_text(&row.agent_name).to_string();
-                let when: String = if let Some(utc_dt) = row.updated_at {
-                    let local_dt = utc_dt.with_timezone(&Local); // Convert to local timezone
-                    let formatted_time = local_dt.format("%b %d %H:%M").to_string();
-                    formatted_time
+            .flat_map(|row| {
+                if let Some(m_count) = row.m_count {
+                    if m_count == 0 {
+                        None
+                    } else {
+                        let id: i32 = row.chat_id;
+                        let name: String = ammonia::clean_text(&row.agent_name).to_string();
+                        let when: String = if let Some(utc_dt) = row.updated_at {
+                            let local_dt = utc_dt.with_timezone(&Local); // Convert to local timezone
+                            let formatted_time = local_dt.format("%b %d %H:%M").to_string();
+                            formatted_time
+                        } else {
+                            "".into()
+                        };
+                        let description: String =
+                            ammonia::clean_text(&row.summary.clone().unwrap_or_default())
+                                .to_string();
+                        Some((id, name, when, description))
+                    }
                 } else {
-                    "".into()
-                };
-                let description: String = ammonia::clean_text(&row.summary.clone().unwrap_or_default()).to_string();
-                (id, name, when, description)
+                    None
+                }
             })
             .collect::<Vec<_>>();
-        
-        let html = ChatSessionTemplate { cards, session_title: self.session_title.clone() };
+
+        let html = ChatSessionTemplate {
+            cards,
+            session_title: self.session_title.clone(),
+        };
         html.render().unwrap()
     }
 
@@ -140,11 +155,11 @@ where
 
         let assets_guard = ctx.assets.read().await;
         if let Some(TnAsset::U32(since_then_in_days)) = assets_guard.get("since_then_in_days") {
-            self.since_then =  Some(Utc::now() - chrono::Duration::days(*since_then_in_days as i64));
-        } 
+            self.since_then = Some(Utc::now() - chrono::Duration::days(*since_then_in_days as i64));
+        }
         if let Some(TnAsset::String(session_title)) = assets_guard.get("session_title") {
-            self.session_title =  session_title.to_string();
-        } 
+            self.session_title = session_title.to_string();
+        }
     }
 
     async fn post_render(&mut self, _ctx: &TnContextBase) {}

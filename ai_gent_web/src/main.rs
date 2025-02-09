@@ -40,13 +40,7 @@ use tower_sessions::{cookie::time::Time, Session};
 use tracing::debug;
 use tron_app::{
     tron_components::{
-        self,
-        button::TnButtonBuilder,
-        chatbox,
-        text::{self, update_and_send_textarea_with_context},
-        tn_future, TnActionExecutionMethod, TnAsset, TnComponentBaseRenderTrait,
-        TnComponentBaseTrait, TnDnDFileUpload, TnFutureHTMLResponse, TnFutureString,
-        TnHtmlResponse, TnServiceRequestMsg, UserData,
+        self, button::TnButtonBuilder, chatbox, div::update_and_send_div_with_context, text::{self, clean_textarea_with_context, update_and_send_textarea_with_context}, tn_future, TnActionExecutionMethod, TnAsset, TnComponentBaseRenderTrait, TnComponentBaseTrait, TnDnDFileUpload, TnFutureHTMLResponse, TnFutureString, TnHtmlResponse, TnServiceRequestMsg, UserData
     },
     AppData, HtmlAttributes, Ports, TRON_APP,
 };
@@ -887,7 +881,7 @@ async fn use_agent(
         chatbox::clean_chatbox_with_context(ctx, AGENT_CHAT_TEXTAREA).await;
         text::clean_textarea_with_context(ctx, AGENT_QUERY_TEXT_INPUT).await;
     }
-    update_and_send_textarea_with_context(ctx, ASSET_SEARCH_OUTPUT, "").await;
+    update_and_send_div_with_context(ctx, ASSET_SEARCH_OUTPUT, "").await;
     let out_html = {
         let ctx_guard = ctx.read().await;
 
@@ -1441,8 +1435,10 @@ async fn show_chat(
     h.insert("Hx-Retarget", "#workspace".parse().unwrap());
 
     {
-        //chatbox::clean_chatbox_with_context(ctx, AGENT_CHAT_TEXTAREA).await;
-        text::clean_textarea_with_context(ctx, AGENT_QUERY_TEXT_INPUT).await;
+        clean_textarea_with_context(ctx, AGENT_QUERY_TEXT_INPUT).await;
+    }
+    {
+        update_and_send_div_with_context(ctx, ASSET_SEARCH_OUTPUT, "").await;
     }
     let out_html = {
         let ctx_guard = ctx.read().await;
