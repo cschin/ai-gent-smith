@@ -46,32 +46,49 @@ git clone https://github.com/cschin/ai-gent-smith
 cd ai-gent-smith/
 ```
 
-6. create the database: `pushd database; bash bootstraping.sh; popd`, you may need to setup the correct `PGUSER` and `PGPASSWORD` for authentication to create the database with `sqlx` (see `ai-gent-smith/ai_gent_web/docker/load_db.sh` for example). 
+6. create the database: 
 
-7. Copy the data file: 
+You need to have a functional postgreSQL database running with pgvector extension built.
+(You can see an example how to setup a local postgreSQL + pgvetcor in the Docker file `ai_gent_web/docker/Dockerfile` for Ubuntu 24.04.)
+
+Set up the environmental variable `DATABASE_URL` for the database location 
+For example if your user name is `db_user`, you can do 
+`export DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt if your 
+user name is `db_user` for a local postgreSQL setup.
+
+You can use the script `database/create_empty_db.sh` to create an empty database
+named `ai_gent` as long as you have permission to create and modify a database in
+your PostgreSQL setup. You need to set up the environmental variable `DATABASE_URL`
+so the `sqlx` knows the user name and the database name. You may setup `PGUSER` and
+`PGPASSWORD` if you can use the environmental variables for the authentication to
+use the database. Here is the context of the script and you need to be in the 
+`database` directory so the `sqlx` can access all database migration files:
 
 ```
-cp data/all_embedding.jsonl.gz /opt/data/all_embedding.jsonl.gz
+## assuming the DATABASE_URL environment variable is setup properly and a database named "ai_gent" does not exist.
+sqlx database create
+sqlx migrate run
 ```
 
-If you don't have access to `/opt`, you can modify the source to a place where you have
-permission for the data file.
+You can also use the script in `bootstraping.sh` in the `database` directory. It uses
+`psql` to create the database and load pre-existing examples of agents, assets, and chat
+sessions. You still need to set the correct `PGUSER` and `PGPASSWORD` or have other means
+to get the authentication to access your database. See `ai-gent-smith/ai_gent_web/docker/load_db.sh` for an example on how to set it up in a Docker container. 
 
-8. Set up the environment variables: 
+7. Set up the environment variables for LLM API calls: 
     - `OPENAI_API_KEY` for OpenAI APIs
     - `ANTHROPIC_API_KEY` for Anthropic APIs
-    - `DATABASE_URL` for AI-Gent Smith to accese the postgresql database, for example if your
-    user name is `db_user`, you can do `export DATABASE_URL=postgres://db_user@localhost/ai_gent` under a command line shell prompt if your postgresql user name is `db_user`.
-9. Build the project: 
+
+8. Build the project: 
 
 ```
 cd ai_gent_web
 cargo run --release
 ```
 
-10. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
+9. Point your browser to `http://127.0.0.1:8080` to use the AI-Gent Smith
 
-11. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
+10. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
 ![Chat Interface](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/chat_interface.png?raw=true)
 
@@ -113,26 +130,206 @@ You can add `ANTHROPIC_API_KEY` too.
 
 4. It may take a while of the web server to start up as it needs download model weight (for tokenization and embedding vector from Hugging face)
 
-## Embedding Map
+## Finite State Machine Agent
 
-For each set of asset (collections of documents), we can generate an interactive map so a user
-can explore the relation between the documents.
+### Create a "Finite State Machine" Agent
 
-![embedding map](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/embedding_map.png?raw=true)
+In Ai-Gent Smith, we implement the agent using a finite state machine. The agent can be in a specific state at any given time. It will use this state to generate corresponding prompts and apply different state-dependent prompts. This allows the agent to simulate certain dialog scenarios or perform specific tasks before responding.  
 
-## Chat Examples
+For example, it might be desirable for the agent to infer the user's role and tailor its responses accordingly. A user with a different role may receive a more suitable response. To achieve this, we can utilize a simple finite state machine to manage state transitions in a chat session.  
+
+The user can specify states and their associated prompts through a configuration file to create a specific agent. You can refer to the file [`ai_gent_web/dev_config/fda_challenge_example_1.toml`](ai_gent_web/dev_config/fda_challenge_example_1.toml) for an example.  
+
+The following section in the configuration file sets up the possible states, the transitions between them, and the initial state:  
+
+
+```toml
+states = ["StandBy", 
+          "ForChiefExecutiveOfficer", 
+          "ForScientist", 
+          "ForRegulatoryConsultant", 
+          "ForCustomer"]
+
+transitions = [
+  ["StandBy", "StandBy"],
+  
+  ["StandBy", "ForChiefExecutiveOfficer"],
+  ["StandBy", "ForScientist"],
+  ["StandBy", "ForRegulatoryConsultant"],
+  ["StandBy", "ForCustomer"],
+  
+  ["ForChiefExecutiveOfficer", "ForChiefExecutiveOfficer"],
+  ["ForChiefExecutiveOfficer", "ForScientist"],
+  ["ForChiefExecutiveOfficer", "ForRegulatoryConsultant"],
+  ["ForChiefExecutiveOfficer", "ForCustomer"],
+
+  ["ForScientist", "ForChiefExecutiveOfficer"],
+  ["ForScientist", "ForScientist"],
+  ["ForScientist", "ForRegulatoryConsultant"],
+  ["ForScientist", "ForCustomer"],
+
+ ...
+]
+
+initial_state = "StandBy"
+```
+
+In this example, we have a "StandBy" state. Once the agent receives user input, it uses another "FSM" agent  
+and the transition table above to "guess" what the user's role might be. We send the user input along with  
+a special "fsm_prompt" that utilizes an LLM to determine the next finite state machine state.  
+
+In our case, the states following "StandBy" represent a set of possible roles that a user can have.  
+For example, the user could be a CEO, a Regulatory Consultant, a Customer, or a Scientist.  
+
+If the user does not provide any specific useful information for the LLM to make a guess,  
+it may transition back to the "StandBy" mode.  
+
+
+Here is an excerpt of the `fsm_prompt` (see [`ai_gent_web/dev_config/fda_challenge_example_1.toml`](ai_gent_web/dev_config/fda_challenge_example_1.toml) for a full example):  
+
+```toml
+fsm_prompt = """
+Please determine the next state based on the user's message and the current state.
+The state represents the possible role the agent should adopt in answering the user's question.
+...
+```
+
+We can specify the prompt for each state in prompt section:
+```toml
+[prompts]
+
+StandBy = """ You are in the StandBy state. Your goal is to inform the user that you
+are ready to answer new questions if they have any. Welcome the user and encourage
+them to ask new questions. """
+...
+```
+
+Once the state of the agent is determined, a final prompt will be generated using  
+the `sys_prompt` and the state prompt, along with the user's query and  
+search context from the user's input (in the case of retrieval-augmented generation)  
+to get a response from the LLM APIs.  
+
+In the current codebase, we do not send the entire conversation history. Instead,  
+we generate a summary of the conversation each time we receive a response from the LLM.  
+For each user query, we send the previous summary along with the new user query to the LLM.  
+This means the agent does not have true "long-term memory" if the summarization  
+only considers the latest message.  
+
+However, this behavior can be easily modified. We could send the last few messages  
+along with the summary or extend the summary length to retain more context.  
+This is an area worth experimenting with for different use cases.  
+One can control how summarization is done by modifying the `summary_prompt`  
+in the configuration file.  
+
+The configuration toml file will be de-serialized to the following Rust struct:
+```rust
+pub struct FSMAgentConfig {
+    pub states: Vec<String>,
+    pub transitions: Vec<(String, String)>,
+    pub initial_state: String,
+    pub prompts: HashMap<String, String>,
+    pub sys_prompt: String,
+    pub summary_prompt: String,
+    pub fsm_prompt: String,
+}
+```
+If any required field is missing in the configuration file, the UI will not allow  
+the configuration to be loaded when creating a new finite state machine agent through the UI.  
+
+We also provide an interface to create a "Basic Agent," which has only three states:  
+`InitialResponse`, `FollowUp`, and `StandBy`. You can customize the prompts used for  
+`InitialResponse` and `FollowUp` directly through the UI.  
+
+You can find the configuration for a "Basic Agent" in the file  
+[`ai_gent_web/templates/simple_agent_config.toml.template`](ai_gent_web/templates/simple_agent_config.toml.template).  
+
+## Usage 
+
+### Create Asset JSONL file
+
+The web server provides API for some generic text chunking and get embedding vector from
+PDF file. You can use the script `supporting_scripts/pdf_to_embedding` to generate the 
+`jsonl` file for creating new asset for a new RAG agent.
+
+For example, if you have a collection of the PDF in a directory `pdf_files/`, you can run
+```
+python pdf_to_embedding.py --input-dir=pdf_files/ -o asset.jsonl 
+```
+
+It generates the `asset.jsonl` that can be used to upload the Ai-Gent Smith through UI. 
+Not that the script connects to the local Ai-Gent Smith server (http://127.0.0.1:8080) 
+through a HTTP request to get the embedding vectors. You need to start the Ai-Gent Simth
+before you can use `pdf_to_embedding.py`. See more in [`supporting_scripts/pdf_to_embedding`](supporting_scripts/pdf_to_embedding).
+
+### Upload the Asset JSONL
+The following screenshot shows how to upload an asset through "Asset Library > Create Asset" on the left panel
+![CreateAsset1](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset1.png?raw=true)
+If the asset file is big, it may take a while for the system
+to process, please wait until you to see the dialog box like below showing up
+to continue.
+![CreateAsset2](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset2.png?raw=true)
+
+Once the asset is showing up in the "Asset Library", you can click the "show" button on the asset card to see some of the content in the asset.
+![CreateAsset3](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset3.png?raw=true)
+
+You can see the table of content of the asset
+![CreateAsset4](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset4.png?raw=true)
+
+#### Embedding Map
+For each set of asset (collections of documents), the `pdf_to_embedding.py` generate a two dimensional UMAP project from the high dimensional embedding space too. You can clikc the plot, the document that is "near" where you click in the embedding space will be highlighted.  ![CreateAsset5](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset5.png?raw=true)
+
+
+### Create a Finite State Machine Agent
+
+Use the "Agent Library > Create An Advanced Agent" button to show the Finite State Machine Agent configuration form: 
+
+![CreateAgent1](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAgent1.png?raw=true)
+
+You can select a specific model and an asset for the new agent.
+![CreateAgent2](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAgent2.png?raw=true)
+
+### Create a Basic Agent
+
+Use the "Agent Library > Create A Basic Agent" button to show the Finite State Machine Agent configuration form: 
+
+![CreateAgent3](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAgent3.png?raw=true)
+
+### Use The Agents
+Use the "Agent Library > Show Agent Library" to show current available library,
+click the "use" to start work with a chat agent.
+![UseAgent1](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/UseAgent1.png?raw=true)
+
+Once you click the "Use" button, the chat interface will appear. You can enter your queries in the input field at the bottom and click the "Send" button to retrieve the relevant context in the asset associated with the agent and process your query through the LLM.  
+
+If you want to see the retrieved context without sending the query to an LLM model, you can use the "Search Asset" button. 
+
+The asset search results are displayed on the right side of the workspace, and you can adjust various retrieval parameters using the sliders in the lower-right corner.  
+
+Additionally, you can download the current  chat and agent configuration using the "Download" button or start a new session  with the "New Session" button.  
+![UseAgent2](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/UseAgent2.png?raw=true)
+
+#### Chat Examples
+
+You can find the previous chat session using the "Sessions" tab on the left panel for different time periods
+![ChatSession1.png](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/ChatSession1.png?raw=true)
+
+
+Here are some previously generated chat log:
 
 - [With gpt-4o](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o.json)
+- [With gpt-4o-mini](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o-mini.json)
 - [With gpt-3.5-turbo](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-3.5-turbo.json)
-- [With gpt-o3-mini](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-o3-mini.json)
 - [With gpt-4o and a party goer personality](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o-party-mode.json)
+
 
 ## Technologies Used
 
 - [Rust](https://www.rust-lang.org)
-- [Tron: a server side Ruse UI library for web UI with htmx](https://github.com/cschin/tron)  
-- [Candle: A Rust deep learning library developed by Hugging face ](https://github.com/huggingface/candle)
-- [genai: supporting multi LLM vendor API calls](https://github.com/jeremychone/rust-genai)
+- [Tron](https://github.com/cschin/tron): a server side Ruse UI library for Web developed by Jason Chin with [axum](https://github.com/tokio-rs/axum) and [htmx](https://htmx.org)  
+- [Candle](https://github.com/huggingface/candle): Minimalist ML framework for Rust developed by Huggingface 
+- [genai](https://github.com/jeremychone/rust-genai): supporting multi LLM vendor API calls
+- [PostgreSQL](https://www.postgresql.org) + [pgvector](https://github.com/pgvector/pgvector) for vector query
+- See the `Cargo.toml` files for many other great tools used for this project.
 
 ## Project Structure
 
@@ -144,11 +341,6 @@ Brief overview of the main directories and their purposes:
 - `/database`: For database support
 - `/misc`: Miscellaneous 
 
-## Create Asset
-
-The web server provides API for some generic text chunking and get embedding vector from
-PDF file. You can use the script `supporting_scripts/pdf_to_embedding` to generate the 
-`jsonl` file for creating new asset for a new RAG agent.
 
 ## Supported LLM Vendors and Models
 
