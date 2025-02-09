@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::default;
 use std::sync::Arc;
+use std::sync::OnceLock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
 use tokio::sync::RwLock;
@@ -186,12 +187,12 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .set_action(TnActionExecutionMethod::Await, search_asset_clicked)
             .build();
 
-        let asset_search_output = text::TnTextArea::builder()
+        let asset_search_output = TnTextArea::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
         .set_attr("class", "flex-1 border-2 overflow-x-scroll text-nowrap mb-1 border-gray-600 bg-gray-400 text-black rounded-lg p-1 min-h-[540px] max-h-[540px] w-full")
         .build();
 
-        let topk_slider = TnRangeSlider::builder()
+        let top_k_slider = TnRangeSlider::builder()
             .init(TOPK_SLIDER.into(), 8.0, 4.0, 16.0)
             .set_attr("class", "flex-1 ml-auto w-full")
             .set_action(TnActionExecutionMethod::Await, top_k_value_update)
@@ -227,7 +228,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
         context.add_component(query_button);
         context.add_component(asset_search_button);
         context.add_component(asset_search_output);
-        context.add_component(topk_slider);
+        context.add_component(top_k_slider);
         context.add_component(threshold_slider);
         context.add_component(temperature_slider);
         //context.add_component(new_session_button);
@@ -237,9 +238,22 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 }
 
 
-use comrak::plugins::syntect::SyntectAdapterBuilder;
+use comrak::plugins::syntect::{SyntectAdapter, SyntectAdapterBuilder};
 use comrak::{markdown_to_html_with_plugins, Options, Plugins};
 
+static SYNTECT_ADAPTER: OnceLock<SyntectAdapter> = OnceLock::new();
+static COMRAK_PLUGINS: OnceLock<Plugins> = OnceLock::new();
+
+fn get_comrak_plugins() -> &'static Plugins<'static> {
+    COMRAK_PLUGINS.get_or_init(|| {
+        let syntect_adapter = SYNTECT_ADAPTER.get_or_init(|| {
+            SyntectAdapterBuilder::new().theme("base16-ocean.dark").build()
+        });
+        let mut comrak_plugins = Plugins::default();
+        comrak_plugins.render.codefence_syntax_highlighter = Some(syntect_adapter);
+        comrak_plugins
+    })
+}
 
 #[async_trait]
 impl<'a> TnComponentRenderTrait<'a> for AgentWorkSpace<'a>
@@ -322,6 +336,7 @@ where
             if let Some(TnAsset::U32(chat_id)) = assets_guard.get("chat_id") {
                 *chat_id as i32
             } else {
+                tracing::info!(target: TRON_APP, "creating a chat workspace, no chid_id found");
                 panic!("no chat id found")
             }
         };
@@ -331,6 +346,7 @@ where
             if let Some(TnAsset::U32(asset_id)) = assets_guard.get("asset_id") {
                 *asset_id as i32
             } else {
+                tracing::info!(target: TRON_APP, "creating a chat workspace, no asset_id found");
                 panic!("no asset id found")
             }
         };
@@ -339,17 +355,15 @@ where
 
         {
             let chat_textarea = comp_guard.get(AGENT_CHAT_TEXTAREA).unwrap();
-            let syntect_adapter = SyntectAdapterBuilder::new().theme("base16-ocean.dark").build();
             let comrak_options = Options::default();
-            let mut comrak_plugins = Plugins::default();
-            comrak_plugins.render.codefence_syntax_highlighter = Some(&syntect_adapter);
+            let comrak_plugins = get_comrak_plugins();
             chatbox::clean_chatbox_value(chat_textarea.clone()).await;
             for (role, _m_type, content) in messages.into_iter() {
                 match role.as_str() {
                     "bot" => {
                         let html_output = [
                             r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
-                            markdown_to_html_with_plugins(&content, &comrak_options, &comrak_plugins),
+                            markdown_to_html_with_plugins(&content, &comrak_options, comrak_plugins),
                             r#"<article>"#.to_string(),
                         ]
                         .join("\n");
@@ -520,6 +534,7 @@ async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::E
     Ok(result.chat_id)
 }
 
+
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
     tn_future! {
         if event.e_trigger != AGENT_QUERY_BUTTON {
@@ -530,10 +545,9 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let (tx, mut rx) = mpsc::channel::<(String, String)>(8);
         let context_cloned = context.clone();
         let handle = tokio::spawn(async move {
-            let syntect_adapter = SyntectAdapterBuilder::new().theme("base16-ocean.dark").build();
+            
             let comrak_options = Options::default();
-            let mut comrak_plugins = Plugins::default();
-            comrak_plugins.render.codefence_syntax_highlighter = Some(&syntect_adapter);
+            let comrak_plugins = get_comrak_plugins();
             while let Some((t, r)) = rx.recv().await {
                 match t.as_str() {
                     "token" =>  {
@@ -548,7 +562,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         let query_result_area = context_cloned.get_component(AGENT_CHAT_TEXTAREA).await;
                         let html_output = [
                             r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
-                            markdown_to_html_with_plugins(&r, &comrak_options, &comrak_plugins),
+                            markdown_to_html_with_plugins(&r, &comrak_options, comrak_plugins),
                             r#"<article>"#.to_string(),
                         ]
                         .join("\n");
@@ -702,12 +716,13 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
 
             let query_context = ammonia::clean_text(&search_asset(&query_text, asset_id, top_k as usize, threshold_value).await).to_string();
+            agent.context = Some(query_context.clone());
+
             text::clean_textarea_with_context(
                 &context,
                 ASSET_SEARCH_OUTPUT,
             ).await;
             update_and_send_textarea_with_context(&context, ASSET_SEARCH_OUTPUT, &query_context).await;
-            agent.context = Some(query_context);
 
             context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
             text::clean_textarea_with_context(
