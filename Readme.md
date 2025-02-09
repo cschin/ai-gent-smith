@@ -215,7 +215,7 @@ You can find the configuration for a "Basic Agent" in the file
 
 ## Usage 
 
-### Create Asset JSONL file
+### Create an Asset JSONL file
 
 The web server provides API for some generic text chunking and get embedding vector from PDF file. You can use the script [`supporting_scripts/pdf_to_embedding/pdf_to_embedding.py`](supporting_scripts/pdf_to_embedding/pdf_to_embedding.py) to generate the `jsonl` file for creating new asset for a new RAG agent.
 
@@ -229,7 +229,7 @@ It generates the `asset.jsonl` that can be used to upload the Ai-Gent Smith thro
 
 A pregenerated asset file for the pFDA challenge is at [`ai_gent_web/dev_config/fda_challenge_example_asset.jsonl.gz`](ai_gent_web/dev_config/fda_challenge_example_asset.jsonl.gz)`. You can upload the file through the UI interface (see below).
 
-### Upload the Asset JSONL
+### Upload the Asset JSONL file
 The following screenshot shows how to upload an asset through "Asset Library > Create Asset" on the left panel
 ![CreateAsset1](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset1.png?raw=true)
 
