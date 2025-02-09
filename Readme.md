@@ -212,6 +212,7 @@ to get a response from the LLM APIs.
 In the current codebase, we do not send the entire conversation history. Instead,  
 we generate a summary of the conversation each time we receive a response from the LLM.  
 For each user query, we send the previous summary along with the new user query to the LLM.  
+
 This means the agent does not have true "long-term memory" if the summarization  
 only considers the latest message.  
 
