@@ -287,7 +287,7 @@ impl<C: LLMClient> LLMAgent<C> {
                 .join("\n")
             };
 
-            tracing::info!(target: "tron_app", "full prompt: {}", prompt);
+            // tracing::info!(target: "tron_app", "full prompt: {}", prompt);
 
             let llm_output = if let Some(tx) = tx.clone() {
                 let _ = tx
