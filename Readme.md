@@ -32,8 +32,7 @@ Currently, we provide a small document dataset from an precision FDA challenge: 
 cargo install sqlx-cli
 ```
 
-3. Install `postgresql` (version 14+) for your system and create a database user with the permission to create a database in your development environment. (see `ai-gent-smith/ai_gent_web/docker/setup_db.sh` for an example). 
-
+3. Install `postgresql` (version 14+) for your system and create a database user with the permission to create a database in your development environment. (see [`ai-gent-smith/ai_gent_web/docker/setup_db.sh`](ai-gent-smith/ai_gent_web/docker/setup_db.sh) for an example). 
 4. Clone the repository: 
 
 ```
@@ -48,7 +47,7 @@ cd ai-gent-smith/
 
 6. create the database: 
 
-You need to have a functional postgreSQL database running with pgvector extension built. (You can see an example how to setup a local postgreSQL + pgvetcor in the Docker file [`ai_gent_web/docker/Dockerfile`](`ai_gent_web/docker/Dockerfile) for Ubuntu 24.04.)
+You need to have a functional postgreSQL database running with pgvector extension built. (You can see an example how to setup a local postgreSQL + pgvetcor in the Docker file [`ai_gent_web/docker/Dockerfile`](ai_gent_web/docker/Dockerfile) for Ubuntu 24.04.)
 
 Set up the environmental variable `DATABASE_URL` for the database location.
 
