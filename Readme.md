@@ -228,9 +228,12 @@ python pdf_to_embedding.py --input-dir=pdf_files/ -o asset.jsonl
 
 It generates the `asset.jsonl` that can be used to upload the Ai-Gent Smith through UI. Not that the script connects to the local Ai-Gent Smith server (http://127.0.0.1:8080) through a HTTP request to get the embedding vectors. You need to start the Ai-Gent Simth before you can use `pdf_to_embedding.py`. See more in [`supporting_scripts/pdf_to_embedding`](supporting_scripts/pdf_to_embedding).
 
+A pregenerated asset file for the pFDA challenge is at [`ai_gent_web/dev_config/fda_challenge_example_asset.jsonl.gz`](ai_gent_web/dev_config/fda_challenge_example_asset.jsonl.gz)`. You can upload the file through the UI interface (see below).
+
 ### Upload the Asset JSONL
 The following screenshot shows how to upload an asset through "Asset Library > Create Asset" on the left panel
 ![CreateAsset1](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset1.png?raw=true)
+
 If the asset file is big, it may take a while for the system to process, please wait until you to see the dialog box like below showing up to continue.
 ![CreateAsset2](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/CreateAsset2.png?raw=true)
 
