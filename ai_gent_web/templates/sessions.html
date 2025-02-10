@@ -15,6 +15,10 @@
                         onclick='document.getElementById("session_deletion_confirm_{{id}}").showModal()'>Delete</button>
                     <button class="btn btn-xs" hx-get="/api/chat/{{id}}/show" hx-swap="none"
                         hx-trigger="click">Continue</button>
+
+                    <a href="/api/chat/{{id}}/download_html" target="_blank">
+                        <button class="btn btn-xs">Show</button>
+                    </a>
                 </div>
             </div>
         </div>

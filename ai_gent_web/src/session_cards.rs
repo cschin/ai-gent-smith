@@ -107,7 +107,7 @@ where
                         let name: String = ammonia::clean_text(&row.agent_name).to_string();
                         let when: String = if let Some(utc_dt) = row.updated_at {
                             let local_dt = utc_dt.with_timezone(&Local); // Convert to local timezone
-                            let formatted_time = local_dt.format("%b %d %H:%M").to_string();
+                            let formatted_time = local_dt.format("%b %d %H:%M %Z").to_string();
                             formatted_time
                         } else {
                             "".into()

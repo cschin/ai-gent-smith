@@ -192,24 +192,24 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let asset_search_output = TnDiv::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex-1 border-2 overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 text-black rounded-lg p-1 min-h-[540px] max-h-[540px] min-w-[140px]")
+        .set_attr("class", "flex flex-1 border-2 overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 text-black rounded-lg p-1 min-h-[520px] max-h-[520px] min-w-[140px] max-w-[280px]")
         .build();
 
         let top_k_slider = TnRangeSlider::builder()
             .init(TOPK_SLIDER.into(), 8.0, 4.0, 16.0)
-            .set_attr("class", "flex-1 ml-auto w-full")
+            .set_attr("class", "flex flex-1 min-w-[140px] max-w-[280px]")
             .set_action(TnActionExecutionMethod::Await, top_k_value_update)
             .build();
 
         let threshold_slider = TnRangeSlider::builder()
             .init(THRESHOLD_SLIDER.into(), 65.0, 60.0, 80.0)
-            .set_attr("class", "flex-1 ml-auto w-full")
+            .set_attr("class", "flex flex-1 min-w-[140px] max-w-[280px]")
             .set_action(TnActionExecutionMethod::Await, threshold_value_update)
             .build();
 
         let temperature_slider = TnRangeSlider::builder()
             .init(TEMPERATURE_SLIDER.into(), 5.0, 0.0, 100.0)
-            .set_attr("class", "flex-1 ml-auto w-full")
+            .set_attr("class", "flex flex-1 min-w-[140px] max-w-[280px]")
             .set_action(TnActionExecutionMethod::Await, temperature_value_update)
             .build();
 
@@ -246,7 +246,7 @@ use comrak::{markdown_to_html_with_plugins, Options, Plugins};
 static SYNTECT_ADAPTER: OnceLock<SyntectAdapter> = OnceLock::new();
 static COMRAK_PLUGINS: OnceLock<Plugins> = OnceLock::new();
 
-fn get_comrak_plugins() -> &'static Plugins<'static> {
+pub fn get_comrak_plugins() -> &'static Plugins<'static> {
     COMRAK_PLUGINS.get_or_init(|| {
         let syntect_adapter = SYNTECT_ADAPTER.get_or_init(|| {
             SyntectAdapterBuilder::new()
@@ -855,7 +855,7 @@ fn get_search_context_html(top_hits: &[TwoDPoint]) -> String {
     comrak_options.render.width = 20;
     let comrak_plugins = get_comrak_plugins();
     [
-        r#"<article class="markdown-body bg-gray-800">"#.to_string(),
+        r#"<article class="flex flex-1 flex-col markdown-body bg-gray-800 min-w-[140px] max-w-[280px]">"#.to_string(),
         markdown_to_html_with_plugins(&md_text, &comrak_options, comrak_plugins),
         r#"<article>"#.to_string(),
     ]

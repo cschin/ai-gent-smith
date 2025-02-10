@@ -40,7 +40,14 @@ use tower_sessions::{cookie::time::Time, Session};
 use tracing::debug;
 use tron_app::{
     tron_components::{
-        self, button::TnButtonBuilder, chatbox, div::update_and_send_div_with_context, text::{self, clean_textarea_with_context, update_and_send_textarea_with_context}, tn_future, TnActionExecutionMethod, TnAsset, TnComponentBaseRenderTrait, TnComponentBaseTrait, TnDnDFileUpload, TnFutureHTMLResponse, TnFutureString, TnHtmlResponse, TnServiceRequestMsg, UserData
+        self,
+        button::TnButtonBuilder,
+        chatbox,
+        div::update_and_send_div_with_context,
+        text::{self, clean_textarea_with_context, update_and_send_textarea_with_context},
+        tn_future, TnActionExecutionMethod, TnAsset, TnComponentBaseRenderTrait,
+        TnComponentBaseTrait, TnDnDFileUpload, TnFutureHTMLResponse, TnFutureString,
+        TnHtmlResponse, TnServiceRequestMsg, UserData,
     },
     AppData, HtmlAttributes, Ports, TRON_APP,
 };
@@ -149,6 +156,7 @@ async fn main() {
         .route("/chat/{id}/delete", get(delete_chat))
         .route("/chat/{id}/show", get(show_chat))
         .route("/chat/{id}/download", get(download_chat))
+        .route("/chat/{id}/download_html", get(download_chat_message_html))
         .route("/asset/{id}/show", get(show_asset))
         .route("/asset/create", post(create_asset))
         .route("/asset/{id}/delete", get(delete_asset))
@@ -1129,7 +1137,17 @@ async fn update_basic_agent(
         serde_json::from_value::<SimpleAgentSettingForm>(payload.clone()).unwrap();
 
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -1189,7 +1207,12 @@ async fn update_basic_agent(
         clean_text(&agent_setting_form.name)
     );
 
-    Html::from(html_rtn)
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        Html::from(html_rtn),
+    )
+        .into_response()
 }
 
 async fn update_adv_agent(
@@ -1205,7 +1228,17 @@ async fn update_adv_agent(
         serde_json::from_value::<AdvAgentSettingForm>(payload.clone()).unwrap();
 
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -1221,7 +1254,7 @@ async fn update_adv_agent(
     };
 
     if toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
-        return Html::from(
+        let html = Html::from(
             r##"
         <div id="update_agent_notification_msg">
             <div>
@@ -1236,6 +1269,12 @@ async fn update_adv_agent(
         </div>"##
                 .to_string(),
         );
+        return (
+            StatusCode::OK,
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            html,
+        )
+            .into_response();
     }
 
     let agent_setting = AgentSetting {
@@ -1279,7 +1318,12 @@ async fn update_adv_agent(
         clean_text(&agent_setting_form.name)
     );
 
-    Html::from(html_rtn)
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        Html::from(html_rtn),
+    )
+        .into_response()
 }
 
 async fn deactivate_agent(
@@ -1292,7 +1336,17 @@ async fn deactivate_agent(
     let _agent_configuration = payload.to_string();
 
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
     let db_pool = DB_POOL.clone();
@@ -1322,7 +1376,12 @@ async fn deactivate_agent(
         clean_text(&row.name)
     );
 
-    Html::from(html_rtn)
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        Html::from(html_rtn),
+    )
+        .into_response()
 }
 
 async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, session: Session) {
@@ -1332,7 +1391,12 @@ async fn check_user(_method: Method, State(appdata): State<Arc<AppData>>, sessio
     // .expect("error on getting user data");
 
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return 
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -1473,39 +1537,24 @@ async fn download_chat(
     session: Session,
 ) -> impl IntoResponse {
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
     let user_data;
     {
         let ctx_guard = ctx.read().await;
         user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
     }
     let pool = DB_POOL.clone();
-    let results = sqlx::query!(
-        r#"
-        SELECT m.timestamp, m.role, m.content, m.fsm_state
-        FROM messages m 
-        JOIN chats c ON c.chat_id = m.chat_id 
-        JOIN users u ON c.user_id = u.user_id
-        WHERE m.chat_id = $1 AND c.status = $2 AND u.username = $3
-        ORDER BY m.timestamp ASC
-        "#,
-        chat_id,
-        "active",
-        user_data.username
-    )
-    .fetch_all(&pool)
-    .await
-    .unwrap();
-
-    let messages = results
-        .into_iter()
-        .map(|row| SingleChatMessage {
-            time_stamp: row.timestamp.unwrap_or_default().to_string(),
-            fsm_state: row.fsm_state,
-            role: row.role.unwrap_or_default(),
-            content: row.content,
-        })
-        .collect::<Vec<_>>();
+    let messages = get_chat_messages(chat_id, &user_data, &pool).await;
 
     let result = sqlx::query!(
         r#" 
@@ -1532,10 +1581,151 @@ async fn download_chat(
     };
     let chat_download = serde_json::to_string_pretty(&chat_download).unwrap();
 
-    axum::response::Response::builder()
-        .header("Content-Type", "text/plain; charset=utf-8")
-        .body(chat_download)
-        .unwrap()
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
+        chat_download,
+    )
+        .into_response()
+}
+
+async fn download_chat_message_html(
+    _method: Method,
+    State(appdata): State<Arc<AppData>>,
+    Path(chat_id): Path<i32>,
+    session: Session,
+) -> impl IntoResponse {
+    let ctx_store_guard = appdata.context_store.read().await;
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
+
+    let user_data;
+    {
+        let ctx_guard = ctx.read().await;
+        user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
+    }
+    let pool = DB_POOL.clone();
+
+    let messages = get_chat_messages(chat_id, &user_data, &pool).await;
+    let md_text = get_chat_message_markdown_blocks(&messages).await;
+    let mut comrak_options = comrak::Options::default();
+    comrak_options.render.width = 20;
+    let comrak_plugins = crate::agent_workspace::get_comrak_plugins();
+
+    let html_inner = md_text.into_iter().map(|(role, md_text)| {
+        let bg_color = match role.as_str() {
+            "user" => "336633",
+            "bot" => "#333366",
+            _ => "#333333"
+        };
+
+        let md_html = comrak::markdown_to_html_with_plugins(&md_text, &comrak_options, comrak_plugins);
+        let mut html = format!(r#"<div style="padding: 10px; border-radius: 8px; margin: 8px; background-color:{};">
+        <article class="markdown-body" style="color: #CCCCCC; background-color:{} ">{}</article>
+        </div>"#, bg_color, bg_color, md_html );
+        if role == "bot" {
+            html.extend(["<hr>"]);
+        };
+        html
+    }).collect::<Vec<String>>().join("\n");
+
+    let html = [
+        r#"<html>
+        <head><link href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown.min.css" rel="stylesheet"
+      type="text/css" /></head>
+      <body style="background-color:rgb(75, 75, 75);>
+      <div style="background-color:rgb(75, 75, 75);">"#.to_string(),
+      html_inner,
+        r#"</div></body></html>"#.to_string(),
+    ]
+    .join("\n");
+
+    (
+        StatusCode::OK,
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        html,
+    )
+        .into_response()
+}
+
+async fn get_chat_message_markdown_blocks(messages: &[SingleChatMessage]) -> Vec<(String, String)> {
+    messages
+        .iter()
+        .map(|m| {
+            let role = match m.role.as_str() {
+                "bot" => "Agent's Response",
+                "user" => "User's Query",
+                _ => m.role.as_str(),
+            };
+
+            let time_stamp = m.time_stamp.parse::<chrono::DateTime<chrono::Utc>>();
+
+            let when: String = if let Ok(utc_dt) = time_stamp {
+                let local_dt = utc_dt.with_timezone(&chrono::Local); // Convert to local timezone
+                let formatted_time = local_dt.format("%m-%d-%y %H-%M-%S %Z").to_string();
+                formatted_time
+            } else {
+                "".into()
+            };
+
+            if let Some(fsm_state) = m.fsm_state.as_ref() {
+                (
+                    m.role.to_string(),
+                    format!(
+                        "## {} ({}, Agent State: {}) \n\n  {}",
+                        role, when, fsm_state, m.content
+                    ),
+                )
+            } else {
+                (
+                    m.role.to_string(),
+                    format!("## {} ({}) \n\n {} ", role, when, m.content),
+                )
+            }
+        })
+        .collect::<Vec<(String, String)>>()
+}
+
+async fn get_chat_messages(
+    chat_id: i32,
+    user_data: &UserData,
+    pool: &sqlx::Pool<Postgres>,
+) -> Vec<SingleChatMessage> {
+    let results = sqlx::query!(
+        r#"
+        SELECT m.timestamp, m.role, m.content, m.fsm_state
+        FROM messages m 
+        JOIN chats c ON c.chat_id = m.chat_id 
+        JOIN users u ON c.user_id = u.user_id
+        WHERE m.chat_id = $1 AND c.status = $2 AND u.username = $3
+        ORDER BY m.timestamp ASC
+        "#,
+        chat_id,
+        "active",
+        user_data.username
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap();
+
+    results
+        .into_iter()
+        .map(|row| SingleChatMessage {
+            time_stamp: row.timestamp.unwrap_or_default().to_string(),
+            fsm_state: row.fsm_state,
+            role: row.role.unwrap_or_default(),
+            content: row.content,
+        })
+        .collect::<Vec<_>>()
 }
 
 async fn delete_chat(
@@ -1545,7 +1735,17 @@ async fn delete_chat(
     session: Session,
 ) -> impl IntoResponse {
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
     {
         let db_pool = DB_POOL.clone();
         let _row = sqlx::query!(
@@ -1569,7 +1769,7 @@ async fn delete_chat(
         agent_ws.pre_render(&ctx_guard).await;
         agent_ws.render().await
     };
-    (h, Html::from(out_html))
+    (StatusCode::OK, h, Html::from(out_html)).into_response()
 }
 
 async fn show_asset(
@@ -1580,7 +1780,17 @@ async fn show_asset(
 ) -> impl IntoResponse {
     //println!("payload: {:?}", payload);
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
 
     {
         let ctx_guard = ctx.read().await;
@@ -1600,7 +1810,7 @@ async fn show_asset(
         asset_space_plot.pre_render(&ctx_guard).await;
         asset_space_plot.render().await
     };
-    (h, Html::from(out_html))
+    (StatusCode::OK, h, Html::from(out_html)).into_response()
 }
 
 async fn delete_asset(
@@ -1610,7 +1820,17 @@ async fn delete_asset(
     session: Session,
 ) -> impl IntoResponse {
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
     {
         let db_pool = DB_POOL.clone();
         let _row = sqlx::query!(
@@ -1634,7 +1854,7 @@ async fn delete_asset(
         agent_ws.pre_render(&ctx_guard).await;
         agent_ws.render().await
     };
-    (h, Html::from(out_html))
+    (StatusCode::OK, h, Html::from(out_html)).into_response()
 }
 
 #[derive(Debug, Default, Serialize, Deserialize)]
@@ -1655,7 +1875,17 @@ async fn create_asset(
         serde_json::from_value::<AssetSettingForm>(payload.clone()).unwrap();
 
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let session_id = if let Some(session_id) = session.id() {
+        session_id
+    } else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Not Authorized",
+        )
+            .into_response();
+    };
+    let ctx = ctx_store_guard.get(&session_id).unwrap();
 
     let document_chunks = {
         let asset_ref = ctx.get_asset_ref().await;
@@ -1695,7 +1925,7 @@ async fn create_asset(
         }
     }
 
-    if !document_chunks.chunks.is_empty() {
+    let html = if !document_chunks.chunks.is_empty() {
         let ctx_guard = ctx.read().await;
         let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -1752,7 +1982,8 @@ async fn create_asset(
         ))
     } else {
         Html::from(r#"<p class="py-4">No Valid Asset Data Uploaded</p>"#.to_string())
-    }
+    };
+    (StatusCode::OK, [(header::CONTENT_TYPE, "text/html")], html).into_response()
 }
 
 fn handle_file_upload(context: TnContext, _event: TnEvent, payload: Value) -> TnFutureHTMLResponse {

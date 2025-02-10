@@ -1,7 +1,7 @@
 <div id="workspace" class="container mx-auto px-4">
     <div class="flex flex-row p-1 w-full">
         <div class="basis-3/4 flex flex-col p-1 w-full max-w-3/4 min-h-[75svh] max-h-[75svh]"">
-            <label class="text-2xl font-bold mb-2 p-2 text-gray-100"> Agent Chat: {{ agent_name }} </label>
+            <label class=" text-2xl font-bold mb-2 p-2 text-gray-100"> Agent Chat: {{ agent_name }} </label>
             {{ chat_textarea }}
             {{ stream_output }}
 
@@ -36,19 +36,25 @@
                 <label class="text-xl text-gray-100 p-2 mb-2"> Supporting Context </label>
                 {{asset_search_output}}
             </div>
-            <div class="flex-1"> 
-                <label class="flex-1 text-s text-gray-100 p-2"> top k: </label>
-                <span id="top_k_value"> 8 </span>
+            <div class="flex flex-1 flex-col">
+                <div class="flex flex-1 text-s text-gray-100 p-2">
+                    <label class="text-s"> top k: </label>
+                    <span id="top_k_value" class="text-s"> 8 </span>
+                </div>
                 {{topk_slider_html}}
             </div>
-            <div class="flex-1"> 
-                <label class="flex-1 text-s text-gray-100 p-2 mb-2"> threshold: </label>
-                <span id="threshold_value"> 0.65 </span>
+            <div class="flex flex-1 flex-col">
+                <div class="flex flex-1 text-s text-gray-100 p-2">
+                    <label class="text-s"> threshold: </label>
+                    <span id="threshold_value" class="text-s"> 0.65 </span>
+                </div>
                 {{threshold_slider_html}}
             </div>
-            <div class="flex-1"> 
-                <label class="flex-1 text-s text-gray-100 p-2 mb-2"> temperature: </label>
-                <span id="temperature_value"> 0.05 </span>
+            <div class="flex flex-1 flex-col">
+                <div class="flex flex-1 text-s text-gray-100 p-2">
+                    <label class="text-s"> temperature: </label>
+                    <span id="temperature_value" class="text-s"> 0.05 </span>
+                </div>
                 {{temperature_slider_html}}
             </div>
 
