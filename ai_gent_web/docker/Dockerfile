@@ -24,7 +24,6 @@ RUN apt-get install -y ca-certificates postgresql
 RUN /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && apt-get install postgresql-16-pgvector
 RUN rm -rf /var/lib/apt/lists/*
 RUN mkdir -p /opt/ && mkdir -p /opt/bin && mkdir -p /opt/database && mkdir -p /opt/data
-COPY all_embedding.jsonl.gz /opt/data
 COPY bootstraping.sh /opt/database/
 COPY bootstraping.sql /opt/database/
 ENV DATABASE_URL=postgres://db_user@localhost/ai_gent 
