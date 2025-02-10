@@ -1642,8 +1642,8 @@ async fn download_chat_message_html(
         r#"<html>
         <head><link href="https://cdnjs.cloudflare.com/ajax/libs/github-markdown-css/5.8.1/github-markdown.min.css" rel="stylesheet"
       type="text/css" /></head>
-      <body style="background-color:rgb(75, 75, 75);>
-      <div style="background-color:rgb(75, 75, 75);">"#.to_string(),
+      <body style="background-color:rgb(75, 75, 75);">
+      <div style="background-color:rgb(75, 75, 75); max-width: 800px; margin: 0 auto; word-wrap: break-word; overflow-wrap: break-word;">"#.to_string(),
       html_inner,
         r#"</div></body></html>"#.to_string(),
     ]
