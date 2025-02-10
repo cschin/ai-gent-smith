@@ -286,6 +286,7 @@ Here are some previously generated chat log:
 - [With gpt-4o-mini](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o-mini.json)
 - [With gpt-3.5-turbo](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-3.5-turbo.json)
 - [With gpt-4o and a party goer personality](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o-party-mode.json)
+- [With gpt-4o updated prompt](https://github.com/cschin/ai-gent-smith/blob/main/misc/chat_output/chat-gpt-4o-prompt-example2.json) with a new prompt asking the LLM explaining why some context is relevant.
 
 
 ## Technologies Used
