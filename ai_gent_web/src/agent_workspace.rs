@@ -7,8 +7,11 @@ use ai_gent_lib::llm_agent::LLMAgent;
 use ai_gent_lib::llm_agent::LLMClient;
 use askama::Template;
 use async_trait::async_trait;
+use axum::http::header;
 use axum::http::HeaderMap;
+use axum::http::StatusCode;
 use axum::response::Html;
+use axum::response::IntoResponse;
 use candle_core::WithDType;
 use ordered_float::OrderedFloat;
 use serde_json::Value;
@@ -542,7 +545,9 @@ async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::E
     Ok(result.chat_id)
 }
 
+
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
+    // TODO: this event handler needs significant refactoring
     tn_future! {
         if event.e_trigger != AGENT_QUERY_BUTTON {
             return None;
@@ -664,12 +669,33 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let fsm = FSMBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
 
+
+
         let api_key = match llm_name.as_str() {
-            "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => { std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
-                env_name: "OPENAI_API_KEY".to_string()}).unwrap() },
-            "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => { std::env::var("ANTHROPIC_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
-                env_name: "ANTHROPIC_API_KEY".to_string()}).unwrap()
-            },
+            "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => {
+                if let Ok(open_api_key) = std::env::var("OPENAI_API_KEY") {
+                    open_api_key
+                } else {
+                    let mut h = HeaderMap::new();
+                    h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
+                    h.insert("Hx-Retarget", "#env_var_setting_notification_msg".parse().unwrap());
+                    h.insert("HX-Trigger-After-Swap", "show_env_var_setting_notification".parse().unwrap());
+
+                    return Some(
+                        (h, Html::from("Environment variable OPENAI_API_KEY not set for the agent for the server, please set it up, restart the server, and reload the web app.".to_string())) );
+                }},
+            "claude-3-haiku-20240307" | "claude-3-5-sonnet-20241022" => {
+                if let Ok(open_api_key) = std::env::var("ANTHROPIC_API_KEY") {
+                    open_api_key
+                } else {
+                    let mut h = HeaderMap::new();
+                    h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
+                    h.insert("Hx-Retarget", "#env_var_setting_notification_msg".parse().unwrap());
+                    h.insert("HX-Trigger-After-Swap", "show_env_var_setting_notification".parse().unwrap());
+
+                    return Some(
+                        (h, Html::from("Environment variable ANTHROPIC_API_KEY not set for the agent for the server, please set it up, restart the server, and reload the web app.".to_string())) );
+                }},
             _ => {"".into()}
 
         };
@@ -728,7 +754,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
             agent.context = Some(query_context);
 
-            let query_context_html = get_search_context_html(&search_asset_results); 
+            let query_context_html = get_search_context_html(&search_asset_results);
 
             clean_div_with_context(
                 &context,

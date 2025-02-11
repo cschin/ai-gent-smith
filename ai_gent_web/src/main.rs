@@ -143,7 +143,46 @@ use time::Duration;
 // and then starts the application by calling tron_app::run
 #[tokio::main]
 async fn main() {
+
+    eprintln!(r#"
+Check environment variables.
+"#);
+
+    if std::env::var("DATABASE_URL").is_err() {
+        eprintln!(r#"
+The environment variable 'DATABASE_URL' is not set. 
+Please set it up and restart the server."#);
+        return;
+    } else {
+        eprintln!(r#"
+Environment variable 'DATABASE_URL' found."#);
+    };
+
+    if std::env::var("OPENAI_API_KEY").is_err() || std::env::var("ANTHROPIC_API_KEY").is_err() {
+        eprintln!(r#"
+Neither 'OPENAI_API_KEY' nor 'ANTHROPIC_API_KEY' environment variable is set up. 
+Please set up at least one of them to start the server."#);
+        return;
+    };
+
+    if std::env::var("OPENAI_API_KEY").is_ok() {
+        eprintln!(r#"
+Environment variable 'OPENAI_API_KEY' found."#);
+    };
+
+    if std::env::var("ANTHROPIC_API_KEY").is_ok() {
+        eprintln!(r#"
+Environment variable 'ANTHROPIC_API_KEY' found."#);
+    };
+
+    eprintln!(r#"
+Loading the deep learning models for tokenization and 
+generating embedding vector. The models are downloaded from 
+Huggingface, it may take a while depending on your network speed.
+
+"#); 
     embedding_service::initialize_embedding_model().await;
+
     let ui_action_routes = Router::<Arc<AppData>>::new()
         .route("/service/session-check", get(session_check))
         .route("/agent/create", post(create_basic_agent))
@@ -183,6 +222,7 @@ async fn main() {
         .set_head(include_str!("../templates/head.html"))
         .set_html_attributes(r#"lang="en" data-theme="business""#)
         .build();
+    eprintln!("Starting up the web server.");
     tron_app::run(app_share_data, app_config).await
 }
 

@@ -137,6 +137,22 @@
     </div>
 </dialog>
 
+<dialog id="env_var_setting_notification" class="modal">
+    <div class="modal-box">
+        <div id="env_var_setting_notification_msg">
+            <p class="py-4">Missing Environmental Variable</p>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm">Close</button>
+            </form>
+        </div>
+    </div>
+</dialog>
+
+
+
 <script>
     function checkSession() {
         fetch('/api/service/session-check')
@@ -162,6 +178,12 @@
             //window.location.reload();
         }
     });
+
+
+    document.body.addEventListener("show_env_var_setting_notification", function(evt){
+        document.getElementById("env_var_setting_notification").showModal()
+        
+    })
 </script>
 
 <footer style="align-items: flex-end; text-align: right; background: #585858;">
