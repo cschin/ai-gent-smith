@@ -158,7 +158,7 @@ Please set it up and restart the server."#);
 Environment variable 'DATABASE_URL' found."#);
     };
 
-    if std::env::var("OPENAI_API_KEY").is_err() || std::env::var("ANTHROPIC_API_KEY").is_err() {
+    if std::env::var("OPENAI_API_KEY").is_err() && std::env::var("ANTHROPIC_API_KEY").is_err() {
         eprintln!(r#"
 Neither 'OPENAI_API_KEY' nor 'ANTHROPIC_API_KEY' environment variable is set up. 
 Please set up at least one of them to start the server."#);
