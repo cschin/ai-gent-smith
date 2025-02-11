@@ -1,2 +1,2 @@
 cp ../../database/bootstraping.sql .
-docker build -t cschin/ai_gent_web-amd64 .
+docker build --no-cache -t cschin/ai_gent_web-amd64 .
