@@ -190,11 +190,13 @@ impl<C: LLMClient> LLMAgent<C> {
         self.context = Some(context.to_string());
     }
 
-    pub async fn set_current_state(&mut self, state: Option<String>, exec_state_actions: bool) -> Result<(), String> {
+    pub async fn set_current_state(
+        &mut self,
+        state: Option<String>,
+        exec_state_actions: bool,
+    ) -> Result<(), String> {
         if let Some(state) = state {
-            self.fsm
-                .set_initial_state(state, exec_state_actions)
-                .await
+            self.fsm.set_initial_state(state, exec_state_actions).await
         } else {
             Err("fms set_current_state fail".into())
         }
@@ -217,7 +219,10 @@ impl<C: LLMClient> LLMAgent<C> {
         last_message.push(("user".into(), user_input.into()));
 
         // Handle FSM state transition
-        let current_state_name = self.fsm.current_state().ok_or(anyhow::anyhow!("No current state"))?;
+        let current_state_name = self
+            .fsm
+            .current_state()
+            .ok_or(anyhow::anyhow!("No current state"))?;
         if let Some(tx) = tx.clone() {
             let _ = tx.send(("clear".into(), "".into())).await;
             let _ = tx
@@ -244,14 +249,10 @@ impl<C: LLMClient> LLMAgent<C> {
 
         let fsm_prompt = [self.fsm_prompt.as_str(), msg.as_str()].join("\n");
 
-        let next_state = if let Ok(next_state) = self
+        let next_state = self
             .llm_client
             .generate(&fsm_prompt, &self.messages, self.temperature)
-            .await {
-                next_state
-            } else {
-                return Err(anyhow::anyhow!("LLM API Call Error"))
-            };
+            .await?;
 
         let next_fsm_step_response: LLMResponse = serde_json::from_str(&next_state)
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM output: {e}, {}", next_state))?;
@@ -260,7 +261,10 @@ impl<C: LLMClient> LLMAgent<C> {
             self.transition_state(next_state).await?;
         }
 
-        let next_state_name = self.fsm.current_state().ok_or(anyhow::anyhow!("No current state"))?;
+        let next_state_name = self
+            .fsm
+            .current_state()
+            .ok_or(anyhow::anyhow!("No current state"))?;
         let next_state = self.fsm.states.get(&next_state_name).unwrap();
 
         // Process the last message for chat
@@ -382,9 +386,10 @@ impl<C: LLMClient> LLMAgent<C> {
                 self.fsm.current_state(),
                 next_state
             )),
-            (TransitionResult::NoTransitionAvailable, _) => {
-                Err(anyhow::anyhow!("No transition available to state: {}", next_state))
-            }
+            (TransitionResult::NoTransitionAvailable, _) => Err(anyhow::anyhow!(
+                "No transition available to state: {}",
+                next_state
+            )),
             (TransitionResult::NoCurrentState, _) => Err(anyhow::anyhow!("No current state")),
         }
     }

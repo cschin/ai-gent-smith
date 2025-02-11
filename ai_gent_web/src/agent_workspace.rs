@@ -701,7 +701,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         };
 
         let llm_client = GenaiLlmclient {
-            model: llm_name,
+            model: llm_name.clone(),
             api_key
         };
 
@@ -789,7 +789,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     h.insert("HX-Trigger-After-Swap", "show_env_var_setting_notification".parse().unwrap());
 
                     return Some(
-                        (h, Html::from("LLM API Call fail, please check the API key is set and correct when you start the server!!".to_string())) );
+                        (h, Html::from(format!(r#"LLM ({}) API Call fail, please check the API key is set and correct. You may need to restart the server and reload the app with the correct API key(s)."#, llm_name))));
 
                 }
             };
