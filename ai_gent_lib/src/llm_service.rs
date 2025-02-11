@@ -70,7 +70,9 @@ pub async fn genai_stream_service(
                 ChatStreamEvent::Start => Some("".to_string()),
                 ChatStreamEvent::Chunk(StreamChunk { content }) => Some(content.to_string()),
                 ChatStreamEvent::End(_end_event) => None,
-                ChatStreamEvent::ReasoningChunk(StreamChunk { content }) => Some(content.to_string()),
+                ChatStreamEvent::ReasoningChunk(StreamChunk { content }) => {
+                    Some(content.to_string())
+                }
             },
             Err(_err) => {
                 tracing::info!(target: "log", "LLM stream error");
@@ -88,11 +90,7 @@ pub async fn genai_service(
     model: &str,
     api_key: &str,
     temperature: f32,
-) -> String {
-    // tracing::info!(target: "tron_app", "in genai_service, prompt: {}", prompt );
-    // tracing::info!(target: "tron_app", "in genai_service, msg: {:?}", msgs );
-    // tracing::info!(target: "tron_app", "in genai_service, model: {}", model );
-
+) -> Result<String, anyhow::Error> {
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
 
     msgs.iter().for_each(|(role, msg)| match role.as_str() {
@@ -138,5 +136,11 @@ pub async fn genai_service(
         .await;
     // tracing::info!(target: "tron_app", "in genai_service, llm_output: {:?}", llm_output );
 
-    llm_output.unwrap().content_text_into_string().unwrap()
+    llm_output
+        .map_err(|e| anyhow::anyhow!("LLM output error: {}", e))
+        .and_then(|output| {
+            output
+                .content_text_into_string()
+                .ok_or_else(|| anyhow::anyhow!("No content text in LLM output"))
+        })
 }

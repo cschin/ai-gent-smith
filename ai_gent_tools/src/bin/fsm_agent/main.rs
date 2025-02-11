@@ -21,7 +21,7 @@ struct TestLLMClient {
 
 #[async_trait]
 impl LLMClient for TestLLMClient {
-    async fn generate(&self, prompt: &str, msgs: &[(String, String)], temperature: Option<f32>) -> String {
+    async fn generate(&self, prompt: &str, msgs: &[(String, String)], temperature: Option<f32>) -> Result<String, anyhow::Error> {
         // r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
         //     .to_string()
         let t = temperature.unwrap_or(0.5); 

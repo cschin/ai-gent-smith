@@ -161,7 +161,7 @@ pub trait LLMClient {
         prompt: &str,
         msg: &[(String, String)],
         temperature: Option<f32>,
-    ) -> String;
+    ) -> Result<String, anyhow::Error>;
     async fn generate_stream(
         &self,
         prompt: &str,
@@ -209,7 +209,7 @@ impl<C: LLMClient> LLMAgent<C> {
         user_input: &str,
         tx: Option<Sender<(String, String)>>,
         temperature: Option<f32>,
-    ) -> Result<String, String> {
+    ) -> Result<String, anyhow::Error> {
         self.temperature = temperature;
         let mut last_message = Vec::<(String, String)>::new();
 
@@ -217,7 +217,7 @@ impl<C: LLMClient> LLMAgent<C> {
         last_message.push(("user".into(), user_input.into()));
 
         // Handle FSM state transition
-        let current_state_name = self.fsm.current_state().ok_or("No current state")?;
+        let current_state_name = self.fsm.current_state().ok_or(anyhow::anyhow!("No current state"))?;
         if let Some(tx) = tx.clone() {
             let _ = tx.send(("clear".into(), "".into())).await;
             let _ = tx
@@ -244,19 +244,23 @@ impl<C: LLMClient> LLMAgent<C> {
 
         let fsm_prompt = [self.fsm_prompt.as_str(), msg.as_str()].join("\n");
 
-        let next_state = self
+        let next_state = if let Ok(next_state) = self
             .llm_client
             .generate(&fsm_prompt, &self.messages, self.temperature)
-            .await;
+            .await {
+                next_state
+            } else {
+                return Err(anyhow::anyhow!("LLM API Call Error"))
+            };
 
         let next_fsm_step_response: LLMResponse = serde_json::from_str(&next_state)
-            .map_err(|e| format!("Failed to parse LLM output: {e}, {}", next_state))?;
+            .map_err(|e| anyhow::anyhow!("Failed to parse LLM output: {e}, {}", next_state))?;
 
         if let Some(next_state) = &next_fsm_step_response.next_state {
             self.transition_state(next_state).await?;
         }
 
-        let next_state_name = self.fsm.current_state().ok_or("No current state")?;
+        let next_state_name = self.fsm.current_state().ok_or(anyhow::anyhow!("No current state"))?;
         let next_state = self.fsm.states.get(&next_state_name).unwrap();
 
         // Process the last message for chat
@@ -314,7 +318,7 @@ impl<C: LLMClient> LLMAgent<C> {
             } else {
                 self.llm_client
                     .generate(&prompt, &self.messages, self.temperature)
-                    .await
+                    .await?
             };
 
             // Generate Summary
@@ -339,7 +343,7 @@ impl<C: LLMClient> LLMAgent<C> {
             self.summary = self
                 .llm_client
                 .generate(&summary_prompt, &last_message, self.temperature)
-                .await;
+                .await?;
 
             // Status update
             if let Some(tx) = tx {
@@ -367,21 +371,21 @@ impl<C: LLMClient> LLMAgent<C> {
         }
     }
 
-    pub async fn transition_state(&mut self, next_state: &str) -> Result<(), String> {
+    pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
         match self.fsm.transition(next_state.into()).await {
             (TransitionResult::Success, _) => {
                 // tracing::info!("Transitioned to state: {}", next_state);
                 Ok(())
             }
-            (TransitionResult::InvalidTransition, _) => Err(format!(
+            (TransitionResult::InvalidTransition, _) => Err(anyhow::anyhow!(
                 "Invalid transition to state:{:?} -> {}",
                 self.fsm.current_state(),
                 next_state
             )),
             (TransitionResult::NoTransitionAvailable, _) => {
-                Err(format!("No transition available to state: {}", next_state))
+                Err(anyhow::anyhow!("No transition available to state: {}", next_state))
             }
-            (TransitionResult::NoCurrentState, _) => Err("No current state".to_string()),
+            (TransitionResult::NoCurrentState, _) => Err(anyhow::anyhow!("No current state")),
         }
     }
 }
@@ -463,9 +467,10 @@ mod tests {
             _prompt: &str,
             _msg: &[(String, String)],
             _temperature: Option<f32>,
-        ) -> String {
-            r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
-                .to_string()
+        ) -> Result<String, anyhow::Error> {
+            Ok(r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
+
+                .to_string())
         }
         async fn generate_stream(
             &self,

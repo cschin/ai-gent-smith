@@ -780,7 +780,18 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text", current_state).await;
                     let _ = update_chat_summary(chat_id, &agent.summary).await;
                 },
-                Err(err) => tracing::info!(target: "tron_app", "LLM error, please retry your question. {:?}", err),
+                Err(err) => {
+                    tracing::info!(target: "tron_app", "LLM API call error: {:?}", err);
+
+                    let mut h = HeaderMap::new();
+                    h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
+                    h.insert("Hx-Retarget", "#env_var_setting_notification_msg".parse().unwrap());
+                    h.insert("HX-Trigger-After-Swap", "show_env_var_setting_notification".parse().unwrap());
+
+                    return Some(
+                        (h, Html::from("LLM API Call fail, please check the API key is set and correct when you start the server!!".to_string())) );
+
+                }
             };
         }
 
@@ -911,9 +922,9 @@ async fn extend_query_with_llm(query: &str) -> String {
         api_key,
     };
     let prompt = "find the relevant information about the questions and summary it into a small response less in 100 words.";
-    llm_client
+    llm_client 
         .generate(prompt, &[("user".into(), query.into())], Some(0.05))
-        .await
+        .await.unwrap()
 }
 
 fn search_asset_clicked(

@@ -15,7 +15,7 @@ pub struct GenaiLlmclient {
 
 #[async_trait]
 impl LLMClient for GenaiLlmclient {
-    async fn generate(&self, prompt: &str, msgs: &[(String, String)], temperature: Option<f32>) -> String {
+    async fn generate(&self, prompt: &str, msgs: &[(String, String)], temperature: Option<f32>) -> Result<String, anyhow::Error> {
         let t = temperature.unwrap_or(0.5); 
         genai_service(prompt, msgs, &self.model, &self.api_key, t).await
     }
