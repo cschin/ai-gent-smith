@@ -9,6 +9,15 @@ use tokio::sync::mpsc::Sender;
 
 use futures::StreamExt;
 
+#[derive(Serialize, Deserialize)]
+pub struct ChatLLMSetting {
+    pub sys_prompt: String,
+    pub summary: String,
+    pub context: Option<String>,
+    pub messages: Vec<(String, String)>,
+    pub temperature: Option<f32>,
+}
+
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct FSMAgentConfig {
     pub states: Vec<String>,
@@ -152,6 +161,8 @@ pub struct LLMAgent<C: LLMClient> {
     pub context: Option<String>,
     pub temperature: Option<f32>,
     pub messages: Vec<(String, String)>, // (role, message)
+    pub api_key: String,
+    pub model: String,
 }
 
 #[async_trait]
@@ -171,7 +182,13 @@ pub trait LLMClient {
 }
 
 impl<C: LLMClient> LLMAgent<C> {
-    pub fn new(llm_client: C, fsm: FSM, fsm_config: &FSMAgentConfig) -> Self {
+    pub fn new(
+        llm_client: C,
+        fsm: FSM,
+        fsm_config: &FSMAgentConfig,
+        model: String,
+        api_key: String,
+    ) -> Self {
         // Initialize prompts for each state here
         Self {
             fsm,
@@ -183,6 +200,8 @@ impl<C: LLMClient> LLMAgent<C> {
             messages: Vec::default(),
             temperature: None,
             context: None,
+            model,
+            api_key,
         }
     }
 
@@ -223,6 +242,7 @@ impl<C: LLMClient> LLMAgent<C> {
             .fsm
             .current_state()
             .ok_or(anyhow::anyhow!("No current state"))?;
+
         if let Some(tx) = tx.clone() {
             let _ = tx.send(("clear".into(), "".into())).await;
             let _ = tx
@@ -265,114 +285,171 @@ impl<C: LLMClient> LLMAgent<C> {
             .fsm
             .current_state()
             .ok_or(anyhow::anyhow!("No current state"))?;
-        let next_state = self.fsm.states.get(&next_state_name).unwrap();
 
-        // Process the last message for chat
-        if let Some(prompt) = next_state.get_attribute("prompt").await {
-            let prompt = if let Some(context) = self.context.as_ref() {
-                [
-                    self.sys_prompt.as_str(),
-                    prompt.as_str(),
-                    "\nHere is the summary of previous chat:\n",
-                    "<SUMMARY>",
-                    &self.summary,
-                    "</SUMMARY>",
-                    "\nHere is the current reference context:\n",
-                    "<REFERENCES>",
-                    context,
-                    "</REFERENCES>",
-                ]
-                .join("\n")
-            } else {
-                [
-                    self.sys_prompt.as_str(),
-                    prompt.as_str(),
-                    "\nHere is the summary of previous chat:\n",
-                    "<SUMMARY>",
-                    &self.summary,
-                    "</SUMMARY>",
-                ]
-                .join("\n")
-            };
+        let next_state = self.fsm.states.get_mut(&next_state_name).unwrap();
+        let chat_llm_setting = ChatLLMSetting {
+            sys_prompt: self.sys_prompt.clone(),
+            summary: self.summary.clone(),
+            context: self.context.clone(),
+            messages: self.messages.clone(),
+            temperature: self.temperature,
+        };
+        let chat_llm_setting = serde_json::to_string(&chat_llm_setting).unwrap();
+        next_state
+            .set_attribute("chat_llm_setting", chat_llm_setting)
+            .await;
+        next_state.set_attribute("model", self.model.clone()).await;
+        next_state
+            .set_attribute("api_key", self.api_key.clone())
+            .await;
 
-            // tracing::info!(target: "tron_app", "full prompt: {}", prompt);
+        if let Some(tx) = tx.clone() {
+            next_state.serve(tx).await;
+        };
 
-            let llm_output = if let Some(tx) = tx.clone() {
-                let _ = tx
-                    .send((
-                        "message".into(),
-                        "LLM request sent, waiting for response\n".into(),
-                    ))
-                    .await;
-                let mut llm_output = String::default();
+        let llm_output = next_state.get_attribute("llm_output").await.unwrap();
+        self.messages.push(("assistant".into(), llm_output.clone()));
+        last_message.push(("assistant".into(), llm_output.clone()));
 
-                let mut llm_stream = self
-                    .llm_client
-                    .generate_stream(&prompt, &self.messages, self.temperature)
-                    .await;
+        if let Some(tx) = tx.clone() {
+            let _ = tx.send(("clear".into(), "".into())).await;
+            let _ = tx
+                .send(("message".into(), "generating chat summary".into()))
+                .await;
+        };
 
-                while let Some(result) = llm_stream.next().await {
-                    if let Some(output) = result {
-                        llm_output.push_str(&output);
-                        let _ = tx.send(("token".into(), output)).await;
-                    };
-                }
-                let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
-                llm_output
-            } else {
-                self.llm_client
-                    .generate(&prompt, &self.messages, self.temperature)
-                    .await?
-            };
+        let summary_prompt = [
+            self.summary_prompt.as_str(),
+            "<summary>",
+            self.summary.as_str(),
+            "</summary>",
+        ]
+        .join("\n");
 
-            // Generate Summary
-            self.messages.push(("assistant".into(), llm_output.clone()));
-            last_message.push(("assistant".into(), llm_output.clone()));
+        self.summary = self
+            .llm_client
+            .generate(&summary_prompt, &last_message, self.temperature)
+            .await?;
 
-            if let Some(tx) = tx.clone() {
-                let _ = tx.send(("clear".into(), "".into())).await;
-                let _ = tx
-                    .send(("message".into(), "generating chat summary".into()))
-                    .await;
-            };
-
-            let summary_prompt = [
-                self.summary_prompt.as_str(),
-                "<summary>",
-                self.summary.as_str(),
-                "</summary>",
-            ]
-            .join("\n");
-
-            self.summary = self
-                .llm_client
-                .generate(&summary_prompt, &last_message, self.temperature)
-                .await?;
-
-            // Status update
-            if let Some(tx) = tx {
-                let _ = tx
-                    .send((
-                        "message".into(),
-                        "Summary generation complete. You can send new query now.".into(),
-                    ))
-                    .await;
-
-                let _ = tx
-                    .send((
-                        "message".into(),
-                        format!(
-                            "state transition: {} -> {}",
-                            current_state_name, next_state_name
-                        ),
-                    ))
-                    .await;
-            }
-
-            Ok(llm_output)
-        } else {
-            Ok("".to_string())
+        if let Some(tx) = tx {
+            let _ = tx
+                .send((
+                    "message".into(),
+                    "Summary generation complete. You can send new query now.".into(),
+                ))
+                .await;
+            let _ = tx
+                .send((
+                    "message".into(),
+                    format!(
+                        "state transition: {} -> {}",
+                        current_state_name, next_state_name
+                    ),
+                ))
+                .await;
         }
+        Ok(llm_output)
+        // // Process the last message for chat
+        // match next_state.get_attribute("prompt").await {
+        //     Some(prompt) => {
+        //         let prompt = if let Some(context) = self.context.as_ref() {
+        //             [
+        //                 self.sys_prompt.as_str(),
+        //                 prompt.as_str(),
+        //                 "\nHere is the summary of previous chat:\n",
+        //                 "<SUMMARY>",
+        //                 &self.summary,
+        //                 "</SUMMARY>",
+        //                 "\nHere is the current reference context:\n",
+        //                 "<REFERENCES>",
+        //                 context,
+        //                 "</REFERENCES>",
+        //             ]
+        //             .join("\n")
+        //         } else {
+        //             [
+        //                 self.sys_prompt.as_str(),
+        //                 prompt.as_str(),
+        //                 "\nHere is the summary of previous chat:\n",
+        //                 "<SUMMARY>",
+        //                 &self.summary,
+        //                 "</SUMMARY>",
+        //             ]
+        //             .join("\n")
+        //         };
+        //         let llm_output = match tx.clone() {
+        //             Some(tx) => {
+        //                 let _ = tx
+        //                     .send((
+        //                         "message".into(),
+        //                         "LLM request sent, waiting for response\n".into(),
+        //                     ))
+        //                     .await;
+        //                 let mut llm_output = String::default();
+        //                 let mut llm_stream = self
+        //                     .llm_client
+        //                     .generate_stream(&prompt, &self.messages, self.temperature)
+        //                     .await;
+        //                 while let Some(result) = llm_stream.next().await {
+        //                     if let Some(output) = result {
+        //                         llm_output.push_str(&output);
+        //                         let _ = tx.send(("token".into(), output)).await;
+        //                     };
+        //                 }
+        //                 let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
+        //                 llm_output
+        //             }
+        //             None => {
+        //                 self.llm_client
+        //                     .generate(&prompt, &self.messages, self.temperature)
+        //                     .await?
+        //             }
+        //         };
+
+        //         self.messages.push(("assistant".into(), llm_output.clone()));
+        //         last_message.push(("assistant".into(), llm_output.clone()));
+
+        //         if let Some(tx) = tx.clone() {
+        //             let _ = tx.send(("clear".into(), "".into())).await;
+        //             let _ = tx
+        //                 .send(("message".into(), "generating chat summary".into()))
+        //                 .await;
+        //         };
+
+        //         let summary_prompt = [
+        //             self.summary_prompt.as_str(),
+        //             "<summary>",
+        //             self.summary.as_str(),
+        //             "</summary>",
+        //         ]
+        //         .join("\n");
+
+        //         self.summary = self
+        //             .llm_client
+        //             .generate(&summary_prompt, &last_message, self.temperature)
+        //             .await?;
+
+        //         if let Some(tx) = tx {
+        //             let _ = tx
+        //                 .send((
+        //                     "message".into(),
+        //                     "Summary generation complete. You can send new query now.".into(),
+        //                 ))
+        //                 .await;
+        //             let _ = tx
+        //                 .send((
+        //                     "message".into(),
+        //                     format!(
+        //                         "state transition: {} -> {}",
+        //                         current_state_name, next_state_name
+        //                     ),
+        //                 ))
+        //                 .await;
+        //         }
+        //         Ok(llm_output)
+        //     }
+        //     None => Ok("".to_string()),
+        // }
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
@@ -522,7 +599,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config);
+        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config, "".into(), "".into());
 
         let result = agent.process_message("Test input", None, None).await;
         assert!(result.is_ok());

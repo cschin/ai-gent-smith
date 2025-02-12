@@ -1,6 +1,7 @@
 use ai_gent_lib::fsm::FSMBuilder;
 use ai_gent_lib::fsm::FSMState;
 use ai_gent_lib::fsm::FSMStateInit;
+use ai_gent_lib::llm_agent;
 use ai_gent_lib::llm_agent::FSMAgentConfig;
 use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
@@ -13,16 +14,21 @@ use axum::http::StatusCode;
 use axum::response::Html;
 use axum::response::IntoResponse;
 use candle_core::WithDType;
+use futures::StreamExt;
+use genai::chat::ChatMessage;
 use ordered_float::OrderedFloat;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::default;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::OnceLock;
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::Receiver;
+use tokio::sync::mpsc::Sender;
 use tokio::sync::RwLock;
+use tokio::task::JoinHandle;
 use tron_app::tron_components::div::clean_div_with_context;
 use tron_app::tron_components::div::update_and_send_div_with_context;
 use tron_app::tron_components::text::append_textarea_value;
@@ -60,10 +66,11 @@ pub const THRESHOLD_SLIDER: &str = "threshold_slider";
 pub const TEMPERATURE_SLIDER: &str = "temperature_slider";
 //pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FSMChatState {
     name: String,
     attributes: HashMap<String, String>,
+    handle: Option<JoinHandle<String>>,
 }
 
 impl FSMStateInit for FSMChatState {
@@ -73,6 +80,7 @@ impl FSMStateInit for FSMChatState {
         FSMChatState {
             name: name.to_string(),
             attributes,
+            handle: None,
         }
     }
 }
@@ -92,7 +100,80 @@ impl FSMState for FSMChatState {
     }
 
     async fn on_exit_mut(&mut self) {
+  
         tracing::info!(target: TRON_APP, "Exiting state (mut): {}", self.name);
+    }
+
+    async fn serve(&mut self, tx: Sender<(String, String)>) {
+        let chat_llm_setting: llm_agent::ChatLLMSetting =
+            serde_json::from_str(&self.get_attribute("chat_llm_setting").await.unwrap()).unwrap();
+        let prompt =  self.get_attribute("prompt").await;
+
+        let full_prompt = match prompt {
+            Some(prompt) => match chat_llm_setting.context {
+                Some(context) => [
+                    &chat_llm_setting.sys_prompt,
+                    prompt.as_str(),
+                    "\nHere is the summary of previous chat:\n",
+                    "<SUMMARY>",
+                    &chat_llm_setting.summary,
+                    "</SUMMARY>",
+                    "\nHere is the current reference context:\n",
+                    "<REFERENCES>",
+                    &context,
+                    "</REFERENCES>",
+                ]
+                .join("\n"),
+                None => [
+                    &chat_llm_setting.sys_prompt,
+                    prompt.as_str(),
+                    "\nHere is the summary of previous chat:\n",
+                    "<SUMMARY>",
+                    &chat_llm_setting.summary,
+                    "</SUMMARY>",
+                    "\nHere is the current reference context:\n",
+                ]
+                .join("\n"),
+            },
+            None => "".into(),
+        };
+        if full_prompt.is_empty() {
+            let _ = tx.send(("error".into(), "no state prompt".into())).await;
+            return;
+        };
+        let llm_client = GenaiLlmclient {
+            model: self.get_attribute("model").await.unwrap(),
+            api_key: self.get_attribute("api_key").await.unwrap(),
+        };
+        let messages = chat_llm_setting.messages;
+        let temperature = chat_llm_setting.temperature;
+        self.handle = Some(tokio::spawn(async move {
+            let _ = tx
+                .send((
+                    "message".into(),
+                    "LLM request sent, waiting for response\n".into(),
+                ))
+                .await;
+            let mut llm_output = String::default();
+            let mut llm_stream = llm_client
+                .generate_stream(&full_prompt, &messages, temperature)
+                .await;
+            while let Some(result) = llm_stream.next().await {
+                if let Some(output) = result {
+                    llm_output.push_str(&output);
+                    let _ = tx.send(("token".into(), output)).await;
+                };
+            }
+            let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
+            llm_output
+        }));
+
+        if let Some(handle) = self.handle.take() {
+            let llm_output = tokio::join!(handle);
+            let llm_output = llm_output.0.unwrap();
+            self.set_attribute("llm_output", llm_output).await;
+        }
+
     }
 
     async fn set_attribute(&mut self, k: &str, v: String) {
@@ -369,7 +450,8 @@ where
                 match role.as_str() {
                     "bot" => {
                         let html_output = [
-                            r#"<article class="markdown-body bg-blue-900 text-gray-200 p-3">"#.to_string(),
+                            r#"<article class="markdown-body bg-blue-900 text-gray-200 p-3">"#
+                                .to_string(),
                             markdown_to_html_with_plugins(
                                 &content,
                                 &comrak_options,
@@ -545,7 +627,6 @@ async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::E
     Ok(result.chat_id)
 }
 
-
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
     // TODO: this event handler needs significant refactoring
     tn_future! {
@@ -669,8 +750,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let fsm = FSMBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
 
-
-
         let api_key = match llm_name.as_str() {
             "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => {
                 if let Ok(open_api_key) = std::env::var("OPENAI_API_KEY") {
@@ -702,7 +781,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let llm_client = GenaiLlmclient {
             model: llm_name.clone(),
-            api_key
+            api_key: api_key.clone()
         };
 
 
@@ -717,7 +796,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         };
 
 
-        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config); // we start a new agent every query now, we may want to implement session/static agent
+        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config, llm_name.clone(), api_key); // we start a new agent every query now, we may want to implement session/static agent
         {
             if let Err(_e) = agent.set_current_state(fsm_state.clone(), exec_entry_actions).await {
                 let fsm_state = agent.fsm.current_state();
@@ -922,9 +1001,10 @@ async fn extend_query_with_llm(query: &str) -> String {
         api_key,
     };
     let prompt = "find the relevant information about the questions and summary it into a small response less in 100 words.";
-    llm_client 
+    llm_client
         .generate(prompt, &[("user".into(), query.into())], Some(0.05))
-        .await.unwrap()
+        .await
+        .unwrap()
 }
 
 fn search_asset_clicked(

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::llm_agent::FSMAgentConfig;
 
@@ -17,6 +18,12 @@ pub trait FSMState: Send + Sync {
     async fn on_exit(&self) {}
     async fn on_enter_mut(&mut self) {}
     async fn on_exit_mut(&mut self) {}
+    async fn serve(
+        &mut self,
+        _tx: Sender<(String, String)>,
+    ) {
+        unimplemented!()
+    }
     async fn set_attribute(&mut self, _k: &str, _v: String) {}
     async fn get_attribute(&self, _k: &str) -> Option<String> {
         None
@@ -70,14 +77,6 @@ impl FSMStateInit for DefaultFSMChatState {
 
 #[async_trait]
 impl FSMState for DefaultFSMChatState {
-    async fn on_enter(&self) {}
-
-    async fn on_exit(&self) {}
-
-    async fn on_enter_mut(&mut self) {}
-
-    async fn on_exit_mut(&mut self) {}
-
     async fn set_attribute(&mut self, k: &str, v: String) {
         self.attributes.insert(k.to_string(), v);
     }
