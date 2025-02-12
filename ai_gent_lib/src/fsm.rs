@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
-use tokio::sync::mpsc::{Receiver, Sender};
+use tokio::sync::mpsc::Sender;
 
 use crate::llm_agent::FSMAgentConfig;
 

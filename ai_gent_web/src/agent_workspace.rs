@@ -105,18 +105,18 @@ impl FSMState for FSMChatState {
     }
 
     async fn serve(&mut self, tx: Sender<(String, String)>) {
-        let chat_llm_setting: llm_agent::ChatLLMSetting =
-            serde_json::from_str(&self.get_attribute("chat_llm_setting").await.unwrap()).unwrap();
+        let llm_req_setting: llm_agent::LlmReqSetting =
+            serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
         let prompt =  self.get_attribute("prompt").await;
 
         let full_prompt = match prompt {
-            Some(prompt) => match chat_llm_setting.context {
+            Some(prompt) => match llm_req_setting.context {
                 Some(context) => [
-                    &chat_llm_setting.sys_prompt,
+                    &llm_req_setting.sys_prompt,
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
                     "<SUMMARY>",
-                    &chat_llm_setting.summary,
+                    &llm_req_setting.summary,
                     "</SUMMARY>",
                     "\nHere is the current reference context:\n",
                     "<REFERENCES>",
@@ -125,11 +125,11 @@ impl FSMState for FSMChatState {
                 ]
                 .join("\n"),
                 None => [
-                    &chat_llm_setting.sys_prompt,
+                    &llm_req_setting.sys_prompt,
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
                     "<SUMMARY>",
-                    &chat_llm_setting.summary,
+                    &llm_req_setting.summary,
                     "</SUMMARY>",
                     "\nHere is the current reference context:\n",
                 ]
@@ -142,11 +142,11 @@ impl FSMState for FSMChatState {
             return;
         };
         let llm_client = GenaiLlmclient {
-            model: self.get_attribute("model").await.unwrap(),
-            api_key: self.get_attribute("api_key").await.unwrap(),
+            model: llm_req_setting.model,
+            api_key: llm_req_setting.api_key,
         };
-        let messages = chat_llm_setting.messages;
-        let temperature = chat_llm_setting.temperature;
+        let messages = llm_req_setting.messages;
+        let temperature = llm_req_setting.temperature;
         self.handle = Some(tokio::spawn(async move {
             let _ = tx
                 .send((
@@ -1018,27 +1018,27 @@ fn search_asset_clicked(
         };
 
         let asset_ref = context.get_asset_ref().await;
-        let asset_guarad = asset_ref.read().await;
+        let asset_guard = asset_ref.read().await;
 
-        // let _user_id = if let TnAsset::U32(user_id) =  asset_guarad.get("user_id").unwrap() {
+        // let _user_id = if let TnAsset::U32(user_id) =  asset_.get("user_id").unwrap() {
         //     *user_id as i32
         // } else {
         //     panic!("chat_id not found");
         // };
 
-        // let _agent_id = if let TnAsset::U32(agent_id) =  asset_guarad.get("agent_id").unwrap() {
+        // let _agent_id = if let TnAsset::U32(agent_id) =  asset_guard.get("agent_id").unwrap() {
         //     *agent_id as i32
         // } else {
         //     panic!("chat_id not found");
         // };
 
-        // let _chat_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("chat_id").unwrap() {
+        // let _chat_id = if let TnAsset::U32(chat_id) =  asset_guard.get("chat_id").unwrap() {
         //     *chat_id as i32
         // } else {
         //     panic!("chat_id not found");
         // };
 
-        let asset_id = if let TnAsset::U32(chat_id) =  asset_guarad.get("asset_id").unwrap() {
+        let asset_id = if let TnAsset::U32(chat_id) =  asset_guard.get("asset_id").unwrap() {
             *chat_id as i32
         } else {
             panic!("chat_id not found");

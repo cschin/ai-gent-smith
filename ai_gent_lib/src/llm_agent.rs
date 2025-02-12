@@ -7,15 +7,15 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::mpsc::Sender;
 
-use futures::StreamExt;
-
 #[derive(Serialize, Deserialize)]
-pub struct ChatLLMSetting {
+pub struct LlmReqSetting {
     pub sys_prompt: String,
     pub summary: String,
     pub context: Option<String>,
     pub messages: Vec<(String, String)>,
     pub temperature: Option<f32>,
+    pub model: String,
+    pub api_key: String
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -287,20 +287,18 @@ impl<C: LLMClient> LLMAgent<C> {
             .ok_or(anyhow::anyhow!("No current state"))?;
 
         let next_state = self.fsm.states.get_mut(&next_state_name).unwrap();
-        let chat_llm_setting = ChatLLMSetting {
+        let chat_llm_setting = LlmReqSetting {
             sys_prompt: self.sys_prompt.clone(),
             summary: self.summary.clone(),
             context: self.context.clone(),
             messages: self.messages.clone(),
             temperature: self.temperature,
+            model: self.model.clone(),
+            api_key: self.api_key.clone() 
         };
-        let chat_llm_setting = serde_json::to_string(&chat_llm_setting).unwrap();
+        let llm_req_setting = serde_json::to_string(&chat_llm_setting).unwrap();
         next_state
-            .set_attribute("chat_llm_setting", chat_llm_setting)
-            .await;
-        next_state.set_attribute("model", self.model.clone()).await;
-        next_state
-            .set_attribute("api_key", self.api_key.clone())
+            .set_attribute("llm_req_setting", llm_req_setting)
             .await;
 
         if let Some(tx) = tx.clone() {
@@ -349,107 +347,6 @@ impl<C: LLMClient> LLMAgent<C> {
                 .await;
         }
         Ok(llm_output)
-        // // Process the last message for chat
-        // match next_state.get_attribute("prompt").await {
-        //     Some(prompt) => {
-        //         let prompt = if let Some(context) = self.context.as_ref() {
-        //             [
-        //                 self.sys_prompt.as_str(),
-        //                 prompt.as_str(),
-        //                 "\nHere is the summary of previous chat:\n",
-        //                 "<SUMMARY>",
-        //                 &self.summary,
-        //                 "</SUMMARY>",
-        //                 "\nHere is the current reference context:\n",
-        //                 "<REFERENCES>",
-        //                 context,
-        //                 "</REFERENCES>",
-        //             ]
-        //             .join("\n")
-        //         } else {
-        //             [
-        //                 self.sys_prompt.as_str(),
-        //                 prompt.as_str(),
-        //                 "\nHere is the summary of previous chat:\n",
-        //                 "<SUMMARY>",
-        //                 &self.summary,
-        //                 "</SUMMARY>",
-        //             ]
-        //             .join("\n")
-        //         };
-        //         let llm_output = match tx.clone() {
-        //             Some(tx) => {
-        //                 let _ = tx
-        //                     .send((
-        //                         "message".into(),
-        //                         "LLM request sent, waiting for response\n".into(),
-        //                     ))
-        //                     .await;
-        //                 let mut llm_output = String::default();
-        //                 let mut llm_stream = self
-        //                     .llm_client
-        //                     .generate_stream(&prompt, &self.messages, self.temperature)
-        //                     .await;
-        //                 while let Some(result) = llm_stream.next().await {
-        //                     if let Some(output) = result {
-        //                         llm_output.push_str(&output);
-        //                         let _ = tx.send(("token".into(), output)).await;
-        //                     };
-        //                 }
-        //                 let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
-        //                 llm_output
-        //             }
-        //             None => {
-        //                 self.llm_client
-        //                     .generate(&prompt, &self.messages, self.temperature)
-        //                     .await?
-        //             }
-        //         };
-
-        //         self.messages.push(("assistant".into(), llm_output.clone()));
-        //         last_message.push(("assistant".into(), llm_output.clone()));
-
-        //         if let Some(tx) = tx.clone() {
-        //             let _ = tx.send(("clear".into(), "".into())).await;
-        //             let _ = tx
-        //                 .send(("message".into(), "generating chat summary".into()))
-        //                 .await;
-        //         };
-
-        //         let summary_prompt = [
-        //             self.summary_prompt.as_str(),
-        //             "<summary>",
-        //             self.summary.as_str(),
-        //             "</summary>",
-        //         ]
-        //         .join("\n");
-
-        //         self.summary = self
-        //             .llm_client
-        //             .generate(&summary_prompt, &last_message, self.temperature)
-        //             .await?;
-
-        //         if let Some(tx) = tx {
-        //             let _ = tx
-        //                 .send((
-        //                     "message".into(),
-        //                     "Summary generation complete. You can send new query now.".into(),
-        //                 ))
-        //                 .await;
-        //             let _ = tx
-        //                 .send((
-        //                     "message".into(),
-        //                     format!(
-        //                         "state transition: {} -> {}",
-        //                         current_state_name, next_state_name
-        //                     ),
-        //                 ))
-        //                 .await;
-        //         }
-        //         Ok(llm_output)
-        //     }
-        //     None => Ok("".to_string()),
-        // }
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
