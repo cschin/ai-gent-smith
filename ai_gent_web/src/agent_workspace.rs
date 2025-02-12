@@ -1,11 +1,14 @@
 use ai_gent_lib::fsm::FSMBuilder;
 use ai_gent_lib::fsm::FSMState;
 use ai_gent_lib::fsm::FSMStateInit;
+use ai_gent_lib::fsm::FSM;
 use ai_gent_lib::llm_agent;
+use ai_gent_lib::llm_agent::AgentSettings;
 use ai_gent_lib::llm_agent::FSMAgentConfig;
 use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use ai_gent_lib::llm_agent::LLMClient;
+use ai_gent_lib::GenaiLlmclient;
 use askama::Template;
 use async_trait::async_trait;
 use axum::http::header;
@@ -43,7 +46,6 @@ use super::DB_POOL;
 use crate::embedding_service::vector_query_and_sort_points;
 use crate::embedding_service::TextChunkingService;
 use crate::embedding_service::TwoDPoint;
-use crate::llm_agent::*;
 use crate::AgentSetting;
 use crate::SEARCH_AGENT_BTN;
 use serde::{Deserialize, Serialize};
@@ -100,14 +102,17 @@ impl FSMState for FSMChatState {
     }
 
     async fn on_exit_mut(&mut self) {
-  
         tracing::info!(target: TRON_APP, "Exiting state (mut): {}", self.name);
     }
 
-    async fn serve(&mut self, tx: Sender<(String, String)>) {
-        let llm_req_setting: llm_agent::LlmReqSetting =
+    async fn serve(
+        &mut self,
+        tx: Sender<(String, String)>,
+        _rx: Option<Receiver<(String, String)>>,
+    ) {
+        let llm_req_setting: llm_agent::LLMReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
-        let prompt =  self.get_attribute("prompt").await;
+        let prompt = self.get_attribute("prompt").await;
 
         let full_prompt = match prompt {
             Some(prompt) => match llm_req_setting.context {
@@ -172,8 +177,9 @@ impl FSMState for FSMChatState {
             let llm_output = tokio::join!(handle);
             let llm_output = llm_output.0.unwrap();
             self.set_attribute("llm_output", llm_output).await;
+        } else {
+            self.set_attribute("llm_output", "".into()).await;
         }
-
     }
 
     async fn set_attribute(&mut self, k: &str, v: String) {
@@ -779,11 +785,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         };
 
-        let llm_client = GenaiLlmclient {
-            model: llm_name.clone(),
-            api_key: api_key.clone()
-        };
-
 
         let (fsm_state, exec_entry_actions) = {
             let asset = context.get_asset_ref().await;
@@ -795,14 +796,21 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             }
         };
 
+        let agent_settings = AgentSettings {
+            sys_prompt: fsm_config.sys_prompt,
+            fsm_prompt: fsm_config.fsm_prompt,
+            summary_prompt: fsm_config.summary_prompt,
+            model: llm_name.clone(),
+            api_key,
+        };
 
-        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config, llm_name.clone(), api_key); // we start a new agent every query now, we may want to implement session/static agent
+        let mut agent = LLMAgent::new(fsm, agent_settings); // we start a new agent every query now, we may want to implement session/static agent
         {
             if let Err(_e) = agent.set_current_state(fsm_state.clone(), exec_entry_actions).await {
                 let fsm_state = agent.fsm.current_state();
                 agent.set_current_state(fsm_state, true).await.expect("set current state fail");
             };
-            agent.summary = get_chat_summary(chat_id).await.unwrap_or_default();
+            agent.llm_req_settings.summary = get_chat_summary(chat_id).await.unwrap_or_default();
             // we may want to load a couple of last message from the database for the agent providing some memory beyond the summary
         }
 
@@ -831,7 +839,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
             let query_context = get_search_context_plain_text(&search_asset_results);
 
-            agent.context = Some(query_context);
+            agent.llm_req_settings.context = Some(query_context);
 
             let query_context_html = get_search_context_html(&search_asset_results);
 
@@ -857,7 +865,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 Ok(res) => {
                     let current_state = agent.get_current_state().await;
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text", current_state).await;
-                    let _ = update_chat_summary(chat_id, &agent.summary).await;
+                    let _ = update_chat_summary(chat_id, &agent.llm_req_settings.summary).await;
                 },
                 Err(err) => {
                     tracing::info!(target: "tron_app", "LLM API call error: {:?}", err);

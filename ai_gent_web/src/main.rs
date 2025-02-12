@@ -5,7 +5,6 @@ mod agent_cards;
 mod agent_workspace;
 mod asset_cards;
 mod embedding_service;
-mod llm_agent;
 mod services;
 mod session_cards;
 mod show_single_asset;

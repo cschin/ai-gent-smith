@@ -1,6 +1,7 @@
 use crate::{
     fsm::{TransitionResult, FSM},
     llm_service::LLMStreamOut,
+    GenaiLlmclient,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -8,14 +9,14 @@ use std::collections::HashMap;
 use tokio::sync::mpsc::Sender;
 
 #[derive(Serialize, Deserialize)]
-pub struct LlmReqSetting {
+pub struct LLMReqSetting {
     pub sys_prompt: String,
     pub summary: String,
     pub context: Option<String>,
     pub messages: Vec<(String, String)>,
     pub temperature: Option<f32>,
     pub model: String,
-    pub api_key: String
+    pub api_key: String,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -151,18 +152,11 @@ pub struct LLMResponse {
     next_state: Option<String>,
 }
 
-pub struct LLMAgent<C: LLMClient> {
+pub struct LLMAgent {
     pub fsm: FSM,
-    pub llm_client: C,
-    pub sys_prompt: String,
+    pub llm_req_settings: LLMReqSetting,
     pub fsm_prompt: String,
     pub summary_prompt: String,
-    pub summary: String,
-    pub context: Option<String>,
-    pub temperature: Option<f32>,
-    pub messages: Vec<(String, String)>, // (role, message)
-    pub api_key: String,
-    pub model: String,
 }
 
 #[async_trait]
@@ -181,32 +175,36 @@ pub trait LLMClient {
     ) -> LLMStreamOut;
 }
 
-impl<C: LLMClient> LLMAgent<C> {
-    pub fn new(
-        llm_client: C,
-        fsm: FSM,
-        fsm_config: &FSMAgentConfig,
-        model: String,
-        api_key: String,
-    ) -> Self {
-        // Initialize prompts for each state here
-        Self {
-            fsm,
-            llm_client,
+pub struct AgentSettings {
+    pub sys_prompt: String,
+    pub fsm_prompt: String,
+    pub summary_prompt: String,
+    pub model: String,
+    pub api_key: String,
+}
+
+impl LLMAgent {
+    pub fn new(fsm: FSM, agent_settings: AgentSettings) -> Self {
+        let llm_req_setting = LLMReqSetting {
             summary: String::default(),
-            sys_prompt: fsm_config.sys_prompt.clone(),
-            fsm_prompt: fsm_config.fsm_prompt.clone(),
-            summary_prompt: fsm_config.summary_prompt.clone(),
+            sys_prompt: agent_settings.sys_prompt,
             messages: Vec::default(),
             temperature: None,
             context: None,
-            model,
-            api_key,
+            model: agent_settings.model,
+            api_key: agent_settings.api_key,
+        };
+        // Initialize prompts for each state here
+        Self {
+            fsm,
+            fsm_prompt: agent_settings.fsm_prompt,
+            summary_prompt: agent_settings.summary_prompt,
+            llm_req_settings: llm_req_setting,
         }
     }
 
     pub fn set_context(&mut self, context: &str) {
-        self.context = Some(context.to_string());
+        self.llm_req_settings.context = Some(context.to_string());
     }
 
     pub async fn set_current_state(
@@ -231,10 +229,12 @@ impl<C: LLMClient> LLMAgent<C> {
         tx: Option<Sender<(String, String)>>,
         temperature: Option<f32>,
     ) -> Result<String, anyhow::Error> {
-        self.temperature = temperature;
+        self.llm_req_settings.temperature = temperature;
         let mut last_message = Vec::<(String, String)>::new();
 
-        self.messages.push(("user".into(), user_input.into()));
+        self.llm_req_settings
+            .messages
+            .push(("user".into(), user_input.into()));
         last_message.push(("user".into(), user_input.into()));
 
         // Handle FSM state transition
@@ -264,14 +264,20 @@ impl<C: LLMClient> LLMAgent<C> {
 
         let msg = format!(
             "Current State: {}\nAvailable Next Steps: {}\n Summary of the previous chat:<summary>{}</summary> \n\n ",
-            current_state_name, available_transitions, self.summary
+            current_state_name, available_transitions, self.llm_req_settings.summary
         );
 
         let fsm_prompt = [self.fsm_prompt.as_str(), msg.as_str()].join("\n");
-
-        let next_state = self
-            .llm_client
-            .generate(&fsm_prompt, &self.messages, self.temperature)
+        let llm_client = GenaiLlmclient {
+            model: self.llm_req_settings.model.clone(),
+            api_key: self.llm_req_settings.api_key.clone(),
+        };
+        let next_state = llm_client
+            .generate(
+                &fsm_prompt,
+                &self.llm_req_settings.messages,
+                self.llm_req_settings.temperature,
+            )
             .await?;
 
         let next_fsm_step_response: LLMResponse = serde_json::from_str(&next_state)
@@ -287,26 +293,21 @@ impl<C: LLMClient> LLMAgent<C> {
             .ok_or(anyhow::anyhow!("No current state"))?;
 
         let next_state = self.fsm.states.get_mut(&next_state_name).unwrap();
-        let chat_llm_setting = LlmReqSetting {
-            sys_prompt: self.sys_prompt.clone(),
-            summary: self.summary.clone(),
-            context: self.context.clone(),
-            messages: self.messages.clone(),
-            temperature: self.temperature,
-            model: self.model.clone(),
-            api_key: self.api_key.clone() 
-        };
-        let llm_req_setting = serde_json::to_string(&chat_llm_setting).unwrap();
+
+        let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
         next_state
             .set_attribute("llm_req_setting", llm_req_setting)
             .await;
 
         if let Some(tx) = tx.clone() {
-            next_state.serve(tx).await;
+            // call LLM through the next_state.serve()
+            next_state.serve(tx, None).await;
         };
 
         let llm_output = next_state.get_attribute("llm_output").await.unwrap();
-        self.messages.push(("assistant".into(), llm_output.clone()));
+        self.llm_req_settings
+            .messages
+            .push(("assistant".into(), llm_output.clone()));
         last_message.push(("assistant".into(), llm_output.clone()));
 
         if let Some(tx) = tx.clone() {
@@ -319,14 +320,17 @@ impl<C: LLMClient> LLMAgent<C> {
         let summary_prompt = [
             self.summary_prompt.as_str(),
             "<summary>",
-            self.summary.as_str(),
+            self.llm_req_settings.summary.as_str(),
             "</summary>",
         ]
         .join("\n");
 
-        self.summary = self
-            .llm_client
-            .generate(&summary_prompt, &last_message, self.temperature)
+        self.llm_req_settings.summary = llm_client
+            .generate(
+                &summary_prompt,
+                &last_message,
+                self.llm_req_settings.temperature,
+            )
             .await?;
 
         if let Some(tx) = tx {
@@ -496,7 +500,15 @@ mod tests {
             .build()
             .unwrap();
 
-        let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config, "".into(), "".into());
+        let agent_settings = AgentSettings {
+            sys_prompt: fsm_config.sys_prompt,
+            fsm_prompt: fsm_config.fsm_prompt,
+            summary_prompt: fsm_config.summary_prompt,
+            model: "".into(),
+            api_key: "".into(),
+        };
+
+        let mut agent = LLMAgent::new(fsm, agent_settings);
 
         let result = agent.process_message("Test input", None, None).await;
         assert!(result.is_ok());

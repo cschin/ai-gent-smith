@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{Receiver, Sender};
 
 use crate::llm_agent::FSMAgentConfig;
 
@@ -18,9 +18,11 @@ pub trait FSMState: Send + Sync {
     async fn on_exit(&self) {}
     async fn on_enter_mut(&mut self) {}
     async fn on_exit_mut(&mut self) {}
+    // each state can provide some service if this function is called
     async fn serve(
         &mut self,
         _tx: Sender<(String, String)>,
+        _rx: Option<Receiver<(String, String)>>
     ) {
         unimplemented!()
     }
