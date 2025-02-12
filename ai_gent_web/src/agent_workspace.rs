@@ -195,7 +195,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let asset_search_output = TnDiv::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex flex-1 border-2 overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 text-black rounded-lg p-1 min-h-[520px] max-h-[520px] min-w-[140px] max-w-[280px]")
+        .set_attr("class", "flex flex-1 border-2 overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 rounded-lg p-1 min-h-[520px] max-h-[520px] min-w-[140px] max-w-[280px]")
         .build();
 
         let top_k_slider = TnRangeSlider::builder()
@@ -253,7 +253,7 @@ pub fn get_comrak_plugins() -> &'static Plugins<'static> {
     COMRAK_PLUGINS.get_or_init(|| {
         let syntect_adapter = SYNTECT_ADAPTER.get_or_init(|| {
             SyntectAdapterBuilder::new()
-                .theme("base16-ocean.dark")
+                .theme("base16-ocean.light")
                 .build()
         });
         let mut comrak_plugins = Plugins::default();
@@ -369,7 +369,7 @@ where
                 match role.as_str() {
                     "bot" => {
                         let html_output = [
-                            r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
+                            r#"<article class="markdown-body bg-blue-900 text-gray-200 p-3">"#.to_string(),
                             markdown_to_html_with_plugins(
                                 &content,
                                 &comrak_options,
@@ -573,7 +573,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     "llm_output" => {
                         let query_result_area = context_cloned.get_component(AGENT_CHAT_TEXTAREA).await;
                         let html_output = [
-                            r#"<article class="markdown-body bg-blue-900 p-3">"#.to_string(),
+                            r#"<article class="markdown-body bg-blue-900 text-gray-200 p-3">"#.to_string(),
                             markdown_to_html_with_plugins(&r, &comrak_options, comrak_plugins),
                             r#"<article>"#.to_string(),
                         ]
@@ -892,7 +892,7 @@ fn get_search_context_html(top_hits: &[TwoDPoint]) -> String {
     comrak_options.render.width = 20;
     let comrak_plugins = get_comrak_plugins();
     [
-        r#"<article class="flex flex-1 flex-col markdown-body bg-gray-800 min-w-[140px] max-w-[280px]">"#.to_string(),
+        r#"<article class="flex flex-1 flex-col markdown-body bg-gray-800 text-gray-100 min-w-[140px] max-w-[280px]">"#.to_string(),
         markdown_to_html_with_plugins(&md_text, &comrak_options, comrak_plugins),
         r#"<article>"#.to_string(),
     ]
