@@ -802,7 +802,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             if let Some(TnAsset::String(fsm_state)) = asset_guard.get("fsm_state") {
                 (Some(fsm_state.clone()), false)
             } else {
-                (fsm.current_state(), true) // default initial state from fsm_config
+                (fsm.get_current_state_name(), true) // default initial state from fsm_config
             }
         };
 
@@ -812,12 +812,13 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             summary_prompt: fsm_config.summary_prompt,
             model: llm_name.clone(),
             api_key,
+            fsm_initial_state: fsm_config.initial_state
         };
 
         let mut agent = LLMAgent::new(fsm, agent_settings); // we start a new agent every query now, we may want to implement session/static agent
         {
             if let Err(_e) = agent.set_current_state(fsm_state.clone(), exec_entry_actions).await {
-                let fsm_state = agent.fsm.current_state();
+                let fsm_state = agent.fsm.get_current_state_name();
                 agent.set_current_state(fsm_state, true).await.expect("set current state fail");
             };
             agent.llm_req_settings.summary = get_chat_summary(chat_id).await.unwrap_or_default();
@@ -897,7 +898,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         {
             let asset = context.get_asset_ref().await;
             let mut asset_guard = asset.write().await;
-            asset_guard.insert("fsm_state".into(), TnAsset::String(agent.fsm.current_state().unwrap()) );
+            asset_guard.insert("fsm_state".into(), TnAsset::String(agent.fsm.get_current_state_name().unwrap()) );
         }
 
 

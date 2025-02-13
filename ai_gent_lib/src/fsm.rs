@@ -221,7 +221,7 @@ impl FSM {
             .and_then(|current| self.transitions.get(current).cloned())
     }
 
-    pub fn current_state(&self) -> Option<String> {
+    pub fn get_current_state_name(&self) -> Option<String> {
         self.current_state.clone()
     }
 
