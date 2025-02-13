@@ -6,9 +6,9 @@ use crate::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio::sync::mpsc::Sender;
+use tokio::sync::mpsc::{self, Sender};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct LLMReqSetting {
     pub sys_prompt: String,
     pub summary: String,
@@ -17,6 +17,9 @@ pub struct LLMReqSetting {
     pub temperature: Option<f32>,
     pub model: String,
     pub api_key: String,
+    pub fsm_transition_prompt: Option<String>,
+    pub summary_prompt: Option<String>,
+    pub fsm_initial_state: String,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -149,7 +152,7 @@ pub struct LLMResponse {
     tool: Option<String>,
     #[serde(default)]
     tool_input: Option<String>,
-    next_state: Option<String>,
+    pub next_state: Option<String>,
 }
 
 pub struct LLMAgent {
@@ -179,6 +182,7 @@ pub struct AgentSettings {
     pub sys_prompt: String,
     pub fsm_prompt: String,
     pub summary_prompt: String,
+    pub fsm_initial_state: String,
     pub model: String,
     pub api_key: String,
 }
@@ -193,6 +197,9 @@ impl LLMAgent {
             context: None,
             model: agent_settings.model,
             api_key: agent_settings.api_key,
+            fsm_transition_prompt: Some(agent_settings.fsm_prompt.clone()),
+            summary_prompt: Some(agent_settings.fsm_prompt.clone()),
+            fsm_initial_state: agent_settings.fsm_initial_state,
         };
         // Initialize prompts for each state here
         Self {
@@ -220,7 +227,7 @@ impl LLMAgent {
     }
 
     pub async fn get_current_state(&self) -> Option<String> {
-        self.fsm.current_state()
+        self.fsm.get_current_state_name()
     }
 
     pub async fn process_message(
@@ -240,7 +247,7 @@ impl LLMAgent {
         // Handle FSM state transition
         let current_state_name = self
             .fsm
-            .current_state()
+            .get_current_state_name()
             .ok_or(anyhow::anyhow!("No current state"))?;
 
         if let Some(tx) = tx.clone() {
@@ -289,7 +296,7 @@ impl LLMAgent {
 
         let new_state_name = self
             .fsm
-            .current_state()
+            .get_current_state_name()
             .ok_or(anyhow::anyhow!("No current state"))?;
 
         let next_states = self
@@ -299,8 +306,8 @@ impl LLMAgent {
             .iter()
             .cloned()
             .collect::<Vec<_>>();
-        
-        let  (llm_output, next_state_name) = {
+
+        let (llm_output, next_state_name) = {
             let new_state = self.fsm.states.get_mut(&new_state_name).unwrap();
 
             let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
@@ -363,10 +370,83 @@ impl LLMAgent {
             let _ = tx
                 .send((
                     "message".into(),
-                    format!("state transition: {} -> {} -> {}", current_state_name, new_state_name, next_state_name),
+                    format!(
+                        "state transition: {} -> {} -> {}",
+                        current_state_name, new_state_name, next_state_name
+                    ),
                 ))
                 .await;
         }
+        Ok(llm_output)
+    }
+
+    pub async fn fsm_message_service(
+        &mut self,
+        user_input: &str,
+        _tx: Option<Sender<(String, String)>>,
+        temperature: Option<f32>,
+    ) -> Result<String, anyhow::Error> {
+        self.llm_req_settings.temperature = temperature;
+        self.llm_req_settings
+            .messages
+            .push(("user".into(), user_input.into()));
+
+        let current_state_name = self
+            .fsm
+            .get_current_state_name()
+            .ok_or(anyhow::anyhow!("No current state"))?;
+
+        println!("trace: current_state: {}", current_state_name);
+
+        if self.fsm.available_transitions().is_none() {
+            let _ = self
+                .fsm
+                .set_initial_state(self.llm_req_settings.fsm_initial_state.clone(), true)
+                .await;
+        };
+
+        loop {
+            let current_state_name = self
+                .fsm
+                .get_current_state_name()
+                .ok_or(anyhow::anyhow!("No current state"))?;
+
+            println!("trace: current_state: {}", current_state_name);
+
+            let next_states = if let Some(next_state) = self.fsm.available_transitions() {
+                next_state.iter().cloned().collect::<Vec<_>>()
+            } else {
+                break;
+            };
+
+            println!("trace: available_transitions: {:?}", next_states);
+
+            let current_state = self.fsm.states.get_mut(&current_state_name).unwrap();
+            let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
+            current_state
+                .set_attribute("llm_req_setting", llm_req_setting)
+                .await;
+            let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String)>(16);
+
+            let handle = tokio::spawn(async move {
+                while let Some((t, r)) = fsm_rx.recv().await {
+                    println!("tag: {}, message:{}", t, r);
+                }
+            });
+
+            if let Some(next_state) = current_state
+                .start_service(fsm_tx, None, Some(next_states))
+                .await
+            {
+                let _ = tokio::join!(handle);
+                let _ = self.transition_state(&next_state).await;
+            } else {
+                let _ = tokio::join!(handle);
+                break;
+            }
+        }
+
+        let llm_output = "".into();
         Ok(llm_output)
     }
 
@@ -378,7 +458,7 @@ impl LLMAgent {
             }
             (TransitionResult::InvalidTransition, _) => Err(anyhow::anyhow!(
                 "Invalid transition to state:{:?} -> {}",
-                self.fsm.current_state(),
+                self.fsm.get_current_state_name(),
                 next_state
             )),
             (TransitionResult::NoTransitionAvailable, _) => Err(anyhow::anyhow!(
@@ -456,7 +536,6 @@ mod tests {
         }
     }
 
-
     #[tokio::test]
     async fn test_llm_agent_process_input() {
         let fsm_config = FSMAgentConfigBuilder::new()
@@ -497,6 +576,7 @@ mod tests {
             summary_prompt: fsm_config.summary_prompt,
             model: "".into(),
             api_key: "".into(),
+            fsm_initial_state: "Initial".into(),
         };
 
         let mut agent = LLMAgent::new(fsm, agent_settings);
@@ -518,11 +598,11 @@ mod tests {
         fsm_builder = fsm_builder.set_initial_state("Initial".to_string());
         let mut fsm = fsm_builder.build().unwrap();
 
-        assert_eq!(fsm.current_state(), Some("Initial".to_string()));
+        assert_eq!(fsm.get_current_state_name(), Some("Initial".to_string()));
 
         let (result, _) = fsm.transition("Processing".into()).await;
         assert_eq!(result, TransitionResult::Success);
-        assert_eq!(fsm.current_state(), Some("Processing".to_string()));
+        assert_eq!(fsm.get_current_state_name(), Some("Processing".to_string()));
 
         let (result, _) = fsm.transition("NonExistentState".into()).await;
         assert_eq!(result, TransitionResult::NoTransitionAvailable);
