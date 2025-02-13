@@ -300,7 +300,7 @@ impl LLMAgent {
             .cloned()
             .collect::<Vec<_>>();
         
-        let  (llm_output, next_state) = {
+        let  (llm_output, next_state_name) = {
             let new_state = self.fsm.states.get_mut(&new_state_name).unwrap();
 
             let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
@@ -318,9 +318,12 @@ impl LLMAgent {
             (llm_output, next_state)
         };
 
-        if let Some(next_state) = next_state {
-            self.transition_state(&next_state).await?;
-        }
+        let next_state_name = if let Some(next_state_name) = next_state_name {
+            self.transition_state(&next_state_name).await?;
+            next_state_name
+        } else {
+            "NoTransition".into()
+        };
 
         self.llm_req_settings
             .messages
@@ -360,7 +363,7 @@ impl LLMAgent {
             let _ = tx
                 .send((
                     "message".into(),
-                    format!("state transition: {} -> {}", current_state_name, new_state_name),
+                    format!("state transition: {} -> {} -> {}", current_state_name, new_state_name, next_state_name),
                 ))
                 .await;
         }
