@@ -19,11 +19,12 @@ pub trait FSMState: Send + Sync {
     async fn on_enter_mut(&mut self) {}
     async fn on_exit_mut(&mut self) {}
     // each state can provide some service if this function is called
-    async fn serve(
+    async fn start_service(
         &mut self,
         _tx: Sender<(String, String)>,
-        _rx: Option<Receiver<(String, String)>>
-    ) {
+        _rx: Option<Receiver<(String, String)>>,
+        _next_states: Option<Vec<String>>
+    ) -> Option<String> {
         unimplemented!()
     }
     async fn set_attribute(&mut self, _k: &str, _v: String) {}
@@ -36,6 +37,7 @@ pub trait FSMState: Send + Sync {
     fn name(&self) -> String {
         unimplemented!()
     }
+
 }
 
 pub trait FSMStateInit {
@@ -60,7 +62,7 @@ impl Default for FSMBuilder {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct DefaultFSMChatState {
     name: String,
     attributes: HashMap<String, String>,

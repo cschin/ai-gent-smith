@@ -287,24 +287,41 @@ impl LLMAgent {
             self.transition_state(next_state).await?;
         }
 
-        let next_state_name = self
+        let new_state_name = self
             .fsm
             .current_state()
             .ok_or(anyhow::anyhow!("No current state"))?;
 
-        let next_state = self.fsm.states.get_mut(&next_state_name).unwrap();
+        let next_states = self
+            .fsm
+            .available_transitions()
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        
+        let  (llm_output, next_state) = {
+            let new_state = self.fsm.states.get_mut(&new_state_name).unwrap();
 
-        let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
-        next_state
-            .set_attribute("llm_req_setting", llm_req_setting)
-            .await;
+            let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
+            new_state
+                .set_attribute("llm_req_setting", llm_req_setting)
+                .await;
 
-        if let Some(tx) = tx.clone() {
-            // call LLM through the next_state.serve()
-            next_state.serve(tx, None).await;
+            let next_state = if let Some(tx) = tx.clone() {
+                // call LLM through the next_state.serve()
+                new_state.start_service(tx, None, Some(next_states)).await
+            } else {
+                None
+            };
+            let llm_output = new_state.get_attribute("llm_output").await.unwrap();
+            (llm_output, next_state)
         };
 
-        let llm_output = next_state.get_attribute("llm_output").await.unwrap();
+        if let Some(next_state) = next_state {
+            self.transition_state(&next_state).await?;
+        }
+
         self.llm_req_settings
             .messages
             .push(("assistant".into(), llm_output.clone()));
@@ -343,10 +360,7 @@ impl LLMAgent {
             let _ = tx
                 .send((
                     "message".into(),
-                    format!(
-                        "state transition: {} -> {}",
-                        current_state_name, next_state_name
-                    ),
+                    format!("state transition: {} -> {}", current_state_name, new_state_name),
                 ))
                 .await;
         }
@@ -439,31 +453,6 @@ mod tests {
         }
     }
 
-    // Mock LLM Client for testing
-
-    struct MockLLMClient;
-
-    #[async_trait]
-    impl LLMClient for MockLLMClient {
-        async fn generate(
-            &self,
-            _prompt: &str,
-            _msg: &[(String, String)],
-            _temperature: Option<f32>,
-        ) -> Result<String, anyhow::Error> {
-            Ok(r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
-
-                .to_string())
-        }
-        async fn generate_stream(
-            &self,
-            _prompt: &str,
-            _msg: &[(String, String)],
-            _temperature: Option<f32>,
-        ) -> LLMStreamOut {
-            unimplemented!()
-        }
-    }
 
     #[tokio::test]
     async fn test_llm_agent_process_input() {
@@ -491,7 +480,6 @@ mod tests {
         .unwrap()
         .build()
         .unwrap();
-        let llm_client = MockLLMClient;
 
         let fsm_config_str = include_str!("../../ai_gent_tools/dev_config/fsm_config.json");
 

@@ -63,12 +63,11 @@ pub const AGENT_QUERY_TEXT_INPUT: &str = "agent_query_text_input";
 pub const AGENT_QUERY_BUTTON: &str = "agent_query_button";
 pub const ASSET_SEARCH_BUTTON: &str = "asset_search_button";
 pub const ASSET_SEARCH_OUTPUT: &str = "asset_search_output";
-pub const TOPK_SLIDER: &str = "topk_slider";
+pub const TOP_K_SLIDER: &str = "top_k_slider";
 pub const THRESHOLD_SLIDER: &str = "threshold_slider";
 pub const TEMPERATURE_SLIDER: &str = "temperature_slider";
 //pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
 
-#[derive(Debug)]
 pub struct FSMChatState {
     name: String,
     attributes: HashMap<String, String>,
@@ -104,16 +103,16 @@ impl FSMState for FSMChatState {
     async fn on_exit_mut(&mut self) {
         tracing::info!(target: TRON_APP, "Exiting state (mut): {}", self.name);
     }
-
-    async fn serve(
+    
+    async fn start_service(
         &mut self,
         tx: Sender<(String, String)>,
         _rx: Option<Receiver<(String, String)>>,
-    ) {
+        next_states: Option<Vec<String>>
+    ) -> Option<String> {
         let llm_req_setting: llm_agent::LLMReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
         let prompt = self.get_attribute("prompt").await;
-
         let full_prompt = match prompt {
             Some(prompt) => match llm_req_setting.context {
                 Some(context) => [
@@ -144,7 +143,7 @@ impl FSMState for FSMChatState {
         };
         if full_prompt.is_empty() {
             let _ = tx.send(("error".into(), "no state prompt".into())).await;
-            return;
+            return None;
         };
         let llm_client = GenaiLlmclient {
             model: llm_req_setting.model,
@@ -179,6 +178,15 @@ impl FSMState for FSMChatState {
             self.set_attribute("llm_output", llm_output).await;
         } else {
             self.set_attribute("llm_output", "".into()).await;
+        };
+        if let Some(next_states) = next_states {
+            if next_states.len() == 1 {
+                Some(next_states.first().unwrap().clone())
+            } else {
+                None
+            }
+        } else {
+            None
         }
     }
 
@@ -286,7 +294,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
         .build();
 
         let top_k_slider = TnRangeSlider::builder()
-            .init(TOPK_SLIDER.into(), 8.0, 4.0, 16.0)
+            .init(TOP_K_SLIDER.into(), 8.0, 4.0, 16.0)
             .set_attr("class", "flex flex-1 min-w-[140px] max-w-[280px]")
             .set_action(TnActionExecutionMethod::Await, top_k_value_update)
             .build();
@@ -497,7 +505,7 @@ where
             .await;
 
         let topk_slider_html = comp_guard
-            .get(TOPK_SLIDER)
+            .get(TOP_K_SLIDER)
             .unwrap()
             .read()
             .await
@@ -756,6 +764,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let fsm = FSMBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
 
+        // fsm.states.iter_mut().for_each(|(_, v)| v.as_mut()) ; 
+
         let api_key = match llm_name.as_str() {
             "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => {
                 if let Ok(open_api_key) = std::env::var("OPENAI_API_KEY") {
@@ -945,7 +955,7 @@ fn get_search_context_plain_text(top_hits: &[TwoDPoint]) -> String {
         .map(|p| {
             let c = &p.chunk;
             format!(
-                "<DOCUMENT>\n<DOCUMET_TITLE>{}</DOCUMENT_TITLE>\n\n<CONTEXT>\n{}\n</CONTEXT>\n</DOCUMENT>",
+                "<DOCUMENT>\n<DOCUMENT_TITLE>{}</DOCUMENT_TITLE>\n\n<CONTEXT>\n{}\n</CONTEXT>\n</DOCUMENT>",
                 c.title,
                 c.text
             )

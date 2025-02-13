@@ -3,49 +3,14 @@ use rustyline::DefaultEditor;
 
 use ai_gent_lib::fsm::FSMBuilder;
 use anyhow::Result;
-use async_trait::async_trait;
 use tokio::sync::mpsc;
 
-use ai_gent_lib::llm_agent::{FSMAgentConfigBuilder, LLMAgent, LLMClient};
+use ai_gent_lib::llm_agent::{AgentSettings, FSMAgentConfigBuilder, LLMAgent};
 
 // use futures::StreamExt;
-use ai_gent_lib::llm_service::{genai_service, genai_stream_service, LLMStreamOut};
-struct TestLLMClient {
-    model: String,
-    api_key: String,
-}
-
-//const SYS_PROMPT: &str = include_str!("../../../dev_config/sys_prompt");
-//const FSM_PROMPT: &str = include_str!("../../../dev_config/fsm_prompt");
-//const SUMMARY_PROMPT: &str = include_str!("../../../dev_config/summary_prompt");
-
-#[async_trait]
-impl LLMClient for TestLLMClient {
-    async fn generate(&self, prompt: &str, msgs: &[(String, String)], temperature: Option<f32>) -> Result<String, anyhow::Error> {
-        // r#"{"message": "Test response", "tool": null, "tool_input": null, "next_state": null}"#
-        //     .to_string()
-        let t = temperature.unwrap_or(0.5); 
-        genai_service(prompt, msgs, &self.model, &self.api_key, t).await
-    }
-
-    async fn generate_stream(&self, prompt: &str, msgs: &[(String, String)], temperature: Option<f32>) -> LLMStreamOut {
-        let t = temperature.unwrap_or(0.5); 
-        genai_stream_service(prompt, msgs, &self.model, &self.api_key, t).await
-    }
-}
 
 const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.json");
 
-// use std::fs::File;
-// use std::io::Write;
-// use llm_agent::FSMAgentConfig;
-// fn write_agent_config_to_file(fsm_config: &FSMAgentConfig) -> Result<(), std::io::Error> {
-//     let json_output = fsm_config.to_json().unwrap();
-//     let mut file = File::create("agent_config.json")?;
-//     file.write_all(json_output.as_bytes())?;
-//     tracing::info!("Agent config written to agent_config.json");
-//     Ok(())
-// }
 
 use std::collections::HashMap;
 use std::io::{stdout, Write}; //for flush()
@@ -59,12 +24,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let api_key = std::env::var("OPENAI_API_KEY").map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
         env_name: "OPENAI_API_KEY".to_string()}).unwrap();
 
-    let llm_client = TestLLMClient {
-        model: "gpt-4o".into(),
-        api_key
-    };
     let fsm_config = FSMAgentConfigBuilder::from_json(FSM_CONFIG).unwrap().build().unwrap();
-    let mut agent = LLMAgent::new(llm_client, fsm, &fsm_config);
+    let llm_req_setting = AgentSettings {
+        sys_prompt: fsm_config.sys_prompt,
+        fsm_prompt: fsm_config.fsm_prompt,
+        summary_prompt: fsm_config.summary_prompt,
+        model: "gpt-4o".into(),
+        api_key,
+    };
+    let mut agent = LLMAgent::new(fsm, llm_req_setting);
 
     // tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
 
