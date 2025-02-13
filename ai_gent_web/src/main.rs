@@ -707,9 +707,9 @@ fn show_basic_agent_setting(
         .unwrap_or_default()
         .build()
         .unwrap_or_default();
-    let prompt = fsm_config.sys_prompt.clone();
+    let prompt = fsm_config.system_prompt.clone();
     let follow_up_prompt = fsm_config
-        .prompts
+        .state_prompts
         .get("AskFollowUpQuestion")
         .unwrap_or(&"".to_string())
         .clone();

@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::llm_agent::FSMAgentConfig;
+use crate::llm_agent::{FSMAgentConfig, StatePrompts};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransitionResult {
@@ -41,7 +41,7 @@ pub trait FSMState: Send + Sync {
 }
 
 pub trait FSMStateInit {
-    fn new(name: &str, prompt: &str) -> Self;
+    fn new(name: &str, prompts: &StatePrompts) -> Self;
 }
 
 pub struct FSM {
@@ -69,9 +69,17 @@ pub struct DefaultFSMChatState {
 }
 
 impl FSMStateInit for DefaultFSMChatState {
-    fn new(name: &str, prompt: &str) -> Self {
+    fn new(name: &str, prompts: &StatePrompts) -> Self {
         let mut attributes = HashMap::new();
-        attributes.insert("prompt".to_string(), prompt.to_string());
+        if let Some(chat_prompt) = prompts.chat.clone() {
+            attributes.insert("prompt.chat".to_string(), chat_prompt);
+        }
+        if let Some(system_prompt) = prompts.system.clone() {
+            attributes.insert("prompt.system".to_string(), system_prompt);
+        }
+        if let Some(fsm_prompt) = prompts.fsm.clone() {
+            attributes.insert("prompt.fsm".to_string(), fsm_prompt);
+        }
         DefaultFSMChatState {
             name: name.to_string(),
             attributes,
@@ -125,7 +133,7 @@ impl FSMBuilder {
     pub fn from_config<S: FSMStateInit + FSMState + 'static>(
         config: &FSMAgentConfig,
         mut state_map: HashMap<String, S>,
-    ) -> Result<Self, &'static str> {
+    ) -> Result<Self, anyhow::Error> {
         let mut builder = FSMBuilder {
             states: HashMap::new(),
             transitions: HashMap::new(),
@@ -134,14 +142,14 @@ impl FSMBuilder {
 
         // Add states
         for state_name in &config.states {
-            let prompt = config
-                .prompts
+            let state_prompt = config
+                .state_prompts
                 .get(state_name)
-                .ok_or("Missing prompt for state")?
+                .ok_or_else(|| anyhow::anyhow!("Missing prompt for state: {}", state_name))?
                 .clone();
             let state = state_map
                 .remove(state_name)
-                .unwrap_or(S::new(state_name, &prompt));
+                .unwrap_or(S::new(state_name, &state_prompt));
             builder.states.insert(state_name.clone(), Box::new(state));
         }
 
@@ -156,7 +164,7 @@ impl FSMBuilder {
 
         // Validate initial state
         if !builder.states.contains_key(&config.initial_state) {
-            return Err("Initial state not found in states");
+            return Err(anyhow::anyhow!("Initial state not found in states"));
         }
 
         Ok(builder)

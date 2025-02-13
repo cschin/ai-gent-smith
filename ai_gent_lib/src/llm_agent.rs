@@ -10,7 +10,7 @@ use tokio::sync::mpsc::{self, Sender};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LLMReqSetting {
-    pub sys_prompt: String,
+    pub system_prompt: String,
     pub summary: String,
     pub context: Option<String>,
     pub messages: Vec<(String, String)>,
@@ -22,13 +22,21 @@ pub struct LLMReqSetting {
     pub fsm_initial_state: String,
 }
 
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct StatePrompts {
+    pub system: Option<String>,
+    pub chat: Option<String>,
+    pub fsm: Option<String>,
+} 
+
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct FSMAgentConfig {
     pub states: Vec<String>,
     pub transitions: Vec<(String, String)>,
     pub initial_state: String,
-    pub prompts: HashMap<String, String>,
-    pub sys_prompt: String,
+    pub state_prompts: HashMap<String, StatePrompts>,
+    pub system_prompt: String,
     pub summary_prompt: String,
     pub fsm_prompt: String,
 }
@@ -52,10 +60,10 @@ pub struct FSMAgentConfigBuilder {
     states: Vec<String>,
     transitions: Vec<(String, String)>,
     initial_state: Option<String>,
-    prompts: HashMap<String, String>,
+    state_prompts: HashMap<String, StatePrompts>,
     fsm_prompt: String,
     summary_prompt: String,
-    sys_prompt: String,
+    system_prompt: String,
 }
 
 impl FSMAgentConfigBuilder {
@@ -78,13 +86,13 @@ impl FSMAgentConfigBuilder {
         self
     }
 
-    pub fn add_prompt(mut self, state: String, prompt: String) -> Self {
-        self.prompts.insert(state, prompt);
+    pub fn add_prompt(mut self, state: String, prompts: StatePrompts) -> Self {
+        self.state_prompts.insert(state, prompts);
         self
     }
 
-    pub fn set_sys_prompt(mut self, prompt: String) -> Self {
-        self.sys_prompt = prompt;
+    pub fn set_system_prompt(mut self, prompt: String) -> Self {
+        self.system_prompt = prompt;
         self
     }
 
@@ -104,9 +112,9 @@ impl FSMAgentConfigBuilder {
             states: config.states,
             transitions: config.transitions,
             initial_state: Some(config.initial_state),
-            prompts: config.prompts,
+            state_prompts: config.state_prompts,
             fsm_prompt: config.fsm_prompt,
-            sys_prompt: config.sys_prompt,
+            system_prompt: config.system_prompt,
             summary_prompt: config.summary_prompt,
         })
     }
@@ -117,9 +125,9 @@ impl FSMAgentConfigBuilder {
             states: config.states,
             transitions: config.transitions,
             initial_state: Some(config.initial_state),
-            prompts: config.prompts,
+            state_prompts: config.state_prompts,
             fsm_prompt: config.fsm_prompt,
-            sys_prompt: config.sys_prompt,
+            system_prompt: config.system_prompt,
             summary_prompt: config.summary_prompt,
         })
     }
@@ -136,9 +144,9 @@ impl FSMAgentConfigBuilder {
             states: self.states,
             transitions: self.transitions,
             initial_state: self.initial_state.unwrap(),
-            prompts: self.prompts,
+            state_prompts: self.state_prompts,
             fsm_prompt: self.fsm_prompt,
-            sys_prompt: self.sys_prompt,
+            system_prompt: self.system_prompt,
             summary_prompt: self.summary_prompt,
         })
     }
@@ -191,7 +199,7 @@ impl LLMAgent {
     pub fn new(fsm: FSM, agent_settings: AgentSettings) -> Self {
         let llm_req_setting = LLMReqSetting {
             summary: String::default(),
-            sys_prompt: agent_settings.sys_prompt,
+            system_prompt: agent_settings.sys_prompt,
             messages: Vec::default(),
             temperature: None,
             context: None,
@@ -430,7 +438,12 @@ impl LLMAgent {
 
             let handle = tokio::spawn(async move {
                 while let Some((t, r)) = fsm_rx.recv().await {
-                    println!("tag: {}, message:{}", t, r);
+                    match t.as_str() {
+                        "llm_output" | "message" => {println!("tag: llm_output or message:{}", r);
+                        }
+                        _ => {}
+                    }
+                    
                 }
             });
 
@@ -472,6 +485,7 @@ impl LLMAgent {
 
 #[cfg(test)]
 mod tests {
+
     use crate::fsm::{FSMBuilder, FSMState};
 
     use super::*;
@@ -538,6 +552,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_llm_agent_process_input() {
+        let test_prompt = StatePrompts {
+            system: None,
+            chat: Some("test".into()),
+            fsm: Some("".into())
+        };
+
         let fsm_config = FSMAgentConfigBuilder::new()
             .add_state("Initial".to_string())
             .add_state("Processing".to_string())
@@ -545,13 +565,13 @@ mod tests {
             .set_initial_state("Initial".to_string())
             .add_prompt(
                 "Initial".to_string(),
-                "This is the initial state prompt.".to_string(),
+                test_prompt.clone(),
             )
             .add_prompt(
                 "Processing".to_string(),
-                "This is the processing state prompt.".to_string(),
+                test_prompt,
             )
-            .set_sys_prompt("".into())
+            .set_system_prompt("".into())
             .build()
             .unwrap();
 
@@ -571,7 +591,7 @@ mod tests {
             .unwrap();
 
         let agent_settings = AgentSettings {
-            sys_prompt: fsm_config.sys_prompt,
+            sys_prompt: fsm_config.system_prompt,
             fsm_prompt: fsm_config.fsm_prompt,
             summary_prompt: fsm_config.summary_prompt,
             model: "".into(),
