@@ -9,7 +9,7 @@ use anyhow::Result;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use ai_gent_lib::llm_agent::{
-    self, AgentSettings, FSMAgentConfigBuilder, LLMAgent, LLMClient, LLMResponse,
+    self, AgentSettings, FSMAgentConfigBuilder, LLMAgent, LLMClient, LLMResponse, StatePrompts,
 };
 use tokio::task::JoinHandle;
 
@@ -22,9 +22,17 @@ pub struct FSMChatState {
 }
 
 impl FSMStateInit for FSMChatState {
-    fn new(name: &str, prompt: &str) -> Self {
+    fn new(name: &str, prompts: &StatePrompts) -> Self {
         let mut attributes = HashMap::new();
-        attributes.insert("prompt".to_string(), prompt.to_string());
+        if let Some(chat_prompt) = prompts.chat.clone() {
+            attributes.insert("prompt.chat".to_string(), chat_prompt);
+        }
+        if let Some(system_prompt) = prompts.system.clone() {
+            attributes.insert("prompt.system".to_string(), system_prompt);
+        }
+        if let Some(fsm_prompt) = prompts.fsm.clone() {
+            attributes.insert("prompt.fsm".to_string(), fsm_prompt);
+        }
         FSMChatState {
             name: name.to_string(),
             attributes,
@@ -35,21 +43,6 @@ impl FSMStateInit for FSMChatState {
 
 #[async_trait]
 impl FSMState for FSMChatState {
-    async fn on_enter(&self) {
-        println!("Entering state: {}", self.name);
-    }
-
-    async fn on_exit(&self) {
-        println!("Exiting state: {}", self.name);
-    }
-
-    async fn on_enter_mut(&mut self) {
-        println!("Entering state (mut): {}", self.name);
-    }
-
-    async fn on_exit_mut(&mut self) {
-        println!("Exiting state (mut): {}", self.name);
-    }
 
     async fn start_service(
         &mut self,
@@ -59,108 +52,102 @@ impl FSMState for FSMChatState {
     ) -> Option<String> {
         let llm_req_settings: llm_agent::LLMReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
-        // println!("start service: {:?}", llm_req_settings);
-        let prompt = self.get_attribute("prompt").await;
-        let full_prompt = match prompt {
-            Some(prompt) => match llm_req_settings.context {
-                Some(context) => [
-                    &llm_req_settings.sys_prompt,
-                    prompt.as_str(),
-                    "\nHere is the summary of previous chat:\n",
-                    "<SUMMARY>",
-                    &llm_req_settings.summary,
-                    "</SUMMARY>",
-                    "\nHere is the current reference context:\n",
-                    "<REFERENCES>",
-                    &context,
-                    "</REFERENCES>",
-                ]
-                .join("\n"),
-                None => [
-                    &llm_req_settings.sys_prompt,
-                    prompt.as_str(),
-                    "\nHere is the summary of previous chat:\n",
-                    "<SUMMARY>",
-                    &llm_req_settings.summary,
-                    "</SUMMARY>",
-                    "\nHere is the current reference context:\n",
-                ]
-                .join("\n"),
-            },
-            None => "".into(),
-        };
-        if full_prompt.is_empty() {
-            let _ = tx.send(("error".into(), "no state prompt".into())).await;
-            return None;
-        };
-        let llm_client = GenaiLlmclient {
-            model: llm_req_settings.model.clone(),
-            api_key: llm_req_settings.api_key.clone(),
-        };
-        let messages = llm_req_settings.messages.clone();
-        let temperature = llm_req_settings.temperature;
-        self.handle = Some(tokio::spawn(async move {
-            let _ = tx
-                .send((
-                    "message".into(),
-                    "LLM request sent, waiting for response\n".into(),
-                ))
-                .await;
-            let mut llm_output = String::default();
-            println!("llm_request");
-            let mut llm_stream = llm_client
-                .generate_stream(&full_prompt, &messages, temperature)
-                .await;
-            while let Some(result) = llm_stream.next().await {
-                if let Some(output) = result {
-                    llm_output.push_str(&output);
-                    let _ = tx.send(("token".into(), output)).await;
-                };
-            }
-            let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
-            llm_output
-        }));
 
-        if let Some(handle) = self.handle.take() {
-            let llm_output = tokio::join!(handle);
-            let llm_output = llm_output.0.unwrap();
-            self.set_attribute("llm_output", llm_output).await;
+        let summary = if !llm_req_settings.summary.is_empty() {
+            ["<SUMMARY>", &llm_req_settings.summary, "</SUMMARY>"].join("\n")
         } else {
-            self.set_attribute("llm_output", "".into()).await;
+            "".into()
         };
-        if let Some(next_states) = next_states {
-            if next_states.len() == 1 {
-                Some(next_states.first().unwrap().clone())
-            } else if let Some(fsm_prompt) = llm_req_settings.fsm_transition_prompt {
-                let available_transitions = next_states.join(", ");
-                let msg = format!(
-                        "Current State: {}\nAvailable Next State: {}\n Summary of the previous chat:<summary>{}</summary> \n\n ",
+
+        let context = if let Some(context) = llm_req_settings.context {
+            ["<CONTEXT>", &context, "</CONTEXT>"].join("\n")
+        } else {
+            "".into()
+        };
+
+        let system_prompt = self
+            .get_attribute("prompt.system")
+            .await
+            .unwrap_or(llm_req_settings.system_prompt);
+
+        let chat_prompt = self.get_attribute("prompt.chat").await.unwrap_or("".into());
+
+        if system_prompt.len() + chat_prompt.len() > 0 {
+            let full_prompt = [system_prompt, summary, context, chat_prompt].join("\n");
+            let llm_client = GenaiLlmclient {
+                model: llm_req_settings.model.clone(),
+                api_key: llm_req_settings.api_key.clone(),
+            };
+
+            let messages = llm_req_settings.messages.clone();
+            let temperature = llm_req_settings.temperature;
+            self.handle = Some(tokio::spawn(async move {
+                let _ = tx
+                    .send((
+                        "message".into(),
+                        "LLM request sent, waiting for response\n".into(),
+                    ))
+                    .await;
+                let mut llm_output = String::default();
+                println!("llm_request");
+                let mut llm_stream = llm_client
+                    .generate_stream(&full_prompt, &messages, temperature)
+                    .await;
+                while let Some(result) = llm_stream.next().await {
+                    if let Some(output) = result {
+                        llm_output.push_str(&output);
+                        let _ = tx.send(("token".into(), output)).await;
+                    };
+                }
+                let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
+                llm_output
+            }));
+
+            if let Some(handle) = self.handle.take() {
+                let llm_output = tokio::join!(handle);
+                let llm_output = llm_output.0.unwrap();
+                self.set_attribute("llm_output", llm_output).await;
+            } else {
+                self.set_attribute("llm_output", "".into()).await;
+            };
+        };
+        {
+            // get the the FSM state
+            if let Some(next_states) = next_states {
+                if next_states.len() == 1 {
+                    Some(next_states.first().unwrap().clone())
+                } else if let Some(fsm_prompt) = llm_req_settings.fsm_transition_prompt {
+                    let available_transitions = next_states.join(", ");
+                    let msg = format!(
+                        r#"Current State: {}\nAvailable Next State: {}\n Summary of the previous chat:<SUMMARY>{}</SUMMARY> \n\n "#,
                         self.name, available_transitions, llm_req_settings.summary
                     );
-                let fsm_prompt = [fsm_prompt, msg].join("\n");
-                let llm_client = GenaiLlmclient {
-                    model: llm_req_settings.model.clone(),
-                    api_key: llm_req_settings.api_key.clone(),
-                };
-                let next_state = llm_client
-                    .generate(
-                        &fsm_prompt,
-                        &llm_req_settings.messages,
-                        llm_req_settings.temperature,
-                    )
-                    .await
-                    .unwrap();
+                    let fsm_prompt = [fsm_prompt, msg].join("\n");
+                    let llm_client = GenaiLlmclient {
+                        model: llm_req_settings.model.clone(),
+                        api_key: llm_req_settings.api_key.clone(),
+                    };
+                    let next_state = llm_client
+                        .generate(
+                            &fsm_prompt,
+                            &llm_req_settings.messages,
+                            llm_req_settings.temperature,
+                        )
+                        .await
+                        .unwrap();
 
-                let next_fsm_state_response: LLMResponse = serde_json::from_str(&next_state)
-                    .map_err(|e| anyhow::anyhow!("Failed to parse LLM output: {e}, {}", next_state))
-                    .unwrap();
-                println!("next state: {:?}", next_fsm_state_response.next_state);
-                next_fsm_state_response.next_state
+                    let next_fsm_state_response: LLMResponse = serde_json::from_str(&next_state)
+                        .map_err(|e| {
+                            anyhow::anyhow!("Failed to parse LLM output: {e}, {}", next_state)
+                        })
+                        .unwrap();
+                    next_fsm_state_response.next_state
+                } else {
+                    None
+                }
             } else {
                 None
             }
-        } else {
-            None
         }
     }
 
@@ -199,12 +186,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .unwrap();
 
     let llm_req_setting = AgentSettings {
-        sys_prompt: fsm_config.sys_prompt,
+        sys_prompt: fsm_config.system_prompt,
         fsm_prompt: fsm_config.fsm_prompt,
         summary_prompt: fsm_config.summary_prompt,
         model: "gpt-4o".into(),
         api_key,
-        fsm_initial_state: fsm_config.initial_state
+        fsm_initial_state: fsm_config.initial_state,
     };
     let mut agent = LLMAgent::new(fsm, llm_req_setting);
 

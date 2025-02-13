@@ -8,6 +8,7 @@ use ai_gent_lib::llm_agent::FSMAgentConfig;
 use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use ai_gent_lib::llm_agent::LLMClient;
+use ai_gent_lib::llm_agent::StatePrompts;
 use ai_gent_lib::GenaiLlmclient;
 use askama::Template;
 use async_trait::async_trait;
@@ -75,9 +76,17 @@ pub struct FSMChatState {
 }
 
 impl FSMStateInit for FSMChatState {
-    fn new(name: &str, prompt: &str) -> Self {
+    fn new(name: &str, prompts: &StatePrompts) -> Self {
         let mut attributes = HashMap::new();
-        attributes.insert("prompt".to_string(), prompt.to_string());
+        if let Some(chat_prompt) = prompts.chat.clone() {
+            attributes.insert("prompt.chat".to_string(), chat_prompt);
+        }
+        if let Some(system_prompt) = prompts.system.clone() {
+            attributes.insert("prompt.system".to_string(), system_prompt);
+        }
+        if let Some(fsm_prompt) = prompts.fsm.clone() {
+            attributes.insert("prompt.fsm".to_string(), fsm_prompt);
+        }
         FSMChatState {
             name: name.to_string(),
             attributes,
@@ -116,7 +125,7 @@ impl FSMState for FSMChatState {
         let full_prompt = match prompt {
             Some(prompt) => match llm_req_setting.context {
                 Some(context) => [
-                    &llm_req_setting.sys_prompt,
+                    &llm_req_setting.system_prompt,
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
                     "<SUMMARY>",
@@ -129,7 +138,7 @@ impl FSMState for FSMChatState {
                 ]
                 .join("\n"),
                 None => [
-                    &llm_req_setting.sys_prompt,
+                    &llm_req_setting.system_prompt,
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
                     "<SUMMARY>",
@@ -807,7 +816,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         };
 
         let agent_settings = AgentSettings {
-            sys_prompt: fsm_config.sys_prompt,
+            sys_prompt: fsm_config.system_prompt,
             fsm_prompt: fsm_config.fsm_prompt,
             summary_prompt: fsm_config.summary_prompt,
             model: llm_name.clone(),
