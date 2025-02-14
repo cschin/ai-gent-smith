@@ -240,7 +240,7 @@ impl LLMAgent {
     pub async fn process_message(
         &mut self,
         user_input: &str,
-        tx: Option<Sender<(String, String)>>,
+        tx: Option<Sender<(String, String, String)>>,
         temperature: Option<f32>,
     ) -> Result<String, anyhow::Error> {
         self.llm_req_settings.temperature = temperature;
@@ -258,9 +258,10 @@ impl LLMAgent {
             .ok_or(anyhow::anyhow!("No current state"))?;
 
         if let Some(tx) = tx.clone() {
-            let _ = tx.send(("clear".into(), "".into())).await;
+            let _ = tx.send(("".into(), "clear".into(), "".into())).await;
             let _ = tx
                 .send((
+                    "".into(),
                     "message".into(),
                     "determining the agent's next state".into(),
                 ))
@@ -345,9 +346,9 @@ impl LLMAgent {
         last_message.push(("assistant".into(), llm_output.clone()));
 
         if let Some(tx) = tx.clone() {
-            let _ = tx.send(("clear".into(), "".into())).await;
+            let _ = tx.send(("".into(), "clear".into(), "".into())).await;
             let _ = tx
-                .send(("message".into(), "generating chat summary".into()))
+                .send(("".into(), "message".into(), "generating chat summary".into()))
                 .await;
         };
 
@@ -370,12 +371,14 @@ impl LLMAgent {
         if let Some(tx) = tx {
             let _ = tx
                 .send((
+                    "".into(),
                     "message".into(),
                     "Summary generation complete. You can send new query now.".into(),
                 ))
                 .await;
             let _ = tx
                 .send((
+                    "".into(),
                     "message".into(),
                     format!(
                         "state transition: {} -> {} -> {}",
@@ -390,7 +393,7 @@ impl LLMAgent {
     pub async fn fsm_message_service(
         &mut self,
         user_input: &str,
-        tx: Option<Sender<(String, String)>>,
+        tx: Option<Sender<(String, String, String)>>,
         temperature: Option<f32>,
     ) -> Result<String, anyhow::Error> {
         self.llm_req_settings.temperature = temperature;
@@ -432,17 +435,17 @@ impl LLMAgent {
             current_state
                 .set_attribute("llm_req_setting", llm_req_setting)
                 .await;
-            let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String)>(16);
+            let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String, String)>(16);
 
             let tx = tx.clone();
             let handle = tokio::spawn(async move {
                 let mut llm_output = "".to_string();
                 if let Some(tx) = tx {
-                    while let Some((t, r)) = fsm_rx.recv().await {
+                    while let Some((a, t, r)) = fsm_rx.recv().await {
                         if t == "llm_output" {
-                            llm_output = r.clone();  
+                            llm_output = r.clone();
                         };
-                        let _ = tx.send((t, r)).await;
+                        let _ = tx.send((a, t, r)).await;
                     }
                 };
                 llm_output
@@ -453,11 +456,15 @@ impl LLMAgent {
                 .await
             {
                 let llm_output = tokio::join!(handle).0.unwrap();
-                self.llm_req_settings.messages.push(("bot".into(), llm_output));
+                self.llm_req_settings
+                    .messages
+                    .push(("bot".into(), llm_output));
                 let _ = self.transition_state(&next_state).await;
             } else {
                 let llm_output = tokio::join!(handle).0.unwrap();
-                self.llm_req_settings.messages.push(("bot".into(), llm_output));
+                self.llm_req_settings
+                    .messages
+                    .push(("bot".into(), llm_output));
                 break;
             }
         }
