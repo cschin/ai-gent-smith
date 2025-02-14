@@ -118,10 +118,14 @@ impl FSMState for FSMChatState {
         let llm_req_setting: llm_agent::LLMReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
         let prompt = self.prompts.chat.clone();
+        let system_prompt = self
+            .prompts.system
+            .clone()
+            .unwrap_or("".into());
         let full_prompt = match prompt {
             Some(prompt) => match llm_req_setting.context {
                 Some(context) => [
-                    &llm_req_setting.system_prompt,
+                    &system_prompt,
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
                     "<SUMMARY>",
@@ -134,7 +138,7 @@ impl FSMState for FSMChatState {
                 ]
                 .join("\n"),
                 None => [
-                    &llm_req_setting.system_prompt,
+                    &system_prompt,
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
                     "<SUMMARY>",

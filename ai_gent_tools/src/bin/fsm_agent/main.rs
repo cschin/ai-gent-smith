@@ -44,6 +44,7 @@ impl FSMState for FSMChatState {
         _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>,
     ) -> Option<String> {
+
         let llm_req_settings: llm_agent::LLMReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
 
@@ -61,8 +62,8 @@ impl FSMState for FSMChatState {
 
         let system_prompt = self
             .prompts.system
-            .as_ref()
-            .unwrap_or(&llm_req_settings.system_prompt).clone();
+            .clone()
+            .unwrap_or("".into());
 
         let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
 
@@ -113,7 +114,7 @@ impl FSMState for FSMChatState {
             if let Some(next_states) = next_states {
                 if next_states.len() == 1 {
                     Some(next_states.first().unwrap().clone())
-                } else if let Some(fsm_prompt) = llm_req_settings.fsm_transition_prompt {
+                } else if let Some(fsm_prompt) = self.prompts.fsm.clone() {
                     let available_transitions = next_states.join(", ");
                     let msg = format!(
                         r#"Current State: {}\nAvailable Next State: {}\n Summary of the previous chat:<SUMMARY>{}</SUMMARY> \n\n "#,
