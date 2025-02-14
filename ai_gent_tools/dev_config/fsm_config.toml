@@ -254,3 +254,8 @@ GenerateCode.chat = "Your take is to generate python code address the problem as
 GenerateCode.system = """
 Just generate python code according to the instruction and wrap the
 code in <code> </code>"""
+
+
+[state_config]
+GenerateCode.tool_use = true
+GenerateCode.append_to_context = true

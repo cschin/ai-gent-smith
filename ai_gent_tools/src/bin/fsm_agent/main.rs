@@ -1,4 +1,4 @@
-use ai_gent_lib::GenaiLlmclient;
+use ai_gent_lib::{llm_agent::StateConfig, GenaiLlmclient};
 use async_trait::async_trait;
 use futures::StreamExt;
 use rustyline::error::ReadlineError;
@@ -14,29 +14,32 @@ use ai_gent_lib::llm_agent::{
 use tokio::task::JoinHandle;
 
 // use futures::StreamExt;
-
+#[derive(Default)]
 pub struct FSMChatState {
     name: String,
     attributes: HashMap<String, String>,
+    prompts: StatePrompts,
+    config: StateConfig,
     handle: Option<JoinHandle<String>>,
 }
 
 impl FSMStateInit for FSMChatState {
-    fn new(name: &str, prompts: &StatePrompts) -> Self {
-        let mut attributes = HashMap::new();
-        if let Some(chat_prompt) = prompts.chat.clone() {
-            attributes.insert("prompt.chat".to_string(), chat_prompt);
-        }
-        if let Some(system_prompt) = prompts.system.clone() {
-            attributes.insert("prompt.system".to_string(), system_prompt);
-        }
-        if let Some(fsm_prompt) = prompts.fsm.clone() {
-            attributes.insert("prompt.fsm".to_string(), fsm_prompt);
-        }
+    fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
+        // let mut attributes = HashMap::new();
+        // if let Some(chat_prompt) = prompts.chat.clone() {
+        //     attributes.insert("prompt.chat".to_string(), chat_prompt);
+        // }
+        // if let Some(system_prompt) = prompts.system.clone() {
+        //     attributes.insert("prompt.system".to_string(), system_prompt);
+        // }
+        // if let Some(fsm_prompt) = prompts.fsm.clone() {
+        //     attributes.insert("prompt.fsm".to_string(), fsm_prompt);
+        // }
         FSMChatState {
             name: name.to_string(),
-            attributes,
-            handle: None,
+            prompts,
+            config,
+            ..Default::default()
         }
     }
 }
@@ -66,11 +69,11 @@ impl FSMState for FSMChatState {
         };
 
         let system_prompt = self
-            .get_attribute("prompt.system")
-            .await
-            .unwrap_or(llm_req_settings.system_prompt);
+            .prompts.system
+            .as_ref()
+            .unwrap_or(&llm_req_settings.system_prompt).clone();
 
-        let chat_prompt = self.get_attribute("prompt.chat").await.unwrap_or("".into());
+        let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
 
         let state_name = self.name.clone();
         let _ = tx.send((state_name.clone(), "state".into(), state_name.clone())).await;

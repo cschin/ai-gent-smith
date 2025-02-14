@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::{Receiver, Sender};
 
-use crate::llm_agent::{FSMAgentConfig, StatePrompts};
+use crate::llm_agent::{FSMAgentConfig, StateConfig, StatePrompts};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransitionResult {
@@ -41,7 +41,7 @@ pub trait FSMState: Send + Sync {
 }
 
 pub trait FSMStateInit {
-    fn new(name: &str, prompts: &StatePrompts) -> Self;
+    fn new(name: &str, prompts:StatePrompts, config: StateConfig) -> Self;
 }
 
 pub struct FSM {
@@ -62,27 +62,59 @@ impl Default for FSMBuilder {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct DefaultFSMChatState {
     name: String,
     attributes: HashMap<String, String>,
+    prompts: StatePrompts,
+    config: StateConfig,
 }
 
 impl FSMStateInit for DefaultFSMChatState {
-    fn new(name: &str, prompts: &StatePrompts) -> Self {
-        let mut attributes = HashMap::new();
-        if let Some(chat_prompt) = prompts.chat.clone() {
-            attributes.insert("prompt.chat".to_string(), chat_prompt);
-        }
-        if let Some(system_prompt) = prompts.system.clone() {
-            attributes.insert("prompt.system".to_string(), system_prompt);
-        }
-        if let Some(fsm_prompt) = prompts.fsm.clone() {
-            attributes.insert("prompt.fsm".to_string(), fsm_prompt);
-        }
+    fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
+
+        // let mut attributes = HashMap::new();
+
+        // if let Some(chat_prompt) = prompts.chat.clone() {
+        //     attributes.insert("prompt.chat".into(), chat_prompt);
+        // }
+
+        // if let Some(system_prompt) = prompts.system.clone() {
+        //     attributes.insert("prompt.system".into(), system_prompt);
+        // }
+
+        // if let Some(fsm_prompt) = prompts.fsm.clone() {
+        //     attributes.insert("prompt.fsm".into(), fsm_prompt);
+        // }
+
+        // if let Some(append_to_context) = config.append_to_context {
+        //     if append_to_context {
+        //         attributes.insert("config.append_to_context".into(), "true".into());
+        //     }
+        // }
+
+        // if let Some(update_context) = config.update_context {
+        //     if update_context { 
+        //         attributes.insert("config.append_to_context".into(), "true".into() );
+        //     }
+        // }
+        // if let Some(tool_use) = config.tool_use {
+        //     if tool_use {
+        //         attributes.insert("config.tool_use".into(), "true".into());
+        //     }
+        // }
+
+        // if let Some(update_summary) = config.ignore_llm_output {
+        //     if update_summary {
+        //         attributes.insert("config.update_summary".into(), "true".into());
+        //     }
+        // }
+
         DefaultFSMChatState {
             name: name.to_string(),
-            attributes,
+            prompts,
+            config,
+            ..Default::default()
         }
     }
 }
@@ -145,11 +177,18 @@ impl FSMBuilder {
             let state_prompt = config
                 .state_prompts
                 .get(state_name)
-                .ok_or_else(|| anyhow::anyhow!("Missing prompt for state: {}", state_name))?
+                .unwrap_or(&StatePrompts{..Default::default()})
+                .clone();
+            let state_config = config
+                .state_config
+                .clone()
+                .unwrap_or_default()
+                .get(state_name)
+                .unwrap_or(&StateConfig{..Default::default()})
                 .clone();
             let state = state_map
                 .remove(state_name)
-                .unwrap_or(S::new(state_name, &state_prompt));
+                .unwrap_or(S::new(state_name, state_prompt, state_config));
             builder.states.insert(state_name.clone(), Box::new(state));
         }
 

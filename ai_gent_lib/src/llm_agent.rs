@@ -30,11 +30,21 @@ pub struct StatePrompts {
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct StateConfig {
+    pub tool_use: Option<bool>,
+    pub disable_chat_output: Option<bool>,
+    pub update_context: Option<bool>,
+    pub append_to_context: Option<bool>,
+    pub ignore_llm_output: Option<bool>
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct FSMAgentConfig {
     pub states: Vec<String>,
     pub transitions: Vec<(String, String)>,
     pub initial_state: String,
     pub state_prompts: HashMap<String, StatePrompts>,
+    pub state_config: Option<HashMap<String, StateConfig>>,
     pub system_prompt: String,
     pub summary_prompt: String,
     pub fsm_prompt: String,
@@ -60,6 +70,7 @@ pub struct FSMAgentConfigBuilder {
     transitions: Vec<(String, String)>,
     initial_state: Option<String>,
     state_prompts: HashMap<String, StatePrompts>,
+    state_config: Option<HashMap<String, StateConfig>>,
     fsm_prompt: String,
     summary_prompt: String,
     system_prompt: String,
@@ -112,6 +123,7 @@ impl FSMAgentConfigBuilder {
             transitions: config.transitions,
             initial_state: Some(config.initial_state),
             state_prompts: config.state_prompts,
+            state_config: config.state_config,
             fsm_prompt: config.fsm_prompt,
             system_prompt: config.system_prompt,
             summary_prompt: config.summary_prompt,
@@ -125,6 +137,7 @@ impl FSMAgentConfigBuilder {
             transitions: config.transitions,
             initial_state: Some(config.initial_state),
             state_prompts: config.state_prompts,
+            state_config: config.state_config,
             fsm_prompt: config.fsm_prompt,
             system_prompt: config.system_prompt,
             summary_prompt: config.summary_prompt,
@@ -144,6 +157,7 @@ impl FSMAgentConfigBuilder {
             transitions: self.transitions,
             initial_state: self.initial_state.unwrap(),
             state_prompts: self.state_prompts,
+            state_config: self.state_config,
             fsm_prompt: self.fsm_prompt,
             system_prompt: self.system_prompt,
             summary_prompt: self.summary_prompt,
