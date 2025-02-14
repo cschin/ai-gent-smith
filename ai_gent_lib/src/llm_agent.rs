@@ -10,15 +10,12 @@ use tokio::sync::mpsc::{self, Sender};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LLMReqSetting {
-    pub system_prompt: String,
     pub summary: String,
     pub context: Option<String>,
     pub messages: Vec<(String, String)>,
     pub temperature: Option<f32>,
     pub model: String,
     pub api_key: String,
-    pub fsm_transition_prompt: Option<String>,
-    pub summary_prompt: Option<String>,
     pub fsm_initial_state: String,
 }
 
@@ -35,7 +32,7 @@ pub struct StateConfig {
     pub disable_chat_output: Option<bool>,
     pub update_context: Option<bool>,
     pub append_to_context: Option<bool>,
-    pub ignore_llm_output: Option<bool>
+    pub ignore_llm_output: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -68,7 +65,7 @@ impl FSMAgentConfig {
 pub struct FSMAgentConfigBuilder {
     states: Vec<String>,
     transitions: Vec<(String, String)>,
-    initial_state: Option<String>,
+    initial_state: String,
     state_prompts: HashMap<String, StatePrompts>,
     state_config: Option<HashMap<String, StateConfig>>,
     fsm_prompt: String,
@@ -92,7 +89,7 @@ impl FSMAgentConfigBuilder {
     }
 
     pub fn set_initial_state(mut self, state: String) -> Self {
-        self.initial_state = Some(state);
+        self.initial_state = state;
         self
     }
 
@@ -121,7 +118,7 @@ impl FSMAgentConfigBuilder {
         Ok(Self {
             states: config.states,
             transitions: config.transitions,
-            initial_state: Some(config.initial_state),
+            initial_state: config.initial_state,
             state_prompts: config.state_prompts,
             state_config: config.state_config,
             fsm_prompt: config.fsm_prompt,
@@ -132,11 +129,29 @@ impl FSMAgentConfigBuilder {
 
     pub fn from_toml(toml_str: &str) -> Result<Self, toml::de::Error> {
         let config: FSMAgentConfig = toml::from_str(toml_str)?;
+        // if the fsm of system prompt is not set for a state, replace it with the global one
+        let state_prompts = config
+            .state_prompts
+            .iter()
+            .map(|(state_name, prompt)| {
+                let new_prompt = StatePrompts {
+                    system: Some(
+                        prompt
+                            .system
+                            .clone()
+                            .unwrap_or(config.system_prompt.clone()),
+                    ),
+                    fsm: Some(prompt.fsm.clone().unwrap_or(config.fsm_prompt.clone())),
+                    chat: prompt.clone().chat,
+                };
+                (state_name.clone(), new_prompt)
+            })
+            .collect::<HashMap<String, StatePrompts>>();
         Ok(Self {
             states: config.states,
             transitions: config.transitions,
-            initial_state: Some(config.initial_state),
-            state_prompts: config.state_prompts,
+            initial_state: config.initial_state,
+            state_prompts,
             state_config: config.state_config,
             fsm_prompt: config.fsm_prompt,
             system_prompt: config.system_prompt,
@@ -144,18 +159,15 @@ impl FSMAgentConfigBuilder {
         })
     }
 
-    pub fn build(self) -> Result<FSMAgentConfig, &'static str> {
+    pub fn build(self) -> Result<FSMAgentConfig, anyhow::Error> {
         if self.states.is_empty() {
-            return Err("At least one state is required");
-        }
-        if self.initial_state.is_none() {
-            return Err("Initial state must be set");
+            return Err(anyhow::anyhow!("At least one state is required"));
         }
 
         Ok(FSMAgentConfig {
             states: self.states,
             transitions: self.transitions,
-            initial_state: self.initial_state.unwrap(),
+            initial_state: self.initial_state,
             state_prompts: self.state_prompts,
             state_config: self.state_config,
             fsm_prompt: self.fsm_prompt,
@@ -212,14 +224,11 @@ impl LLMAgent {
     pub fn new(fsm: FSM, agent_settings: AgentSettings) -> Self {
         let llm_req_setting = LLMReqSetting {
             summary: String::default(),
-            system_prompt: agent_settings.sys_prompt,
             messages: Vec::default(),
             temperature: None,
             context: None,
             model: agent_settings.model,
             api_key: agent_settings.api_key,
-            fsm_transition_prompt: Some(agent_settings.fsm_prompt.clone()),
-            summary_prompt: Some(agent_settings.fsm_prompt.clone()),
             fsm_initial_state: agent_settings.fsm_initial_state,
         };
         // Initialize prompts for each state here
@@ -362,7 +371,11 @@ impl LLMAgent {
         if let Some(tx) = tx.clone() {
             let _ = tx.send(("".into(), "clear".into(), "".into())).await;
             let _ = tx
-                .send(("".into(), "message".into(), "generating chat summary".into()))
+                .send((
+                    "".into(),
+                    "message".into(),
+                    "generating chat summary".into(),
+                ))
                 .await;
         };
 
@@ -639,5 +652,3 @@ mod tests {
         assert_eq!(result, TransitionResult::NoTransitionAvailable);
     }
 }
-
-
