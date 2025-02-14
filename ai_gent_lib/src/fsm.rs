@@ -170,23 +170,23 @@ impl FSMBuilder {
         Ok(builder)
     }
 
-    pub fn build(self) -> Result<FSM, String> {
+    pub fn build(self) -> Result<FSM, anyhow::Error> {
         if self.states.is_empty() {
-            return Err("FSM must have at least one state".to_string());
+            return Err(anyhow::anyhow!("FSM must have at least one state".to_string()));
         }
 
         if self.current_state.is_none() {
-            return Err("Initial state must be set".to_string());
+            return Err(anyhow::anyhow!("Initial state must be set".to_string()));
         }
 
         // Validate that all states in transitions exist
         for (from, tos) in &self.transitions {
             if !self.states.contains_key(from) {
-                return Err(format!("Transition from non-existent state: {}", from));
+                return Err(anyhow::anyhow!("Transition from non-existent state: {}", from));
             }
             for to in tos {
                 if !self.states.contains_key(to) {
-                    return Err(format!("Transition to non-existent state: {}", to));
+                    return Err(anyhow::anyhow!("Transition to non-existent state: {}", to));
                 }
             }
         }
@@ -250,7 +250,7 @@ impl FSM {
         }
     }
 
-    pub async fn transition(&mut self, to: String) -> (TransitionResult, Option<String>) {
+    pub async fn make_transition_to(&mut self, to: String) -> (TransitionResult, Option<String>) {
         if let Some(current_state) = &self.current_state {
             if let Some(valid_transitions) = self.transitions.get(current_state) {
                 if valid_transitions.contains(&to) {
@@ -382,7 +382,7 @@ mod tests {
             .is_ok());
         assert_eq!(fsm.current_state, Some("State1".to_string()));
 
-        match fsm.transition("State2".to_string()).await {
+        match fsm.make_transition_to("State2".to_string()).await {
             (TransitionResult::Success, Some(new_state)) => {
                 println!("Transitioned to {}", new_state);
                 assert_eq!(new_state, "State2");
@@ -394,7 +394,7 @@ mod tests {
         }
 
         // Test invalid transition
-        match fsm.transition("State1".to_string()).await {
+        match fsm.make_transition_to("State1".to_string()).await {
             (TransitionResult::Success, _) => {
                 panic!("Transition should have failed");
             }
@@ -443,17 +443,17 @@ mod tests {
         assert_eq!(fsm.current_state, Some("State1".to_string()));
 
         // Test valid transition
-        let (result, new_state) = fsm.transition("State2".to_string()).await;
+        let (result, new_state) = fsm.make_transition_to("State2".to_string()).await;
         assert_eq!(result, TransitionResult::Success);
         assert_eq!(new_state, Some("State2".to_string()));
 
         // Test invalid transition
-        let (result, new_state) = fsm.transition("State1".to_string()).await;
+        let (result, new_state) = fsm.make_transition_to("State1".to_string()).await;
         assert_eq!(result, TransitionResult::InvalidTransition);
         assert_eq!(new_state, Some("State2".to_string()));
 
         // Test valid transition
-        let (result, new_state) = fsm.transition("State3".to_string()).await;
+        let (result, new_state) = fsm.make_transition_to("State3".to_string()).await;
         assert_eq!(result, TransitionResult::Success);
         assert_eq!(new_state, Some("State3".to_string()));
     }

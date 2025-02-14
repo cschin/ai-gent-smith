@@ -464,7 +464,7 @@ impl LLMAgent {
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
-        match self.fsm.transition(next_state.into()).await {
+        match self.fsm.make_transition_to(next_state.into()).await {
             (TransitionResult::Success, _) => {
                 // tracing::info!("Transitioned to state: {}", next_state);
                 Ok(())
@@ -620,11 +620,11 @@ mod tests {
 
         assert_eq!(fsm.get_current_state_name(), Some("Initial".to_string()));
 
-        let (result, _) = fsm.transition("Processing".into()).await;
+        let (result, _) = fsm.make_transition_to("Processing".into()).await;
         assert_eq!(result, TransitionResult::Success);
         assert_eq!(fsm.get_current_state_name(), Some("Processing".to_string()));
 
-        let (result, _) = fsm.transition("NonExistentState".into()).await;
+        let (result, _) = fsm.make_transition_to("NonExistentState".into()).await;
         assert_eq!(result, TransitionResult::NoTransitionAvailable);
     }
 }

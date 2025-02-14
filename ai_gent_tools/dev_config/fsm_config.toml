@@ -5,6 +5,7 @@ states = [
     "ForScientist",
     "ForRegulatoryConsultant",
     "ForCustomer",
+    "MakeSummary",
     "Finish"
 ]
 
@@ -42,20 +43,21 @@ transitions = [
     ],
     [
         "ForChiefExecutiveOfficer",
-        "Finish",
+        "MakeSummary",
     ],
     [
         "ForScientist",
-        "Finish",
+        "MakeSummary",
     ],
     [
         "ForRegulatoryConsultant",
-        "Finish",
+        "MakeSummary",
     ],
     [
         "ForCustomer",
-        "Finish",
+        "MakeSummary",
     ],
+    [ "MakeSummary", "Finish"]
 ]
 
 initial_state = "StandBy"
@@ -209,6 +211,16 @@ role of a regulatory consultant. Answer as communicating with a regulatory consu
 ForCustomer.chat = """ It seems the question is coming from someone in the role of a 
 customer. Answer with a focus on the user's experience, the product's usability, 
 and how the information relates to the safety and purchasing decisions. """
+
+MakeSummary.system = """ 
+Your task is to take the current summary (enclosed in <SUMMARY> and </SUMMARY>) 
+of the conversation and the new user and assistant messages to create an updated summary, emphasizing 
+the last few messages.
+
+If no current summary exists, simply summarizing the latest message. 
+
+Keep the summary concise, no more than 300 words.
+"""
 
 Finish.system = ""
 Finish.chat = ""
