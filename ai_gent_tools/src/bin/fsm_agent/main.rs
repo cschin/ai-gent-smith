@@ -46,8 +46,8 @@ impl FSMState for FSMChatState {
 
     async fn start_service(
         &mut self,
-        tx: Sender<(String, String)>,
-        _rx: Option<Receiver<(String, String)>>,
+        tx: Sender<(String, String, String)>,
+        _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>,
     ) -> Option<String> {
         let llm_req_settings: llm_agent::LLMReqSetting =
@@ -73,7 +73,7 @@ impl FSMState for FSMChatState {
         let chat_prompt = self.get_attribute("prompt.chat").await.unwrap_or("".into());
 
         let state_name = self.name.clone();
-        let _ = tx.send(("state".into(), state_name.clone())).await;
+        let _ = tx.send((state_name.clone(), "state".into(), state_name.clone())).await;
         if system_prompt.len() + chat_prompt.len() > 0 {
             let full_prompt = [system_prompt, summary, context, chat_prompt].join("\n");
             let llm_client = GenaiLlmclient {
@@ -86,6 +86,7 @@ impl FSMState for FSMChatState {
             self.handle = Some(tokio::spawn(async move {
                 let _ = tx
                     .send((
+                        state_name.clone(),
                         "message".into(),
                         "LLM request sent, waiting for response\n".into(),
                     ))
@@ -98,10 +99,10 @@ impl FSMState for FSMChatState {
                 while let Some(result) = llm_stream.next().await {
                     if let Some(output) = result {
                         llm_output.push_str(&output);
-                        let _ = tx.send(("token".into(), output)).await;
+                        let _ = tx.send((state_name.clone(), "token".into(), output)).await;
                     };
                 }
-                let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
+                let _ = tx.send((state_name.clone(), "llm_output".into(), llm_output.clone())).await;
                 llm_output
             }));
 
@@ -213,21 +214,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let _ = rl.add_history_entry(user_input.as_str());
-                let (tx, mut rx) = mpsc::channel::<(String, String)>(1);
+                let (tx, mut rx) = mpsc::channel::<(String, String, String)>(1);
 
                 let t = tokio::spawn(async move {
                     let mut llm_output = Vec::<String>::new();
                     while let Some(message) = rx.recv().await {
-                        match message.0.as_str() {
-                            "state" => {println!("\nAgent State: {}", message.1);  } 
-                            "token" => {print!("{}", message.1);  }
-                            "llm_output" => {
-                                llm_output.push(message.1); 
+                        match (message.0.as_str(), message.1.as_str()) {
+                            (_, "state") => {println!("\nAgent State: {}", message.2);  } 
+                            (s, "token") if s != "MakeSummary" => {print!("{}", message.2);  }
+                            (_, "llm_output") => {
+                                llm_output.push(message.2); 
                                 println!(); // clean rustline's buffer, or we miss the final line of the output
                             }
                             _ => {}
                         }
-                        //stdout().write(b".").and(stdout().flush()).unwrap();
                     }
                     llm_output
                 });

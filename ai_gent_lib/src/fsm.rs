@@ -21,8 +21,8 @@ pub trait FSMState: Send + Sync {
     // each state can provide some service if this function is called
     async fn start_service(
         &mut self,
-        _tx: Sender<(String, String)>,
-        _rx: Option<Receiver<(String, String)>>,
+        _tx: Sender<(String, String, String)>,
+        _rx: Option<Receiver<(String, String, String)>>,
         _next_states: Option<Vec<String>>
     ) -> Option<String> {
         unimplemented!()
