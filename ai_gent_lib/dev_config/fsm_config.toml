@@ -250,12 +250,27 @@ Keep the summary concise, no more than 300 words.
 Finish.system = ""
 Finish.chat = ""
 
-GenerateCode.chat = "Your take is to generate python code address the problem asked below."
+#   GenerateCode.chat = "Your take is to generate python code address the problem asked below."
 GenerateCode.system = """
-Just generate python code according to the instruction and wrap the
-code in <code> </code>"""
+Generate python code according to the instruction and wrap the
+code in <code> </code> block and make sure ask if the user wants to execute the code.
+This is an example output:
+<output>
+I think this code will address your question
+<code>
+import math
+
+# Compute the value of pi using the math library
+pi_value = math.pi
+
+print(f"The value of pi is: {pi_value}")
+</code>
+
+Do you want to execute it?
+</output>
+"""
 
 
 [state_config]
-GenerateCode.tool_use = true
+GenerateCode.extract_code = true
 GenerateCode.append_to_context = true
