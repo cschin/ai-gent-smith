@@ -22,13 +22,12 @@ pub struct LLMReqSetting {
     pub fsm_initial_state: String,
 }
 
-
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct StatePrompts {
     pub system: Option<String>,
     pub chat: Option<String>,
     pub fsm: Option<String>,
-} 
+}
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct FSMAgentConfig {
@@ -391,7 +390,7 @@ impl LLMAgent {
     pub async fn fsm_message_service(
         &mut self,
         user_input: &str,
-        _tx: Option<Sender<(String, String)>>,
+        tx: Option<Sender<(String, String)>>,
         temperature: Option<f32>,
     ) -> Result<String, anyhow::Error> {
         self.llm_req_settings.temperature = temperature;
@@ -399,12 +398,11 @@ impl LLMAgent {
             .messages
             .push(("user".into(), user_input.into()));
 
-        let current_state_name = self
-            .fsm
-            .get_current_state_name()
-            .ok_or(anyhow::anyhow!("No current state"))?;
-
-        println!("trace: current_state: {}", current_state_name);
+        // let current_state_name = self
+        //     .fsm
+        //     .get_current_state_name()
+        //     .ok_or(anyhow::anyhow!("No current state"))?;
+        // println!("trace: current_state: {}", current_state_name);
 
         if self.fsm.available_transitions().is_none() {
             let _ = self
@@ -417,9 +415,9 @@ impl LLMAgent {
             let current_state_name = self
                 .fsm
                 .get_current_state_name()
-                .ok_or(anyhow::anyhow!("No current state"))?;
+                .ok_or(anyhow::anyhow!(" FSM Error: No current state"))?;
 
-            println!("trace: current_state: {}", current_state_name);
+            // println!("trace: current_state: {}", current_state_name);
 
             let next_states = if let Some(next_state) = self.fsm.available_transitions() {
                 next_state.iter().cloned().collect::<Vec<_>>()
@@ -427,7 +425,7 @@ impl LLMAgent {
                 break;
             };
 
-            println!("trace: available_transitions: {:?}", next_states);
+            // println!("trace: available_transitions: {:?}", next_states);
 
             let current_state = self.fsm.states.get_mut(&current_state_name).unwrap();
             let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
@@ -436,25 +434,30 @@ impl LLMAgent {
                 .await;
             let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String)>(16);
 
+            let tx = tx.clone();
             let handle = tokio::spawn(async move {
-                while let Some((t, r)) = fsm_rx.recv().await {
-                    match t.as_str() {
-                        "llm_output" | "message" => {println!("tag: llm_output or message:{}", r);
-                        }
-                        _ => {}
+                let mut llm_output = "".to_string();
+                if let Some(tx) = tx {
+                    while let Some((t, r)) = fsm_rx.recv().await {
+                        if t == "llm_output" {
+                            llm_output = r.clone();  
+                        };
+                        let _ = tx.send((t, r)).await;
                     }
-                    
-                }
+                };
+                llm_output
             });
 
             if let Some(next_state) = current_state
                 .start_service(fsm_tx, None, Some(next_states))
                 .await
             {
-                let _ = tokio::join!(handle);
+                let llm_output = tokio::join!(handle).0.unwrap();
+                self.llm_req_settings.messages.push(("bot".into(), llm_output));
                 let _ = self.transition_state(&next_state).await;
             } else {
-                let _ = tokio::join!(handle);
+                let llm_output = tokio::join!(handle).0.unwrap();
+                self.llm_req_settings.messages.push(("bot".into(), llm_output));
                 break;
             }
         }
@@ -555,7 +558,7 @@ mod tests {
         let test_prompt = StatePrompts {
             system: None,
             chat: Some("test".into()),
-            fsm: Some("".into())
+            fsm: Some("".into()),
         };
 
         let fsm_config = FSMAgentConfigBuilder::new()
@@ -563,14 +566,8 @@ mod tests {
             .add_state("Processing".to_string())
             .add_transition("Initial".to_string(), "Processing".to_string())
             .set_initial_state("Initial".to_string())
-            .add_prompt(
-                "Initial".to_string(),
-                test_prompt.clone(),
-            )
-            .add_prompt(
-                "Processing".to_string(),
-                test_prompt,
-            )
+            .add_prompt("Initial".to_string(), test_prompt.clone())
+            .add_prompt("Processing".to_string(), test_prompt)
             .set_system_prompt("".into())
             .build()
             .unwrap();

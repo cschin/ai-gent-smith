@@ -72,6 +72,8 @@ impl FSMState for FSMChatState {
 
         let chat_prompt = self.get_attribute("prompt.chat").await.unwrap_or("".into());
 
+        let state_name = self.name.clone();
+        let _ = tx.send(("state".into(), state_name.clone())).await;
         if system_prompt.len() + chat_prompt.len() > 0 {
             let full_prompt = [system_prompt, summary, context, chat_prompt].join("\n");
             let llm_client = GenaiLlmclient {
@@ -89,7 +91,7 @@ impl FSMState for FSMChatState {
                     ))
                     .await;
                 let mut llm_output = String::default();
-                println!("llm_request");
+                // println!("tracing: llm_request");
                 let mut llm_stream = llm_client
                     .generate_stream(&full_prompt, &messages, temperature)
                     .await;
@@ -171,7 +173,6 @@ impl FSMState for FSMChatState {
 const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.toml");
 
 use std::collections::HashMap;
-use std::io::{stdout, Write}; //for flush()
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -201,34 +202,45 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
-    let (tx, mut rx) = mpsc::channel::<(String, String)>(8);
-
-    let t = tokio::spawn(async move {
-        while let Some(_message) = rx.recv().await {
-            stdout().write(b".").and(stdout().flush()).unwrap();
-        }
-    });
 
     loop {
         let readline = rl.readline("\n>> ");
         match readline {
-            Ok(line) => {
-                if line.trim().eq_ignore_ascii_case("exit") {
+            Ok(user_input) => {
+                if user_input.trim().eq_ignore_ascii_case("exit") {
                     println!("Goodbye!");
                     break;
                 }
 
-                let _ = rl.add_history_entry(line.as_str());
+                let _ = rl.add_history_entry(user_input.as_str());
+                let (tx, mut rx) = mpsc::channel::<(String, String)>(1);
 
+                let t = tokio::spawn(async move {
+                    let mut llm_output = Vec::<String>::new();
+                    while let Some(message) = rx.recv().await {
+                        match message.0.as_str() {
+                            "state" => {println!("\nAgent State: {}", message.1);  } 
+                            "token" => {print!("{}", message.1);  }
+                            "llm_output" => {
+                                llm_output.push(message.1); 
+                                println!(); // clean rustline's buffer, or we miss the final line of the output
+                            }
+                            _ => {}
+                        }
+                        //stdout().write(b".").and(stdout().flush()).unwrap();
+                    }
+                    llm_output
+                });
                 match agent
-                    .fsm_message_service(&line, Some(tx.clone()), None)
+                    .fsm_message_service(&user_input, Some(tx), None)
                     .await
                 {
-                    Ok(res) => println!("\nResponse: {}", res),
-                    Err(err) => println!("LLM error, please retry your question. {:?}", err),
+                    Ok(_res) => {},
+                    Err(err) => {println!("LLM error, please retry your question. {:?}", err)},
                 }
 
-                // if let Some(current_state) = agent.fsm.current_state() {
+                let _llm_output = tokio::join!(t).0.unwrap(); 
+                //println!("\nout: {}", llm_output);              // if let Some(current_state) = agent.fsm.current_state() {
                 //     tracing::info!("Current state: {}", current_state);
                 // }
             }
@@ -246,6 +258,5 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-    t.abort();
     Ok(())
 }
