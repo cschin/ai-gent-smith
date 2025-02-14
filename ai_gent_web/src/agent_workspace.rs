@@ -115,13 +115,13 @@ impl FSMState for FSMChatState {
     
     async fn start_service(
         &mut self,
-        tx: Sender<(String, String)>,
-        _rx: Option<Receiver<(String, String)>>,
+        tx: Sender<(String, String, String)>,
+        _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>
     ) -> Option<String> {
         let llm_req_setting: llm_agent::LLMReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
-        let prompt = self.get_attribute("prompt").await;
+        let prompt = self.get_attribute("prompt.chat").await;
         let full_prompt = match prompt {
             Some(prompt) => match llm_req_setting.context {
                 Some(context) => [
@@ -151,7 +151,7 @@ impl FSMState for FSMChatState {
             None => "".into(),
         };
         if full_prompt.is_empty() {
-            let _ = tx.send(("error".into(), "no state prompt".into())).await;
+            let _ = tx.send(("".into(), "error".into(), "no state prompt".into())).await;
             return None;
         };
         let llm_client = GenaiLlmclient {
@@ -163,6 +163,7 @@ impl FSMState for FSMChatState {
         self.handle = Some(tokio::spawn(async move {
             let _ = tx
                 .send((
+                    "".into(),
                     "message".into(),
                     "LLM request sent, waiting for response\n".into(),
                 ))
@@ -174,10 +175,10 @@ impl FSMState for FSMChatState {
             while let Some(result) = llm_stream.next().await {
                 if let Some(output) = result {
                     llm_output.push_str(&output);
-                    let _ = tx.send(("token".into(), output)).await;
+                    let _ = tx.send(("".into(), "token".into(), output)).await;
                 };
             }
-            let _ = tx.send(("llm_output".into(), llm_output.clone())).await;
+            let _ = tx.send(("".into(), "llm_output".into(), llm_output.clone())).await;
             llm_output
         }));
 
@@ -658,13 +659,13 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         };
 
         // spawn a handler for processing the output of the stream service
-        let (tx, mut rx) = mpsc::channel::<(String, String)>(8);
+        let (tx, mut rx) = mpsc::channel::<(String, String, String)>(8);
         let context_cloned = context.clone();
         let handle = tokio::spawn(async move {
 
             let comrak_options = Options::default();
             let comrak_plugins = get_comrak_plugins();
-            while let Some((t, r)) = rx.recv().await {
+            while let Some((_, t, r)) = rx.recv().await {
                 match t.as_str() {
                     "token" =>  {
                     // tracing::info!(target: "tron_app", "streaming token: {}", r);
