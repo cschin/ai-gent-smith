@@ -1,0 +1,261 @@
+states = [
+    "StandBy",
+    "Greeting",
+    "ForChiefExecutiveOfficer",
+    "ForScientist",
+    "ForRegulatoryConsultant",
+    "ForCustomer",
+    "GenerateCode",
+    "MakeSummary",
+    "Finish",
+]
+
+transitions = [
+    [
+        "StandBy",
+        "Finish",
+    ],
+    [
+        "StandBy",
+        "Greeting",
+    ],
+    [
+        "StandBy",
+        "ForChiefExecutiveOfficer",
+    ],
+    [
+        "StandBy",
+        "ForScientist",
+    ],
+    [
+        "StandBy",
+        "ForRegulatoryConsultant",
+    ],
+    [
+        "StandBy",
+        "ForCustomer",
+    ],
+    [
+        "StandBy",
+        "Greeting",
+    ],
+    [
+        "StandBy",
+        "GenerateCode",
+    ],
+
+    [
+        "Greeting",
+        "Finish",
+    ],
+    [
+        "ForChiefExecutiveOfficer",
+        "MakeSummary",
+    ],
+    [
+        "ForScientist",
+        "MakeSummary",
+    ],
+    [
+        "ForRegulatoryConsultant",
+        "MakeSummary",
+    ],
+    [
+        "ForCustomer",
+        "MakeSummary",
+    ],
+
+    [
+        "GenerateCode",
+        "Finish",
+    ],
+    [
+        "MakeSummary",
+        "Finish",
+    ],
+]
+
+initial_state = "StandBy"
+
+system_prompt = """
+You are a smart assistant tasked with answering questions 
+based on a chat summary of previous conversations and a new user message.
+
+You may be provide some REFERENCES and CONTEXT to help you to answer the questions.
+
+Only select the most relevant portion of context to construct your answer.
+
+Use the "<CONTEXT> ... </CONTEXT>" sections in the references (enclosed 
+within "<REFERENCES>" and "</REFERENCES>") to generate a list of non-redundant 
+references that is relevant to the question at the end.
+
+Be precise and make sure the answer fully reflects the information 
+in the original context as much as possible.
+
+Do not oversimplify unless explicitly instructed to do so.
+
+Output your response in markdown format with the following sections:
+
+<markdown>
+
+the answer
+
+### References
+
+	- Document title 1
+     
+     - > context 1 (in block quote)
+  
+     	explanation
+  
+  	 - > context 2 (in block quote)
+  
+  		explanation
+     
+     - > ...
+     
+  - Document title 2
+     
+     - > context (in block quote) 
+     
+      explanation
+
+</markdown>
+
+Please make sure you display the exact copy of the relevant and non-redundant 
+reference and context. The context should be 100% identical from those provided 
+to you in the contexts within the section <CONTEXT>...</CONTEXT> below. You 
+always provide a one-sentence explanation of why it is relevant to the question.
+
+The "### References" is optional, if no reference context in the provide information 
+with the tag <REFERENCES></REFERENCES> in the user's message, don't generate the 
+"### References" section in the output. 
+
+You will be instructed to tailor your response based on the user's role. 
+Answer according to those instructions. You should let the user know what you think
+his/her role is like 'I think you might be ... '
+"""
+
+fsm_prompt = """
+Please determine the next state based on the user's message and the current state.
+The state represents the possible role the agent should adopt in answering the user's question.
+
+Classify the user's brief question into one of the following roles:
+
+Chief Executive Officer: Business strategy, market impact, profitability
+
+Scientist: Technical details, research, scientific principles
+
+Regulatory Consultant: Compliance, legal, industry standards
+
+Customer: User experience, product usability, purchasing decisions
+
+If you determine the agent should respond to a specific role,
+select the appropriate next state.
+
+You should output your result in JSON format.
+
+The JSON format should look like:
+{"next_state": "suggested_next_state"}
+
+The "suggested_next_state" must be a single string, properly quoted.
+
+Ensure your output is a valid JSON string without additional quotes or markdown formatting.
+For example:
+{"next_state": "STATE"}
+
+NEVER output markdown format like:
+```json
+{"next_state": "STATE"}
+
+The possible states are:
+- StandBy
+- Greeting
+- ForChiefExecutiveOfficer
+- ForScientist
+- ForRegulatoryConsultant
+- ForCustomer
+- GenerateCode
+- Finish
+
+The possible transitions are:
+
+StandBy -> Finish
+
+StandBy -> Greeting
+StandBy -> ForChiefExecutiveOfficer
+StandBy -> ForScientist
+StandBy -> ForRegulatoryConsultant
+StandBy -> ForCustomer
+StandBy -> GenerateCode 
+
+ForChiefExecutiveOfficer -> MakeSummary
+ForScientist -> MakeSummary
+ForRegulatoryConsultant -> MakeSummary
+ForCustomer -> MakeSummary
+
+MakeSummary -> Finish
+GenerateCode -> Finish
+
+Greeting -> Finish
+
+```
+Do not add any extra characters before or after the JSON output. """
+
+summary_prompt = """ 
+Your task is to take the current summary (enclosed in <SUMMARY> and </SUMMARY>) 
+of the conversation and the new user and assistant messages to create an updated summary, emphasizing 
+the last few messages.
+
+If no current summary exists, simply summarizing the latest message. Keep the 
+summary concise, no more than 300 words.
+"""
+
+[state_prompts]
+
+## no LLM call for a chat but fsm transition will be used
+StandBy.system = ""
+StandBy.chat = ""
+
+Greeting.chat = """ You are in the Greeting state. Your goal is to inform the user that you 
+are ready to answer new questions if they have any. Welcome the user and encourage 
+them to ask new questions. """
+
+ForChiefExecutiveOfficer.chat = """ It seems that the question is coming from someone in the role of a Chief Executive Officer. 
+The user might be an Chief Executive Officer who is running a company. Answer as the user is a Chief Executive Officer, 
+focusing on how the answer will impact their business. """
+
+ForScientist.chat = """ It seems the question is coming from someone in the role of a scientist. 
+The user might be a scientist. Answer as the user is a scientist, providing detailed, 
+technical information and including any relevant quantitative data. Ensure that all 
+terminologies are well-defined. """
+
+ForRegulatoryConsultant.chat = """ It seems the question is coming from someone in the 
+role of a regulatory consultant. Answer as communicating with a regulatory consultant. """
+
+ForCustomer.chat = """ It seems the question is coming from someone in the role of a 
+customer. Answer with a focus on the user's experience, the product's usability, 
+and how the information relates to the safety and purchasing decisions. """
+
+MakeSummary.system = """ 
+Your task is to take the current summary (enclosed in <SUMMARY> and </SUMMARY>) 
+of the conversation and the new user and assistant messages to create an updated summary, emphasizing 
+the last few messages.
+
+If no current summary exists, simply summarizing the latest message. 
+
+Keep the summary concise, no more than 300 words.
+"""
+
+Finish.system = ""
+Finish.chat = ""
+
+GenerateCode.chat = "Your take is to generate python code address the problem asked below."
+GenerateCode.system = """
+Just generate python code according to the instruction and wrap the
+code in <code> </code>"""
+
+
+[state_config]
+GenerateCode.tool_use = true
+GenerateCode.append_to_context = true
