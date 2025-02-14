@@ -8,6 +8,7 @@ states = [
     "GenerateCode",
     "MakeSummary",
     "CodeExecution",
+    "ShowSummary",
     "Finish",
 ]
 
@@ -20,6 +21,11 @@ transitions = [
         "StandBy",
         "Greeting",
     ],
+    [
+        "StandBy",
+        "ShowSummary",
+    ],
+
     [
         "StandBy",
         "ForChiefExecutiveOfficer",
@@ -47,6 +53,10 @@ transitions = [
 
     [
         "Greeting",
+        "Finish",
+    ],
+    [
+        "ShowSummary",
         "Finish",
     ],
     [
@@ -178,6 +188,8 @@ The possible states are:
 - ForRegulatoryConsultant
 - ForCustomer
 - GenerateCode
+- ShowSummary
+- MakeSummary
 - Finish
 
 The possible transitions are:
@@ -190,6 +202,7 @@ StandBy -> ForScientist
 StandBy -> ForRegulatoryConsultant
 StandBy -> ForCustomer
 StandBy -> GenerateCode 
+StandBy -> ShowSummary
 
 ForChiefExecutiveOfficer -> MakeSummary
 ForScientist -> MakeSummary
@@ -197,6 +210,7 @@ ForRegulatoryConsultant -> MakeSummary
 ForCustomer -> MakeSummary
 
 MakeSummary -> Finish
+ShowSummary -> Finish
 GenerateCode -> CodeExecution
 
 CodeExecution -> Finish 
@@ -251,6 +265,8 @@ If no current summary exists, simply summarizing the latest message.
 Keep the summary concise, no more than 300 words.
 """
 
+ShowSummary.system = """ Just show the current summary """ 
+
 Finish.system = ""
 Finish.chat = ""
 
@@ -277,6 +293,6 @@ CodeExecution.system = """Check if the use want to execute the generate, output 
 
 [state_config]
 GenerateCode.extract_code = true
-#CodeExecution.get_msg = true
+CodeExecution.get_msg = true
 CodeExecution.execute_code = true
-CodeExecution.disable_llm_request = true
+#CodeExecution.disable_llm_request = true
