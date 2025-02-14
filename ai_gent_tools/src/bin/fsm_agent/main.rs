@@ -342,7 +342,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     while let Some(message) = rx.recv().await {
                         match (message.0.as_str(), message.1.as_str()) {
                             (_, "state") => {
-                                println!("\nAgent State: {}", message.2);
+                                println!("\n--------- Agent State: {}", message.2);
                             }
                             (s, "token") if s != "MakeSummary" => {
                                 print!("{}", message.2);
