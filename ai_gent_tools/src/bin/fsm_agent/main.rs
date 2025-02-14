@@ -25,16 +25,7 @@ pub struct FSMChatState {
 
 impl FSMStateInit for FSMChatState {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
-        // let mut attributes = HashMap::new();
-        // if let Some(chat_prompt) = prompts.chat.clone() {
-        //     attributes.insert("prompt.chat".to_string(), chat_prompt);
-        // }
-        // if let Some(system_prompt) = prompts.system.clone() {
-        //     attributes.insert("prompt.system".to_string(), system_prompt);
-        // }
-        // if let Some(fsm_prompt) = prompts.fsm.clone() {
-        //     attributes.insert("prompt.fsm".to_string(), fsm_prompt);
-        // }
+
         FSMChatState {
             name: name.to_string(),
             prompts,
