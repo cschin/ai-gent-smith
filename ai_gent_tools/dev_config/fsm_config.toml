@@ -5,8 +5,9 @@ states = [
     "ForScientist",
     "ForRegulatoryConsultant",
     "ForCustomer",
+    "GenerateCode",
     "MakeSummary",
-    "Finish"
+    "Finish",
 ]
 
 transitions = [
@@ -14,12 +15,10 @@ transitions = [
         "StandBy",
         "Finish",
     ],
-
     [
         "StandBy",
         "Greeting",
     ],
-
     [
         "StandBy",
         "ForChiefExecutiveOfficer",
@@ -35,6 +34,14 @@ transitions = [
     [
         "StandBy",
         "ForCustomer",
+    ],
+    [
+        "StandBy",
+        "Greeting",
+    ],
+    [
+        "StandBy",
+        "GenerateCode",
     ],
 
     [
@@ -57,7 +64,15 @@ transitions = [
         "ForCustomer",
         "MakeSummary",
     ],
-    [ "MakeSummary", "Finish"]
+
+    [
+        "GenerateCode",
+        "Finish",
+    ],
+    [
+        "MakeSummary",
+        "Finish",
+    ],
 ]
 
 initial_state = "StandBy"
@@ -112,6 +127,10 @@ reference and context. The context should be 100% identical from those provided
 to you in the contexts within the section <CONTEXT>...</CONTEXT> below. You 
 always provide a one-sentence explanation of why it is relevant to the question.
 
+The "### References" is optional, if no reference context in the provide information 
+with the tag <REFERENCES></REFERENCES> in the user's message, don't generate the 
+"### References" section in the output. 
+
 You will be instructed to tailor your response based on the user's role. 
 Answer according to those instructions. You should let the user know what you think
 his/her role is like 'I think you might be ... '
@@ -156,6 +175,7 @@ The possible states are:
 - ForScientist
 - ForRegulatoryConsultant
 - ForCustomer
+- GenerateCode
 - Finish
 
 The possible transitions are:
@@ -167,11 +187,16 @@ StandBy -> ForChiefExecutiveOfficer
 StandBy -> ForScientist
 StandBy -> ForRegulatoryConsultant
 StandBy -> ForCustomer
+StandBy -> GenerateCode 
 
-ForChiefExecutiveOfficer -> Finish
-ForScientist -> Finish
-ForRegulatoryConsultant -> Finish
-ForCustomer -> Finish
+ForChiefExecutiveOfficer -> MakeSummary
+ForScientist -> MakeSummary
+ForRegulatoryConsultant -> MakeSummary
+ForCustomer -> MakeSummary
+
+MakeSummary -> Finish
+GenerateCode -> Finish
+
 Greeting -> Finish
 
 ```
@@ -225,3 +250,7 @@ Keep the summary concise, no more than 300 words.
 Finish.system = ""
 Finish.chat = ""
 
+GenerateCode.chat = "Your take is to generate python code address the problem asked below."
+GenerateCode.system = """
+Just generate python code according to the instruction and wrap the
+code in <code> </code>"""
