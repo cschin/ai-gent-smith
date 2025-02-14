@@ -72,44 +72,6 @@ pub struct DefaultFSMChatState {
 
 impl FSMStateInit for DefaultFSMChatState {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
-
-        // let mut attributes = HashMap::new();
-
-        // if let Some(chat_prompt) = prompts.chat.clone() {
-        //     attributes.insert("prompt.chat".into(), chat_prompt);
-        // }
-
-        // if let Some(system_prompt) = prompts.system.clone() {
-        //     attributes.insert("prompt.system".into(), system_prompt);
-        // }
-
-        // if let Some(fsm_prompt) = prompts.fsm.clone() {
-        //     attributes.insert("prompt.fsm".into(), fsm_prompt);
-        // }
-
-        // if let Some(append_to_context) = config.append_to_context {
-        //     if append_to_context {
-        //         attributes.insert("config.append_to_context".into(), "true".into());
-        //     }
-        // }
-
-        // if let Some(update_context) = config.update_context {
-        //     if update_context { 
-        //         attributes.insert("config.append_to_context".into(), "true".into() );
-        //     }
-        // }
-        // if let Some(tool_use) = config.tool_use {
-        //     if tool_use {
-        //         attributes.insert("config.tool_use".into(), "true".into());
-        //     }
-        // }
-
-        // if let Some(update_summary) = config.ignore_llm_output {
-        //     if update_summary {
-        //         attributes.insert("config.update_summary".into(), "true".into());
-        //     }
-        // }
-
         DefaultFSMChatState {
             name: name.to_string(),
             prompts,

@@ -8,6 +8,7 @@ use ai_gent_lib::llm_agent::FSMAgentConfig;
 use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LLMAgent;
 use ai_gent_lib::llm_agent::LLMClient;
+use ai_gent_lib::llm_agent::StateConfig;
 use ai_gent_lib::llm_agent::StatePrompts;
 use ai_gent_lib::GenaiLlmclient;
 use askama::Template;
@@ -69,28 +70,23 @@ pub const THRESHOLD_SLIDER: &str = "threshold_slider";
 pub const TEMPERATURE_SLIDER: &str = "temperature_slider";
 //pub const AGENT_NEW_SESSION_BUTTON: &str = "agent_new_session_button";
 
+#[derive(Default)]
 pub struct FSMChatState {
     name: String,
+    prompts: StatePrompts,
+    config: StateConfig,
     attributes: HashMap<String, String>,
     handle: Option<JoinHandle<String>>,
 }
 
 impl FSMStateInit for FSMChatState {
-    fn new(name: &str, prompts: &StatePrompts) -> Self {
-        let mut attributes = HashMap::new();
-        if let Some(chat_prompt) = prompts.chat.clone() {
-            attributes.insert("prompt.chat".to_string(), chat_prompt);
-        }
-        if let Some(system_prompt) = prompts.system.clone() {
-            attributes.insert("prompt.system".to_string(), system_prompt);
-        }
-        if let Some(fsm_prompt) = prompts.fsm.clone() {
-            attributes.insert("prompt.fsm".to_string(), fsm_prompt);
-        }
+    fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
+
         FSMChatState {
             name: name.to_string(),
-            attributes,
-            handle: None,
+            prompts,
+            config,
+            ..Default::default()
         }
     }
 }
@@ -121,7 +117,7 @@ impl FSMState for FSMChatState {
     ) -> Option<String> {
         let llm_req_setting: llm_agent::LLMReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
-        let prompt = self.get_attribute("prompt.chat").await;
+        let prompt = self.prompts.chat.clone();
         let full_prompt = match prompt {
             Some(prompt) => match llm_req_setting.context {
                 Some(context) => [
