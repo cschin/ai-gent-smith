@@ -210,8 +210,8 @@ impl FSMState for FSMChatState {
             run: bool
         }
 
-        let code = llm_req_settings.context.as_ref().unwrap_or(&"".into()).clone();
         if self.config.execute_code.unwrap_or(false) {
+            let code = llm_req_settings.context.as_ref().unwrap_or(&"".into()).clone();
             if self.config.get_msg.unwrap_or(false) {
                 let llm_output = self.get_attribute("llm_output").await.unwrap_or(String::new());
                 let llm_output = serde_json::from_str(&llm_output).unwrap_or(ExcuteCode{run:false});      
