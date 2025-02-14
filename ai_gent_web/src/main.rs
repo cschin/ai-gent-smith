@@ -11,10 +11,11 @@ mod show_single_asset;
 
 use agent_cards::{LibraryCards, LibraryCardsBuilder};
 use agent_workspace::*;
-use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder};
+use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder, StatePrompts};
 use ammonia::clean_text;
 use askama::Template;
 use asset_cards::{AssetCards, AssetCardsBuilder};
+use candle_core::D;
 use embedding_service::{DocumentChunk, DocumentChunks};
 use futures_util::Future;
 use pgvector::Vector;
@@ -711,8 +712,10 @@ fn show_basic_agent_setting(
     let follow_up_prompt = fsm_config
         .state_prompts
         .get("AskFollowUpQuestion")
-        .unwrap_or(&"".to_string())
-        .clone();
+        .unwrap_or(&StatePrompts {..Default::default()})
+        .clone()
+        .chat.unwrap_or("".into());
+    
     // tracing::info!(
     //     target: "tron_app",
     //     "agent: {}:{} // {} // {}",

@@ -40,7 +40,7 @@ transitions = [
 
 initial_state = "StandBy"
 
-sys_prompt = """
+system_prompt = """
 You are a professional agent tasked with answering questions about FDA Cosmetic Guidance
 based on a chat summary of previous conversations and a new user message.
 
@@ -175,24 +175,24 @@ summary concise, no more than 300 words.
 
 Here is the current summary: """
 
-[prompts]
+[state_prompts]
 
-StandBy = """ You are in the StandBy state. Your goal is to inform the user that you 
+StandBy.chat = """ You are in the StandBy state. Your goal is to inform the user that you 
 are ready to answer new questions if they have any. Welcome the user and encourage 
 them to ask new questions. """
 
-ForChiefExecutiveOfficer = """ It seems that the question is coming from someone in the role of a Chief Executive Officer. 
+ForChiefExecutiveOfficer.chat = """ It seems that the question is coming from someone in the role of a Chief Executive Officer. 
 The user might be an Chief Executive Officer who is running a company. Answer as the user is a Chief Executive Officer, 
 focusing on how the answer will impact their business. """
 
-ForScientist = """ It seems the question is coming from someone in the role of a scientist. 
+ForScientist.chat = """ It seems the question is coming from someone in the role of a scientist. 
 The user might be a scientist. Answer as the user is a scientist, providing detailed, 
 technical information and including any relevant quantitative data. Ensure that all 
 terminologies are well-defined. """
 
-ForRegulatoryConsultant = """ It seems the question is coming from someone in the 
+ForRegulatoryConsultant.chat = """ It seems the question is coming from someone in the 
 role of a regulatory consultant. Answer as communicating with a regulatory consultant. """
 
-ForCustomer = """ It seems the question is coming from someone in the role of a 
+ForCustomer.chat = """ It seems the question is coming from someone in the role of a 
 customer. Answer with a focus on the user's experience, the product's usability, 
 and how the information relates to the safety and purchasing decisions. """             
