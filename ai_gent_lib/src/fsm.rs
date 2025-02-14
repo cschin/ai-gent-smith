@@ -34,6 +34,9 @@ pub trait FSMState: Send + Sync {
     async fn clone_attribute(&self, _k: &str) -> Option<String> {
         unimplemented!()
     }
+    async fn remove_attribute(&mut self, _k: &str) -> Option<String> {
+        unimplemented!()
+    }
     fn name(&self) -> String {
         unimplemented!()
     }
@@ -66,16 +69,16 @@ impl Default for FSMBuilder {
 pub struct DefaultFSMChatState {
     name: String,
     attributes: HashMap<String, String>,
-    prompts: StatePrompts,
-    config: StateConfig,
+    _prompts: StatePrompts,
+    _config: StateConfig,
 }
 
 impl FSMStateInit for DefaultFSMChatState {
-    fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
+    fn new(name: &str, _prompts: StatePrompts, _config: StateConfig) -> Self {
         DefaultFSMChatState {
             name: name.to_string(),
-            prompts,
-            config,
+            _prompts,
+            _config,
             ..Default::default()
         }
     }
@@ -151,6 +154,7 @@ impl FSMBuilder {
             let state = state_map
                 .remove(state_name)
                 .unwrap_or(S::new(state_name, state_prompt, state_config));
+
             builder.states.insert(state_name.clone(), Box::new(state));
         }
 

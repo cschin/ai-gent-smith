@@ -28,11 +28,13 @@ pub struct StatePrompts {
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct StateConfig {
-    pub tool_use: Option<bool>,
-    pub disable_chat_output: Option<bool>,
+    pub extract_code: Option<bool>,
+    pub execute_code: Option<bool>,
+    pub disable_llm_request: Option<bool>,
     pub update_context: Option<bool>,
     pub append_to_context: Option<bool>,
     pub ignore_llm_output: Option<bool>,
+    pub get_msg: Option<bool>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -147,6 +149,7 @@ impl FSMAgentConfigBuilder {
                 (state_name.clone(), new_prompt)
             })
             .collect::<HashMap<String, StatePrompts>>();
+
         Ok(Self {
             states: config.states,
             transitions: config.transitions,
@@ -458,6 +461,7 @@ impl LLMAgent {
             // println!("trace: available_transitions: {:?}", next_states);
 
             let current_state = self.fsm.states.get_mut(&current_state_name).unwrap();
+
             let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
             current_state
                 .set_attribute("llm_req_setting", llm_req_setting)
@@ -466,38 +470,67 @@ impl LLMAgent {
 
             let tx = tx.clone();
             let handle = tokio::spawn(async move {
-                let mut llm_output = "".to_string();
+                let mut llm_output = None;
+                let mut new_context = None;
+                let mut append_context = None;
                 if let Some(tx) = tx {
                     while let Some((a, t, r)) = fsm_rx.recv().await {
-                        if t == "llm_output" {
-                            llm_output = r.clone();
-                        };
+                        match t.as_str() {
+                            "llm_output" => {
+                                llm_output = Some(r.clone());
+                            }
+                            "code" | "update_context" => {
+                                new_context = Some(r.clone());
+                            }
+                            "append_context" => {
+                                append_context = Some(r.clone());
+                            }
+                            _ => {}
+                        }
                         let _ = tx.send((a, t, r)).await;
                     }
                 };
-                llm_output
+                (llm_output, new_context, append_context)
             });
 
-            if let Some(next_state) = current_state
+            if let Some(next_state_name) = current_state
                 .start_service(fsm_tx, None, Some(next_states))
                 .await
             {
-                let llm_output = tokio::join!(handle).0.unwrap();
-                self.llm_req_settings
-                    .messages
-                    .push(("bot".into(), llm_output));
-                let _ = self.transition_state(&next_state).await;
+                let (llm_output, new_context, append_context) = tokio::join!(handle).0.unwrap();
+                self.update_message_and_context(llm_output, new_context, append_context);
+                let _ = self.transition_state(&next_state_name).await;
+                let next_state = self.fsm.states.get(&next_state_name).unwrap();
+                if next_state.get_attribute("get_msg").await.is_some() {
+                    break;
+                }
             } else {
-                let llm_output = tokio::join!(handle).0.unwrap();
-                self.llm_req_settings
-                    .messages
-                    .push(("bot".into(), llm_output));
+                let (llm_output, new_context, append_context) = tokio::join!(handle).0.unwrap();
+                self.update_message_and_context(llm_output, new_context, append_context);
                 break;
             }
         }
 
         let llm_output = "".into();
         Ok(llm_output)
+    }
+
+    fn update_message_and_context(&mut self, llm_output: Option<String>, new_context: Option<String>, append_context: Option<String>) {
+        self.llm_req_settings
+            .messages
+            .push(("bot".into(), llm_output.unwrap_or("".into())));
+    
+        if let Some(new_context) = new_context {
+            self.llm_req_settings.context = Some(new_context);
+        } else if let Some(append_context) = Some(append_context) {
+            self.llm_req_settings.context = Some(
+                [
+                    self.llm_req_settings.context.clone().unwrap_or("".into()),
+                    append_context.unwrap_or("".into()),
+                ]
+                .join("\n"),
+            );
+        };
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
