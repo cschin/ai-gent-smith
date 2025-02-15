@@ -312,8 +312,13 @@ CodeExecution.system = """Check if the use want to execute the generate, output 
 {"run": true} or {"run": false}, use the exact strings """
 
 [state_config]
+# don't make chat request but making the fsm transition request
 StandBy.disable_llm_request = true
+
+# don't make chat request but making the fsm transition request
 Finish.disable_llm_request = true
+
+# code generation state
 GenerateCode.extract_code = true
 
 CodeExecution.execute_code = true
@@ -321,5 +326,5 @@ CodeExecution.execute_code = true
 # CodeExecution.wait_for_msg = true
 # CodeExecution.ignore_llm_output = true
 
-# excute without user confirmation
+# execute without user confirmation
 CodeExecution.disable_llm_request = true
