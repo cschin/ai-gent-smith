@@ -251,7 +251,6 @@ summary concise, no more than 300 words.
 
 ## no LLM call for a chat but fsm transition will be used
 StandBy.system = ""
-StandBy.chat = ""
 
 Greeting.system = """ You are in the Greeting state. Your goal is to inform the user that you 
 are ready to answer new questions if they have any. Welcome the user and encourage 
@@ -290,7 +289,6 @@ ShowContext.chat = """ Just show the current context enclosed in <CONTEXT></CONT
 from the text below, don't include anything else and trim of empty space before and after""" 
 
 Finish.system = ""
-Finish.chat = ""
 
 GenerateCode.system = """
 Generate python code according to the instruction and wrap the
@@ -314,7 +312,9 @@ CodeExecution.system = """Check if the use want to execute the generate, output 
 {"run": true} or {"run": false}, use the exact strings """
 
 [state_config]
+StandBy.disable_llm_request = true
+Finish.disable_llm_request = true
 GenerateCode.extract_code = true
-CodeExecution.get_msg = true
+CodeExecution.wait_for_msg = true
 CodeExecution.execute_code = true
-#CodeExecution.disable_llm_request = true
+CodeExecution.ignore_llm_output = true

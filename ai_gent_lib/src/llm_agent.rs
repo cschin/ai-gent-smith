@@ -1,5 +1,5 @@
 use crate::{
-    fsm::{FsmState, TransitionResult, FiniteStateMachine},
+    fsm::{FiniteStateMachine, FsmState, TransitionResult},
     llm_service::LLMStreamOut,
 };
 use async_trait::async_trait;
@@ -22,11 +22,11 @@ pub struct StateConfig {
     pub update_context: Option<bool>,
     pub append_to_context: Option<bool>,
     pub ignore_llm_output: Option<bool>,
-    pub get_msg: Option<bool>,
+    pub wait_for_msg: Option<bool>,
 }
 
 pub trait LlmFsmStateInit {
-    fn new(name: &str, prompts:StatePrompts, config: StateConfig) -> Self;
+    fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self;
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -89,7 +89,6 @@ impl Default for LlmFsmBuilder {
     }
 }
 
-
 impl LlmFsmBuilder {
     pub fn new() -> Self {
         LlmFsmBuilder {
@@ -129,18 +128,24 @@ impl LlmFsmBuilder {
             let state_prompt = config
                 .state_prompts
                 .get(state_name)
-                .unwrap_or(&StatePrompts{..Default::default()})
+                .unwrap_or(&StatePrompts {
+                    ..Default::default()
+                })
                 .clone();
             let state_config = config
                 .state_config
                 .clone()
                 .unwrap_or_default()
                 .get(state_name)
-                .unwrap_or(&StateConfig{..Default::default()})
+                .unwrap_or(&StateConfig {
+                    ..Default::default()
+                })
                 .clone();
-            let state = state_map
-                .remove(state_name)
-                .unwrap_or(S::new(state_name, state_prompt, state_config));
+            let state = state_map.remove(state_name).unwrap_or(S::new(
+                state_name,
+                state_prompt,
+                state_config,
+            ));
 
             builder.states.insert(state_name.clone(), Box::new(state));
         }
@@ -164,7 +169,9 @@ impl LlmFsmBuilder {
 
     pub fn build(self) -> Result<FiniteStateMachine, anyhow::Error> {
         if self.states.is_empty() {
-            return Err(anyhow::anyhow!("FSM must have at least one state".to_string()));
+            return Err(anyhow::anyhow!(
+                "FSM must have at least one state".to_string()
+            ));
         }
 
         if self.current_state.is_none() {
@@ -174,7 +181,10 @@ impl LlmFsmBuilder {
         // Validate that all states in transitions exist
         for (from, tos) in &self.transitions {
             if !self.states.contains_key(from) {
-                return Err(anyhow::anyhow!("Transition from non-existent state: {}", from));
+                return Err(anyhow::anyhow!(
+                    "Transition from non-existent state: {}",
+                    from
+                ));
             }
             for to in tos {
                 if !self.states.contains_key(to) {
@@ -190,7 +200,6 @@ impl LlmFsmBuilder {
         })
     }
 }
-
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct LlmFsmAgentConfig {
@@ -397,8 +406,10 @@ impl LlmFsmAgent {
         }
     }
 
-    pub fn set_context(&mut self, key:&str, value: &str) {
-        self.llm_req_settings.context.insert(key.into(), value.into()); 
+    pub fn set_context(&mut self, key: &str, value: &str) {
+        self.llm_req_settings
+            .context
+            .insert(key.into(), value.into());
     }
 
     pub async fn set_current_state(
@@ -419,75 +430,84 @@ impl LlmFsmAgent {
 
     pub async fn fsm_message_service(
         &mut self,
-        user_input: &str,
-        tx: Option<Sender<(String, String, String)>>,
+        mut user_input: Receiver<(String, String)>,
+        tx: Sender<(String, String, String)>,
         temperature: Option<f32>,
-    ) -> Result<String, anyhow::Error> {
+    ) -> Result<(), anyhow::Error> {
         self.llm_req_settings.temperature = temperature;
-        self.llm_req_settings
-            .messages
-            .push(("user".into(), user_input.into()));
 
-        // let current_state_name = self
-        //     .fsm
-        //     .get_current_state_name()
-        //     .ok_or(anyhow::anyhow!("No current state"))?;
-        // println!("trace: current_state: {}", current_state_name);
+        while let Some((msg_type, msg)) = user_input.recv().await {
+            match msg_type.as_str() {
+                "message" => {
+                    self.llm_req_settings.messages.push(("user".into(), msg));
+                }
+                "terminate" => break,
+                _ => {}
+            }
 
-        if self.fsm.available_transitions().is_none() {
-            let _ = self
-                .fsm
-                .set_initial_state(self.llm_req_settings.fsm_initial_state.clone(), true)
-                .await;
-        };
-
-        loop {
-            let current_state_name = self
-                .fsm
-                .get_current_state_name()
-                .ok_or(anyhow::anyhow!(" FSM Error: No current state"))?;
-
+            // let current_state_name = self
+            //     .fsm
+            //     .get_current_state_name()
+            //     .ok_or(anyhow::anyhow!("No current state"))?;
             // println!("trace: current_state: {}", current_state_name);
 
-            let next_states = if let Some(next_state) = self.fsm.available_transitions() {
-                next_state.iter().cloned().collect::<Vec<_>>()
-            } else {
-                break;
+            if self.fsm.available_transitions().is_none() {
+                let _ = self
+                    .fsm
+                    .set_initial_state(self.llm_req_settings.fsm_initial_state.clone(), true)
+                    .await;
             };
 
-            // println!("trace: available_transitions: {:?}", next_states);
+            loop {
+                let current_state_name = self
+                    .fsm
+                    .get_current_state_name()
+                    .ok_or(anyhow::anyhow!(" FSM Error: No current state"))?;
 
-            let current_state = self.fsm.states.get_mut(&current_state_name).unwrap();
+                // println!("trace: current_state: {}", current_state_name);
 
-            let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
-            current_state
-                .set_attribute("llm_req_setting", llm_req_setting)
-                .await;
+                let next_states = if let Some(next_state) = self.fsm.available_transitions() {
+                    next_state.iter().cloned().collect::<Vec<_>>()
+                } else {
+                    break;
+                };
 
-            let (fsm_tx, fsm_rx) = mpsc::channel::<(String, String, String)>(16);
-            let tx = tx.clone();
-            let handle = get_fsm_state_communication_handle(tx, fsm_rx);
+                // println!("trace: available_transitions: {:?}", next_states);
 
-            if let Some(next_state_name) = current_state
-                .start_service(fsm_tx, None, Some(next_states))
-                .await
-            {
-                let (llm_output, new_context) = tokio::join!(handle).0.unwrap();
-                self.update_message_and_context(llm_output, new_context);
-                let _ = self.transition_state(&next_state_name).await;
-                let next_state = self.fsm.states.get(&next_state_name).unwrap();
-                if next_state.get_attribute("get_msg").await.is_some() {
+                let current_state = self.fsm.states.get_mut(&current_state_name).unwrap();
+
+                let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
+                current_state
+                    .set_attribute("llm_req_setting", llm_req_setting)
+                    .await;
+
+                let (fsm_tx, fsm_rx) = mpsc::channel::<(String, String, String)>(16);
+                let tx = tx.clone();
+                let handle = get_fsm_state_communication_handle(tx, fsm_rx);
+
+                if let Some(next_state_name) = current_state
+                    .start_service(fsm_tx, None, Some(next_states))
+                    .await
+                {
+                    let (llm_output, new_context) = tokio::join!(handle).0.unwrap();
+                    self.update_message_and_context(llm_output, new_context);
+                    let _ = self.transition_state(&next_state_name).await;
+                    let next_state = self.fsm.states.get(&next_state_name).unwrap();
+                    if next_state.get_attribute("wait_for_msg").await.is_some() {
+                        break;
+                    }
+                } else {
+                    let (llm_output, new_context) = tokio::join!(handle).0.unwrap();
+                    self.update_message_and_context(llm_output, new_context);
                     break;
                 }
-            } else {
-                let (llm_output, new_context) = tokio::join!(handle).0.unwrap();
-                self.update_message_and_context(llm_output, new_context);
-                break;
             }
+            let tx = tx.clone();
+            let _ = tx
+                .send(("".into(), "message_processed".into(), "".into()))
+                .await;
         }
-
-        let llm_output = "".into();
-        Ok(llm_output)
+        Ok(())
     }
 
     fn update_message_and_context(
@@ -499,8 +519,7 @@ impl LlmFsmAgent {
             .messages
             .push(("bot".into(), llm_output.unwrap_or("".into())));
 
-            self.llm_req_settings.context.extend(context);
-
+        self.llm_req_settings.context.extend(context);
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
@@ -524,26 +543,24 @@ impl LlmFsmAgent {
 }
 
 fn get_fsm_state_communication_handle(
-    tx: Option<Sender<(String, String, String)>>,
+    tx: Sender<(String, String, String)>,
     mut fsm_rx: Receiver<(String, String, String)>,
 ) -> tokio::task::JoinHandle<(Option<String>, HashMap<String, String>)> {
     tokio::spawn(async move {
         let mut llm_output = None;
         let mut context = HashMap::<String, String>::default();
-        if let Some(tx) = tx {
-            while let Some((a, t, r)) = fsm_rx.recv().await {
-                match t.as_str() {
-                    "llm_output" => {
-                        llm_output = Some(r.clone());
-                    }
-                    "code" | "summary" | "context"  => {
-                        context.insert( t.clone() , r.clone());
-                    }
-                    _ => {}
+        while let Some((a, t, r)) = fsm_rx.recv().await {
+            match t.as_str() {
+                "llm_output" => {
+                    llm_output = Some(r.clone());
                 }
-                let _ = tx.send((a, t, r)).await;
+                "code" | "summary" | "context" => {
+                    context.insert(t.clone(), r.clone());
+                }
+                _ => {}
             }
-        };
+            let _ = tx.send((a, t, r)).await;
+        }
         (llm_output, context)
     })
 }
@@ -634,13 +651,11 @@ mod tests {
             .build()
             .unwrap();
 
-        let fsm = LlmFsmBuilder::from_config::<DefaultLlmChatState>(
-            &fsm_config,
-            HashMap::default(),
-        )
-        .unwrap()
-        .build()
-        .unwrap();
+        let fsm =
+            LlmFsmBuilder::from_config::<DefaultLlmChatState>(&fsm_config, HashMap::default())
+                .unwrap()
+                .build()
+                .unwrap();
 
         let fsm_config_str = include_str!("../dev_config/fsm_config.toml");
 
@@ -680,7 +695,6 @@ mod tests {
         assert_eq!(result, TransitionResult::NoTransitionAvailable);
     }
 
-
     #[derive(Debug, Default)]
     struct TestState {
         name: String,
@@ -719,7 +733,7 @@ mod tests {
     }
 
     #[tokio::test]
-    
+
     async fn test_finite_state_machine_builder() {
         let fsm = LlmFsmBuilder::new()
             .add_state(

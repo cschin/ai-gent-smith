@@ -31,9 +31,9 @@ pub struct FSMChatState {
 impl LlmFsmStateInit for FSMChatState {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
         let mut attributes = HashMap::<String, String>::default();
-        if let Some(get_msg) = config.get_msg {
-            if get_msg {
-                attributes.insert("get_msg".into(), "true".into());
+        if let Some(wait_for_msg) = config.wait_for_msg {
+            if wait_for_msg {
+                attributes.insert("wait_for_msg".into(), "true".into());
             }
         }
         FSMChatState {
@@ -145,6 +145,11 @@ impl FsmState for FSMChatState {
         let llm_req_settings: llm_agent::LlmReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
 
+        let state_name = self.name.clone();
+        let _ = tx
+            .send((state_name.clone(), "state".into(), state_name.clone()))
+            .await;
+
         if !self.config.disable_llm_request.unwrap_or(false) {
             let summary = if let Some(summary) = llm_req_settings.context.get("summary") {
                 ["<SUMMARY>", summary, "</SUMMARY>"].join("\n")
@@ -161,11 +166,6 @@ impl FsmState for FSMChatState {
             let system_prompt = self.prompts.system.clone().unwrap_or("".into());
 
             let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
-
-            let state_name = self.name.clone();
-            let _ = tx
-                .send((state_name.clone(), "state".into(), state_name.clone()))
-                .await;
 
             let llm_output = if system_prompt.len() + chat_prompt.len() > 0 {
                 let full_prompt = [system_prompt, summary, context, chat_prompt].join("\n");
@@ -218,8 +218,8 @@ impl FsmState for FSMChatState {
                 .get("code")
                 .cloned()
                 .unwrap_or_default();
-            if self.config.get_msg.unwrap_or(false) {
-                // execute code depending on the LLM's response 
+            if self.config.wait_for_msg.unwrap_or(false) {
+                // execute code depending on the LLM's response
                 let llm_output = self
                     .get_attribute("llm_output")
                     .await
@@ -239,7 +239,7 @@ impl FsmState for FSMChatState {
                         .send((
                             self.name.clone(),
                             "output".into(),
-                            format!("stderr: {}\n", stdout),
+                            format!("stdout: {}\n", stdout),
                         ))
                         .await;
 
@@ -382,6 +382,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
 
+    let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String, String)>(8);
+    let (send_msg, rcv_msg) = mpsc::channel::<(String, String)>(8);
+    let agent_handler = tokio::spawn(async move {
+        agent.fsm_message_service(rcv_msg, fsm_tx.clone(), None).await
+    }); 
+
     loop {
         let readline = rl.readline("\n>> ");
         match readline {
@@ -392,54 +398,52 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let _ = rl.add_history_entry(user_input.as_str());
-                let (tx, mut rx) = mpsc::channel::<(String, String, String)>(1);
-                let t = tokio::spawn(async move {
-                    let mut llm_output = Vec::<String>::new();
-                    while let Some(message) = rx.recv().await {
-                        match (message.0.as_str(), message.1.as_str()) {
-                            (_, "state") => {
-                                println!("\n--------- Agent State: {}", message.2);
-                            }
-                            (s, "token") if s != "MakeSummary" => {
-                                print!("{}", message.2);
-                            }
-                            (_, "output") => {
-                                println!("{}", message.2);
-                                llm_output.push(message.2);
-                            }
-                            (_, "llm_output") => {
-                                llm_output.push(message.2);
-                            }
-                            _ => {}
+               
+                let _ = send_msg.send(("message".into(), user_input)).await;
+
+                let mut llm_output = Vec::<String>::new();
+                
+                while let Some(message) = fsm_rx.recv().await {
+                    match (message.0.as_str(), message.1.as_str()) {
+                        (_, "state") => {
+                            println!("\n--------- Agent State: {}", message.2);
                         }
-                    }
-                    llm_output
-                });
-                match agent.fsm_message_service(&user_input, Some(tx), None).await {
-                    Ok(_res) => {}
-                    Err(err) => {
-                        println!("LLM error, please retry your question. {:?}", err)
+                        (s, "token") if s != "MakeSummary" => {
+                            print!("{}", message.2);
+                        }
+                        (_, "output") => {
+                            print!("{}", message.2);
+                            llm_output.push(message.2);
+                        }
+                        (_, "llm_output") => {
+                            llm_output.push(message.2);
+                        }
+                        (_, "message_processed") => {
+                            println!(); // clear rustyline's buffer
+                            break
+                        }
+                        _ => {}
                     }
                 }
-                println!(); // clear rustyline's buffer
-                let _llm_output = tokio::join!(t).0.unwrap();
-                //println!("\nout: {}", llm_output);              // if let Some(current_state) = agent.fsm.current_state() {
-                //     tracing::info!("Current state: {}", current_state);
-                // }
             }
             Err(ReadlineError::Interrupted) => {
+                let _ = send_msg.send(("terminate".into(), "".into())).await;
                 println!("CTRL-C");
                 break;
             }
             Err(ReadlineError::Eof) => {
+                let _ = send_msg.send(("terminate".into(), "".into())).await;
                 println!("CTRL-D");
                 break;
             }
             Err(err) => {
+                let _ = send_msg.send(("terminate".into(), "".into())).await;
                 println!("Error: {:?}", err);
                 break;
             }
         }
     }
+    // let _ = tokio::join!(message_handler).0.unwrap();
+    let _ = tokio::join!(agent_handler).0.unwrap();
     Ok(())
 }
