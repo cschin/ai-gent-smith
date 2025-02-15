@@ -1,4 +1,4 @@
-use ai_gent_lib::{llm_agent::{FsmBuilder, LlmFsmStateInit, StateConfig}, GenaiLlmclient};
+use ai_gent_lib::{llm_agent::{LlmFsmBuilder, LlmFsmStateInit, StateConfig}, GenaiLlmclient};
 use async_trait::async_trait;
 use futures::StreamExt;
 use rustyline::error::ReadlineError;
@@ -10,7 +10,7 @@ use serde::Deserialize;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use ai_gent_lib::llm_agent::{
-    self, AgentSettings, FsmAgentConfigBuilder, LlmAgent, LlmClient, LlmResponse, StatePrompts,
+    self, AgentSettings, LlmFsmAgentConfigBuilder, LlmFsmAgent, LlmClient, LlmResponse, StatePrompts,
 };
 use tokio::task::JoinHandle;
 
@@ -297,9 +297,9 @@ use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let fsm_config = FsmAgentConfigBuilder::from_toml(FSM_CONFIG)?.build()?;
+    let fsm_config = LlmFsmAgentConfigBuilder::from_toml(FSM_CONFIG)?.build()?;
 
-    let fsm = FsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default())?.build()?;
+    let fsm = LlmFsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default())?.build()?;
 
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
@@ -315,7 +315,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_key,
         fsm_initial_state: fsm_config.initial_state,
     };
-    let mut agent = LlmAgent::new(fsm, llm_req_setting);
+    let mut agent = LlmFsmAgent::new(fsm, llm_req_setting);
 
     // tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
 

@@ -4,10 +4,11 @@ use ai_gent_lib::fsm::FsmState;
 use ai_gent_lib::fsm::FiniteStateMachine;
 use ai_gent_lib::llm_agent;
 use ai_gent_lib::llm_agent::AgentSettings;
-use ai_gent_lib::llm_agent::FsmAgentConfig;
-use ai_gent_lib::llm_agent::FsmAgentConfigBuilder;
-use ai_gent_lib::llm_agent::LlmAgent;
+use ai_gent_lib::llm_agent::LlmFsmAgentConfig;
+use ai_gent_lib::llm_agent::LlmFsmAgentConfigBuilder;
+use ai_gent_lib::llm_agent::LlmFsmAgent;
 use ai_gent_lib::llm_agent::LlmClient;
+use ai_gent_lib::llm_agent::LlmFsmStateInit;
 use ai_gent_lib::llm_agent::LlmResponse;
 use ai_gent_lib::llm_agent::StateConfig;
 use ai_gent_lib::llm_agent::StatePrompts;
@@ -19,6 +20,7 @@ use tokio::task::JoinHandle;
 use tron_app::TRON_APP;
 use futures::StreamExt;
 
+
 #[derive(Default)]
 pub struct FsmChatState {
     name: String,
@@ -28,13 +30,8 @@ pub struct FsmChatState {
     handle: Option<JoinHandle<String>>,
 }
 
-pub trait FsmChatStateInit {
-    fn new(name: &str, prompts:StatePrompts, config: StateConfig) -> Self;
-}
-
-impl FsmChatStateInit for FsmChatState {
+impl LlmFsmStateInit for FsmChatState {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
-
         FsmChatState {
             name: name.to_string(),
             prompts,
@@ -61,20 +58,17 @@ impl FsmState for FsmChatState {
     async fn on_exit_mut(&mut self) {
         tracing::info!(target: TRON_APP, "Exiting state (mut): {}", self.name);
     }
-    
+
     async fn start_service(
         &mut self,
         tx: Sender<(String, String, String)>,
         _rx: Option<Receiver<(String, String, String)>>,
-        next_states: Option<Vec<String>>
+        next_states: Option<Vec<String>>,
     ) -> Option<String> {
         let llm_req_setting: llm_agent::LlmReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
         let prompt = self.prompts.chat.clone();
-        let system_prompt = self
-            .prompts.system
-            .clone()
-            .unwrap_or("".into());
+        let system_prompt = self.prompts.system.clone().unwrap_or("".into());
         let full_prompt = match prompt {
             Some(prompt) => match llm_req_setting.context {
                 Some(context) => [
@@ -104,7 +98,9 @@ impl FsmState for FsmChatState {
             None => "".into(),
         };
         if full_prompt.is_empty() {
-            let _ = tx.send(("".into(), "error".into(), "no state prompt".into())).await;
+            let _ = tx
+                .send(("".into(), "error".into(), "no state prompt".into()))
+                .await;
             return None;
         };
         let llm_client = GenaiLlmclient {
@@ -131,7 +127,9 @@ impl FsmState for FsmChatState {
                     let _ = tx.send(("".into(), "token".into(), output)).await;
                 };
             }
-            let _ = tx.send(("".into(), "llm_output".into(), llm_output.clone())).await;
+            let _ = tx
+                .send(("".into(), "llm_output".into(), llm_output.clone()))
+                .await;
             llm_output
         }));
 
@@ -170,16 +168,16 @@ impl FsmState for FsmChatState {
     }
 }
 
-struct ChatAgent<LLMAgent>(LLMAgent);
+pub struct ChatAgent<LLMAgent>{ pub base: LLMAgent}
 
-impl ChatAgent<LlmAgent> {
+impl ChatAgent<LlmFsmAgent> {
     pub async fn process_message(
         &mut self,
         user_input: &str,
         tx: Option<Sender<(String, String, String)>>,
         temperature: Option<f32>,
     ) -> Result<String, anyhow::Error> {
-        let agent= &mut self.0;
+        let agent= &mut self.base;
         agent.llm_req_settings.temperature = temperature;
         let mut last_message = Vec::<(String, String)>::new();
 

@@ -7,7 +7,25 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct StatePrompts {
+    pub system: Option<String>,
+    pub chat: Option<String>,
+    pub fsm: Option<String>,
+}
 
+
+
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct StateConfig {
+    pub extract_code: Option<bool>,
+    pub execute_code: Option<bool>,
+    pub disable_llm_request: Option<bool>,
+    pub update_context: Option<bool>,
+    pub append_to_context: Option<bool>,
+    pub ignore_llm_output: Option<bool>,
+    pub get_msg: Option<bool>,
+}
 
 pub trait LlmFsmStateInit {
     fn new(name: &str, prompts:StatePrompts, config: StateConfig) -> Self;
@@ -24,36 +42,18 @@ pub struct LlmReqSetting {
     pub fsm_initial_state: String,
 }
 
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
-pub struct StatePrompts {
-    pub system: Option<String>,
-    pub chat: Option<String>,
-    pub fsm: Option<String>,
-}
-
-#[derive(Serialize, Deserialize, Default, Debug, Clone)]
-pub struct StateConfig {
-    pub extract_code: Option<bool>,
-    pub execute_code: Option<bool>,
-    pub disable_llm_request: Option<bool>,
-    pub update_context: Option<bool>,
-    pub append_to_context: Option<bool>,
-    pub ignore_llm_output: Option<bool>,
-    pub get_msg: Option<bool>,
-}
-
 
 #[derive(Clone, Default)]
-pub struct DefaultFsmChatState {
+pub struct DefaultLlmChatState {
     name: String,
     attributes: HashMap<String, String>,
     _prompts: StatePrompts,
     _config: StateConfig,
 }
 
-impl LlmFsmStateInit for DefaultFsmChatState {
+impl LlmFsmStateInit for DefaultLlmChatState {
     fn new(name: &str, _prompts: StatePrompts, _config: StateConfig) -> Self {
-        DefaultFsmChatState {
+        DefaultLlmChatState {
             name: name.to_string(),
             _prompts,
             _config,
@@ -63,7 +63,7 @@ impl LlmFsmStateInit for DefaultFsmChatState {
 }
 
 #[async_trait]
-impl FsmState for DefaultFsmChatState {
+impl FsmState for DefaultLlmChatState {
     async fn set_attribute(&mut self, k: &str, v: String) {
         self.attributes.insert(k.to_string(), v);
     }
@@ -81,22 +81,22 @@ impl FsmState for DefaultFsmChatState {
     }
 }
 
-pub struct FsmBuilder {
+pub struct LlmFsmBuilder {
     states: HashMap<String, Box<dyn FsmState>>,
     transitions: HashMap<String, HashSet<String>>,
     current_state: Option<String>,
 }
 
-impl Default for FsmBuilder {
+impl Default for LlmFsmBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
 
-impl FsmBuilder {
+impl LlmFsmBuilder {
     pub fn new() -> Self {
-        FsmBuilder {
+        LlmFsmBuilder {
             states: HashMap::new(),
             transitions: HashMap::new(),
             current_state: None,
@@ -119,10 +119,10 @@ impl FsmBuilder {
     }
 
     pub fn from_config<S: LlmFsmStateInit + FsmState + 'static>(
-        config: &FsmAgentConfig,
+        config: &LlmFsmAgentConfig,
         mut state_map: HashMap<String, S>,
     ) -> Result<Self, anyhow::Error> {
-        let mut builder = FsmBuilder {
+        let mut builder = LlmFsmBuilder {
             states: HashMap::new(),
             transitions: HashMap::new(),
             current_state: Some(config.initial_state.clone()),
@@ -197,7 +197,7 @@ impl FsmBuilder {
 
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
-pub struct FsmAgentConfig {
+pub struct LlmFsmAgentConfig {
     pub states: Vec<String>,
     pub transitions: Vec<(String, String)>,
     pub initial_state: String,
@@ -208,7 +208,7 @@ pub struct FsmAgentConfig {
     pub fsm_prompt: String,
 }
 
-impl FsmAgentConfig {
+impl LlmFsmAgentConfig {
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json_str)
     }
@@ -223,7 +223,7 @@ impl FsmAgentConfig {
 }
 
 #[derive(Default)]
-pub struct FsmAgentConfigBuilder {
+pub struct LlmFsmAgentConfigBuilder {
     states: Vec<String>,
     transitions: Vec<(String, String)>,
     initial_state: String,
@@ -234,7 +234,7 @@ pub struct FsmAgentConfigBuilder {
     system_prompt: String,
 }
 
-impl FsmAgentConfigBuilder {
+impl LlmFsmAgentConfigBuilder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -275,7 +275,7 @@ impl FsmAgentConfigBuilder {
     }
 
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
-        let config: FsmAgentConfig = serde_json::from_str(json_str)?;
+        let config: LlmFsmAgentConfig = serde_json::from_str(json_str)?;
         Ok(Self {
             states: config.states,
             transitions: config.transitions,
@@ -289,7 +289,7 @@ impl FsmAgentConfigBuilder {
     }
 
     pub fn from_toml(toml_str: &str) -> Result<Self, toml::de::Error> {
-        let config: FsmAgentConfig = toml::from_str(toml_str)?;
+        let config: LlmFsmAgentConfig = toml::from_str(toml_str)?;
         // if the fsm of system prompt is not set for a state, replace it with the global one
         let state_prompts = config
             .state_prompts
@@ -321,12 +321,12 @@ impl FsmAgentConfigBuilder {
         })
     }
 
-    pub fn build(self) -> Result<FsmAgentConfig, anyhow::Error> {
+    pub fn build(self) -> Result<LlmFsmAgentConfig, anyhow::Error> {
         if self.states.is_empty() {
             return Err(anyhow::anyhow!("At least one state is required"));
         }
 
-        Ok(FsmAgentConfig {
+        Ok(LlmFsmAgentConfig {
             states: self.states,
             transitions: self.transitions,
             initial_state: self.initial_state,
@@ -350,7 +350,7 @@ pub struct LlmResponse {
     pub next_state: Option<String>,
 }
 
-pub struct LlmAgent {
+pub struct LlmFsmAgent {
     pub fsm: FiniteStateMachine,
     pub llm_req_settings: LlmReqSetting,
     pub fsm_prompt: String,
@@ -382,7 +382,7 @@ pub struct AgentSettings {
     pub api_key: String,
 }
 
-impl LlmAgent {
+impl LlmFsmAgent {
     pub fn new(fsm: FiniteStateMachine, agent_settings: AgentSettings) -> Self {
         let llm_req_setting = LlmReqSetting {
             summary: String::default(),
@@ -642,7 +642,7 @@ mod tests {
             fsm: Some("".into()),
         };
 
-        let fsm_config = FsmAgentConfigBuilder::new()
+        let fsm_config = LlmFsmAgentConfigBuilder::new()
             .add_state("Initial".to_string())
             .add_state("Processing".to_string())
             .add_transition("Initial".to_string(), "Processing".to_string())
@@ -653,7 +653,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let fsm = FsmBuilder::from_config::<DefaultFsmChatState>(
+        let fsm = LlmFsmBuilder::from_config::<DefaultLlmChatState>(
             &fsm_config,
             HashMap::default(),
         )
@@ -663,7 +663,7 @@ mod tests {
 
         let fsm_config_str = include_str!("../dev_config/fsm_config.toml");
 
-        let fsm_config = FsmAgentConfigBuilder::from_toml(fsm_config_str)
+        let fsm_config = LlmFsmAgentConfigBuilder::from_toml(fsm_config_str)
             .unwrap()
             .build()
             .unwrap();
@@ -677,12 +677,12 @@ mod tests {
             fsm_initial_state: "Initial".into(),
         };
 
-        let _agent = LlmAgent::new(fsm, agent_settings);
+        let _agent = LlmFsmAgent::new(fsm, agent_settings);
     }
 
     #[tokio::test]
     async fn test_fsm_transitions() {
-        let mut fsm_builder = FsmBuilder::new();
+        let mut fsm_builder = LlmFsmBuilder::new();
         fsm_builder = fsm_builder.add_state("Initial".to_string(), Box::new(InitialState));
         fsm_builder = fsm_builder.add_state("Processing".to_string(), Box::new(ProcessingState));
         fsm_builder = fsm_builder.add_transition("Initial".to_string(), "Processing".to_string());
@@ -740,7 +740,7 @@ mod tests {
     #[tokio::test]
     
     async fn test_finite_state_machine_builder() {
-        let fsm = FsmBuilder::new()
+        let fsm = LlmFsmBuilder::new()
             .add_state(
                 "State1".to_string(),
                 Box::new(TestState {
