@@ -6,7 +6,7 @@ use crate::{
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio::sync::mpsc::{self, Sender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LLMReqSetting {
@@ -466,32 +466,10 @@ impl LLMAgent {
             current_state
                 .set_attribute("llm_req_setting", llm_req_setting)
                 .await;
-            let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String, String)>(16);
 
+            let (fsm_tx, fsm_rx) = mpsc::channel::<(String, String, String)>(16);
             let tx = tx.clone();
-            let handle = tokio::spawn(async move {
-                let mut llm_output = None;
-                let mut new_context = None;
-                let mut append_context = None;
-                if let Some(tx) = tx {
-                    while let Some((a, t, r)) = fsm_rx.recv().await {
-                        match t.as_str() {
-                            "llm_output" => {
-                                llm_output = Some(r.clone());
-                            }
-                            "code" | "update_context" => {
-                                new_context = Some(r.clone());
-                            }
-                            "append_context" => {
-                                append_context = Some(r.clone());
-                            }
-                            _ => {}
-                        }
-                        let _ = tx.send((a, t, r)).await;
-                    }
-                };
-                (llm_output, new_context, append_context)
-            });
+            let handle = get_fsm_state_communication_handle(tx, fsm_rx);
 
             if let Some(next_state_name) = current_state
                 .start_service(fsm_tx, None, Some(next_states))
@@ -515,11 +493,16 @@ impl LLMAgent {
         Ok(llm_output)
     }
 
-    fn update_message_and_context(&mut self, llm_output: Option<String>, new_context: Option<String>, append_context: Option<String>) {
+    fn update_message_and_context(
+        &mut self,
+        llm_output: Option<String>,
+        new_context: Option<String>,
+        append_context: Option<String>,
+    ) {
         self.llm_req_settings
             .messages
             .push(("bot".into(), llm_output.unwrap_or("".into())));
-    
+
         if let Some(new_context) = new_context {
             self.llm_req_settings.context = Some(new_context);
         } else if let Some(append_context) = Some(append_context) {
@@ -551,6 +534,35 @@ impl LLMAgent {
             (TransitionResult::NoCurrentState, _) => Err(anyhow::anyhow!("No current state")),
         }
     }
+}
+
+fn get_fsm_state_communication_handle(
+    tx: Option<Sender<(String, String, String)>>,
+    mut fsm_rx: Receiver<(String, String, String)>,
+) -> tokio::task::JoinHandle<(Option<String>, Option<String>, Option<String>)> {
+    tokio::spawn(async move {
+        let mut llm_output = None;
+        let mut new_context = None;
+        let mut append_context = None;
+        if let Some(tx) = tx {
+            while let Some((a, t, r)) = fsm_rx.recv().await {
+                match t.as_str() {
+                    "llm_output" => {
+                        llm_output = Some(r.clone());
+                    }
+                    "code" | "update_context" => {
+                        new_context = Some(r.clone());
+                    }
+                    "append_context" => {
+                        append_context = Some(r.clone());
+                    }
+                    _ => {}
+                }
+                let _ = tx.send((a, t, r)).await;
+            }
+        };
+        (llm_output, new_context, append_context)
+    })
 }
 
 #[cfg(test)]
