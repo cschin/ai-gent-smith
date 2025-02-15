@@ -8,6 +8,7 @@ mod embedding_service;
 mod services;
 mod session_cards;
 mod show_single_asset;
+mod fsm_chat_agent;
 
 use agent_cards::{LibraryCards, LibraryCardsBuilder};
 use agent_workspace::*;
