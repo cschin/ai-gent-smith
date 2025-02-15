@@ -9,6 +9,7 @@ states = [
     "MakeSummary",
     "CodeExecution",
     "ShowSummary",
+    "ShowContext",
     "Finish",
 ]
 
@@ -25,7 +26,10 @@ transitions = [
         "StandBy",
         "ShowSummary",
     ],
-
+    [
+        "StandBy",
+        "ShowContext",
+    ],
     [
         "StandBy",
         "ForChiefExecutiveOfficer",
@@ -57,6 +61,10 @@ transitions = [
     ],
     [
         "ShowSummary",
+        "Finish",
+    ],
+    [
+        "ShowContext",
         "Finish",
     ],
     [
@@ -165,6 +173,13 @@ Customer: User experience, product usability, purchasing decisions
 If you determine the agent should respond to a specific role,
 select the appropriate next state.
 
+If you are explicitly asked about the current summary of the dialog, go to the ShowSummary State
+
+If you are explicitly asked about the current context of the dialog, go to the ShowContext State
+
+If you are asked about some coding question the question should be solved by python code, 
+go to the  GenerateCode state
+
 You should output your result in JSON format.
 
 The JSON format should look like:
@@ -189,6 +204,7 @@ The possible states are:
 - ForCustomer
 - GenerateCode
 - ShowSummary
+- ShowContext
 - MakeSummary
 - Finish
 
@@ -203,6 +219,7 @@ StandBy -> ForRegulatoryConsultant
 StandBy -> ForCustomer
 StandBy -> GenerateCode 
 StandBy -> ShowSummary
+StandBy -> ShowContext
 
 ForChiefExecutiveOfficer -> MakeSummary
 ForScientist -> MakeSummary
@@ -211,6 +228,7 @@ ForCustomer -> MakeSummary
 
 MakeSummary -> Finish
 ShowSummary -> Finish
+ShowContext -> Finish
 GenerateCode -> CodeExecution
 
 CodeExecution -> Finish 
@@ -265,7 +283,11 @@ If no current summary exists, simply summarizing the latest message.
 Keep the summary concise, no more than 300 words.
 """
 
-ShowSummary.system = """ Just show the current summary """ 
+ShowSummary.chat = """ Just show the current summary enclosed in <SUMMARY></SUMMARY> 
+from the text below, don't include anything else and trim of empty space before and after """ 
+
+ShowContext.chat = """ Just show the current context enclosed in <CONTEXT></CONTEXT> 
+from the text below, don't include anything else and trim of empty space before and after""" 
 
 Finish.system = ""
 Finish.chat = ""
