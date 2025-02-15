@@ -266,7 +266,7 @@ impl FsmState for FSMChatState {
                     .send((
                         self.name.clone(),
                         "output".into(),
-                        format!("stderr: {}\n", stdout),
+                        format!("stdout:\n{}\n", stdout),
                     ))
                     .await;
 
@@ -274,7 +274,7 @@ impl FsmState for FSMChatState {
                     .send((
                         self.name.clone(),
                         "output".into(),
-                        format!("stderr: {}\n", stderr),
+                        format!("stderr:\n{}\n", stderr),
                     ))
                     .await;
                 //println!("stdout:\n {}\n", stdout);

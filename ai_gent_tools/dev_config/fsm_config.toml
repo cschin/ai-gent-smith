@@ -315,6 +315,11 @@ CodeExecution.system = """Check if the use want to execute the generate, output 
 StandBy.disable_llm_request = true
 Finish.disable_llm_request = true
 GenerateCode.extract_code = true
-CodeExecution.wait_for_msg = true
+
 CodeExecution.execute_code = true
-CodeExecution.ignore_llm_output = true
+# wait for message 
+# CodeExecution.wait_for_msg = true
+# CodeExecution.ignore_llm_output = true
+
+# excute without user confirmation
+CodeExecution.disable_llm_request = true
