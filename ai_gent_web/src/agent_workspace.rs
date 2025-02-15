@@ -689,7 +689,9 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 let fsm_state = agent.base.fsm.get_current_state_name();
                 agent.base.set_current_state(fsm_state, true).await.expect("set current state fail");
             };
-            agent.base.llm_req_settings.summary = get_chat_summary(chat_id).await.unwrap_or_default();
+            let e = agent.base.llm_req_settings.context.entry("summary".into()).or_default();
+
+            *e = get_chat_summary(chat_id).await.unwrap_or_default();
             // we may want to load a couple of last message from the database for the agent providing some memory beyond the summary
         }
 
@@ -718,7 +720,10 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
             let query_context = get_search_context_plain_text(&search_asset_results);
 
-            agent.base.llm_req_settings.context = Some(query_context);
+            {
+                let context = agent.base.llm_req_settings.context.entry("context".into()).or_default();
+                *context = query_context; 
+            }
 
             let query_context_html = get_search_context_html(&search_asset_results);
 
@@ -744,7 +749,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 Ok(res) => {
                     let current_state = agent.base.get_current_state().await;
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text", current_state).await;
-                    let _ = update_chat_summary(chat_id, &agent.base.llm_req_settings.summary).await;
+                    let summary = agent.base.llm_req_settings.context.get("summary").cloned().unwrap_or_default(); 
+                    let _ = update_chat_summary(chat_id, &summary).await;
                 },
                 Err(err) => {
                     tracing::info!(target: "tron_app", "LLM API call error: {:?}", err);

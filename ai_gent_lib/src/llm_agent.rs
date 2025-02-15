@@ -14,8 +14,6 @@ pub struct StatePrompts {
     pub fsm: Option<String>,
 }
 
-
-
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct StateConfig {
     pub extract_code: Option<bool>,
@@ -33,15 +31,13 @@ pub trait LlmFsmStateInit {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LlmReqSetting {
-    pub summary: String,
-    pub context: Option<String>,
+    pub context: HashMap<String, String>,
     pub messages: Vec<(String, String)>,
     pub temperature: Option<f32>,
     pub model: String,
     pub api_key: String,
     pub fsm_initial_state: String,
 }
-
 
 #[derive(Clone, Default)]
 pub struct DefaultLlmChatState {
@@ -385,10 +381,9 @@ pub struct AgentSettings {
 impl LlmFsmAgent {
     pub fn new(fsm: FiniteStateMachine, agent_settings: AgentSettings) -> Self {
         let llm_req_setting = LlmReqSetting {
-            summary: String::default(),
             messages: Vec::default(),
             temperature: None,
-            context: None,
+            context: HashMap::default(),
             model: agent_settings.model,
             api_key: agent_settings.api_key,
             fsm_initial_state: agent_settings.fsm_initial_state,
@@ -402,8 +397,8 @@ impl LlmFsmAgent {
         }
     }
 
-    pub fn set_context(&mut self, context: &str) {
-        self.llm_req_settings.context = Some(context.to_string());
+    pub fn set_context(&mut self, key:&str, value: &str) {
+        self.llm_req_settings.context.insert(key.into(), value.into()); 
     }
 
     pub async fn set_current_state(
@@ -477,16 +472,16 @@ impl LlmFsmAgent {
                 .start_service(fsm_tx, None, Some(next_states))
                 .await
             {
-                let (llm_output, new_context, append_context) = tokio::join!(handle).0.unwrap();
-                self.update_message_and_context(llm_output, new_context, append_context);
+                let (llm_output, new_context) = tokio::join!(handle).0.unwrap();
+                self.update_message_and_context(llm_output, new_context);
                 let _ = self.transition_state(&next_state_name).await;
                 let next_state = self.fsm.states.get(&next_state_name).unwrap();
                 if next_state.get_attribute("get_msg").await.is_some() {
                     break;
                 }
             } else {
-                let (llm_output, new_context, append_context) = tokio::join!(handle).0.unwrap();
-                self.update_message_and_context(llm_output, new_context, append_context);
+                let (llm_output, new_context) = tokio::join!(handle).0.unwrap();
+                self.update_message_and_context(llm_output, new_context);
                 break;
             }
         }
@@ -498,24 +493,14 @@ impl LlmFsmAgent {
     fn update_message_and_context(
         &mut self,
         llm_output: Option<String>,
-        new_context: Option<String>,
-        append_context: Option<String>,
+        context: HashMap<String, String>,
     ) {
         self.llm_req_settings
             .messages
             .push(("bot".into(), llm_output.unwrap_or("".into())));
 
-        if let Some(new_context) = new_context {
-            self.llm_req_settings.context = Some(new_context);
-        } else if let Some(append_context) = Some(append_context) {
-            self.llm_req_settings.context = Some(
-                [
-                    self.llm_req_settings.context.clone().unwrap_or("".into()),
-                    append_context.unwrap_or("".into()),
-                ]
-                .join("\n"),
-            );
-        };
+            self.llm_req_settings.context.extend(context);
+
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
@@ -541,29 +526,25 @@ impl LlmFsmAgent {
 fn get_fsm_state_communication_handle(
     tx: Option<Sender<(String, String, String)>>,
     mut fsm_rx: Receiver<(String, String, String)>,
-) -> tokio::task::JoinHandle<(Option<String>, Option<String>, Option<String>)> {
+) -> tokio::task::JoinHandle<(Option<String>, HashMap<String, String>)> {
     tokio::spawn(async move {
         let mut llm_output = None;
-        let mut new_context = None;
-        let mut append_context = None;
+        let mut context = HashMap::<String, String>::default();
         if let Some(tx) = tx {
             while let Some((a, t, r)) = fsm_rx.recv().await {
                 match t.as_str() {
                     "llm_output" => {
                         llm_output = Some(r.clone());
                     }
-                    "code" | "update_context" => {
-                        new_context = Some(r.clone());
-                    }
-                    "append_context" => {
-                        append_context = Some(r.clone());
+                    "code" | "summary" | "context"  => {
+                        context.insert( t.clone() , r.clone());
                     }
                     _ => {}
                 }
                 let _ = tx.send((a, t, r)).await;
             }
         };
-        (llm_output, new_context, append_context)
+        (llm_output, context)
     })
 }
 

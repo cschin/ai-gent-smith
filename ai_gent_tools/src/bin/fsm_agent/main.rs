@@ -1,4 +1,7 @@
-use ai_gent_lib::{llm_agent::{LlmFsmBuilder, LlmFsmStateInit, StateConfig}, GenaiLlmclient};
+use ai_gent_lib::{
+    llm_agent::{LlmFsmBuilder, LlmFsmStateInit, StateConfig},
+    GenaiLlmclient,
+};
 use async_trait::async_trait;
 use futures::StreamExt;
 use rustyline::error::ReadlineError;
@@ -10,7 +13,8 @@ use serde::Deserialize;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use ai_gent_lib::llm_agent::{
-    self, AgentSettings, LlmFsmAgentConfigBuilder, LlmFsmAgent, LlmClient, LlmResponse, StatePrompts,
+    self, AgentSettings, LlmClient, LlmFsmAgent, LlmFsmAgentConfigBuilder, LlmResponse,
+    StatePrompts,
 };
 use tokio::task::JoinHandle;
 
@@ -102,8 +106,8 @@ fn extract_code(input: &str) -> String {
 }
 
 fn run_code_in_docker(code: &str) -> (String, String) {
-    use std::process::Command;
     use std::io::Write;
+    use std::process::Command;
     use tempfile::NamedTempFile;
 
     // Create a temporary file to store the Python code
@@ -143,13 +147,13 @@ impl FsmState for FSMChatState {
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
 
         if !self.config.disable_llm_request.unwrap_or(false) {
-            let summary = if !llm_req_settings.summary.is_empty() {
-                ["<SUMMARY>", &llm_req_settings.summary, "</SUMMARY>"].join("\n")
+            let summary = if let Some(summary) = llm_req_settings.context.get("summary") {
+                ["<SUMMARY>", summary, "</SUMMARY>"].join("\n")
             } else {
                 "".into()
             };
 
-            let context = if let Some(ref context) = llm_req_settings.context {
+            let context = if let Some(context) = llm_req_settings.context.get("context") {
                 ["<CONTEXT>", context, "</CONTEXT>"].join("\n")
             } else {
                 "".into()
@@ -205,15 +209,23 @@ impl FsmState for FSMChatState {
         };
 
         #[derive(Deserialize, Debug)]
-        struct ExcuteCode {
-            run: bool
+        struct ExecuteCode {
+            run: bool,
         }
 
         if self.config.execute_code.unwrap_or(false) {
-            let code = llm_req_settings.context.as_ref().unwrap_or(&"".into()).clone();
+            let code = llm_req_settings
+                .context
+                .get("code")
+                .cloned()
+                .unwrap_or_default();
             if self.config.get_msg.unwrap_or(false) {
-                let llm_output = self.get_attribute("llm_output").await.unwrap_or(String::new());
-                let llm_output = serde_json::from_str(&llm_output).unwrap_or(ExcuteCode{run:false});      
+                let llm_output = self
+                    .get_attribute("llm_output")
+                    .await
+                    .unwrap_or(String::new());
+                let llm_output =
+                    serde_json::from_str(&llm_output).unwrap_or(ExecuteCode { run: false });
                 if llm_output.run {
                     println!("conditionally, run code from the context:\n");
                     let (stdout, stderr) = run_code_in_docker(&code);
@@ -237,9 +249,14 @@ impl FsmState for FSMChatState {
                     Some(next_states.first().unwrap().clone())
                 } else if let Some(fsm_prompt) = self.prompts.fsm.clone() {
                     let available_transitions = next_states.join(", ");
+                    let summary = llm_req_settings
+                        .context
+                        .get("summary")
+                        .cloned()
+                        .unwrap_or_default();
                     let msg = format!(
                         r#"Current State: {}\nAvailable Next State: {}\n Summary of the previous chat:<SUMMARY>{}</SUMMARY> \n\n "#,
-                        self.name, available_transitions, llm_req_settings.summary
+                        self.name, available_transitions, summary
                     );
                     let fsm_prompt = [fsm_prompt, msg].join("\n");
                     let llm_client = GenaiLlmclient {
@@ -299,7 +316,8 @@ use std::collections::HashMap;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fsm_config = LlmFsmAgentConfigBuilder::from_toml(FSM_CONFIG)?.build()?;
 
-    let fsm = LlmFsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default())?.build()?;
+    let fsm =
+        LlmFsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default())?.build()?;
 
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {

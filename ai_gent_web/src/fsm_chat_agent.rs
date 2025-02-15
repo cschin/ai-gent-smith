@@ -69,18 +69,19 @@ impl FsmState for ChatState {
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
         let prompt = self.prompts.chat.clone();
         let system_prompt = self.prompts.system.clone().unwrap_or("".into());
+        let summary = llm_req_setting.context.get("summary").cloned().unwrap_or_default();
         let full_prompt = match prompt {
-            Some(prompt) => match llm_req_setting.context {
+            Some(prompt) => match llm_req_setting.context.get("context") {
                 Some(context) => [
                     &system_prompt,
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
                     "<SUMMARY>",
-                    &llm_req_setting.summary,
+                    &summary,
                     "</SUMMARY>",
                     "\nHere is the current reference context:\n",
                     "<REFERENCES>",
-                    &context,
+                    context,
                     "</REFERENCES>",
                 ]
                 .join("\n"),
@@ -89,7 +90,7 @@ impl FsmState for ChatState {
                     prompt.as_str(),
                     "\nHere is the summary of previous chat:\n",
                     "<SUMMARY>",
-                    &llm_req_setting.summary,
+                    &summary,
                     "</SUMMARY>",
                     "\nHere is the current reference context:\n",
                 ]
@@ -211,10 +212,10 @@ impl ChatAgent<LlmFsmAgent> {
             .cloned()
             .collect::<Vec<String>>()
             .join("/");
-
+        let summary = agent.llm_req_settings.context.get("summary").cloned().unwrap_or_default();
         let msg = format!(
             "Current State: {}\nAvailable Next Steps: {}\n Summary of the previous chat:<summary>{}</summary> \n\n ",
-            current_state_name, available_transitions, agent.llm_req_settings.summary
+            current_state_name, available_transitions, summary
         );
 
         let fsm_prompt = [agent.fsm_prompt.as_str(), msg.as_str()].join("\n");
@@ -291,15 +292,17 @@ impl ChatAgent<LlmFsmAgent> {
                 .await;
         };
 
+        let summary = agent.llm_req_settings.context.entry("summary".into()).or_default();
+
         let summary_prompt = [
             agent.summary_prompt.as_str(),
             "<summary>",
-            agent.llm_req_settings.summary.as_str(),
+            summary,
             "</summary>",
         ]
         .join("\n");
 
-        agent.llm_req_settings.summary = llm_client
+        *summary = llm_client
             .generate(
                 &summary_prompt,
                 &last_message,
