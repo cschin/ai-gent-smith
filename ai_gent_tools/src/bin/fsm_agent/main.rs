@@ -118,8 +118,7 @@ fn run_code_in_docker(code: &str) -> (String, String) {
             "--rm",
             "-v",
             &format!("{}:/tmp/code.py", temp_file_path),
-            "python:3",
-            "python",
+            "python-ext",
             "/tmp/code.py",
         ])
         .output()
