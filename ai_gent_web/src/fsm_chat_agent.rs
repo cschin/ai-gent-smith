@@ -22,7 +22,7 @@ use futures::StreamExt;
 
 
 #[derive(Default)]
-pub struct FsmChatState {
+pub struct ChatState {
     name: String,
     prompts: StatePrompts,
     config: StateConfig,
@@ -30,9 +30,9 @@ pub struct FsmChatState {
     handle: Option<JoinHandle<String>>,
 }
 
-impl LlmFsmStateInit for FsmChatState {
+impl LlmFsmStateInit for ChatState {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
-        FsmChatState {
+        ChatState {
             name: name.to_string(),
             prompts,
             config,
@@ -42,7 +42,7 @@ impl LlmFsmStateInit for FsmChatState {
 }
 
 #[async_trait]
-impl FsmState for FsmChatState {
+impl FsmState for ChatState {
     async fn on_enter(&self) {
         tracing::info!(target: TRON_APP, "Entering state: {}", self.name);
     }
