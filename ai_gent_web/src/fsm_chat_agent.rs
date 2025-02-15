@@ -1,16 +1,14 @@
 use std::collections::HashMap;
 
-use ai_gent_lib::fsm::FSMBuilder;
-use ai_gent_lib::fsm::FSMState;
-use ai_gent_lib::fsm::FSMStateInit;
-use ai_gent_lib::fsm::FSM;
+use ai_gent_lib::fsm::FsmState;
+use ai_gent_lib::fsm::FiniteStateMachine;
 use ai_gent_lib::llm_agent;
 use ai_gent_lib::llm_agent::AgentSettings;
-use ai_gent_lib::llm_agent::FSMAgentConfig;
-use ai_gent_lib::llm_agent::FSMAgentConfigBuilder;
-use ai_gent_lib::llm_agent::LLMAgent;
-use ai_gent_lib::llm_agent::LLMClient;
-use ai_gent_lib::llm_agent::LLMResponse;
+use ai_gent_lib::llm_agent::FsmAgentConfig;
+use ai_gent_lib::llm_agent::FsmAgentConfigBuilder;
+use ai_gent_lib::llm_agent::LlmAgent;
+use ai_gent_lib::llm_agent::LlmClient;
+use ai_gent_lib::llm_agent::LlmResponse;
 use ai_gent_lib::llm_agent::StateConfig;
 use ai_gent_lib::llm_agent::StatePrompts;
 use ai_gent_lib::GenaiLlmclient;
@@ -22,7 +20,7 @@ use tron_app::TRON_APP;
 use futures::StreamExt;
 
 #[derive(Default)]
-pub struct FSMChatState {
+pub struct FsmChatState {
     name: String,
     prompts: StatePrompts,
     config: StateConfig,
@@ -30,10 +28,14 @@ pub struct FSMChatState {
     handle: Option<JoinHandle<String>>,
 }
 
-impl FSMStateInit for FSMChatState {
+pub trait FsmChatStateInit {
+    fn new(name: &str, prompts:StatePrompts, config: StateConfig) -> Self;
+}
+
+impl FsmChatStateInit for FsmChatState {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
 
-        FSMChatState {
+        FsmChatState {
             name: name.to_string(),
             prompts,
             config,
@@ -43,7 +45,7 @@ impl FSMStateInit for FSMChatState {
 }
 
 #[async_trait]
-impl FSMState for FSMChatState {
+impl FsmState for FsmChatState {
     async fn on_enter(&self) {
         tracing::info!(target: TRON_APP, "Entering state: {}", self.name);
     }
@@ -66,7 +68,7 @@ impl FSMState for FSMChatState {
         _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>
     ) -> Option<String> {
-        let llm_req_setting: llm_agent::LLMReqSetting =
+        let llm_req_setting: llm_agent::LlmReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
         let prompt = self.prompts.chat.clone();
         let system_prompt = self
@@ -170,7 +172,7 @@ impl FSMState for FSMChatState {
 
 struct ChatAgent<LLMAgent>(LLMAgent);
 
-impl ChatAgent<LLMAgent> {
+impl ChatAgent<LlmAgent> {
     pub async fn process_message(
         &mut self,
         user_input: &str,
@@ -230,7 +232,7 @@ impl ChatAgent<LLMAgent> {
             )
             .await?;
 
-        let next_fsm_step_response: LLMResponse = serde_json::from_str(&next_state)
+        let next_fsm_step_response: LlmResponse = serde_json::from_str(&next_state)
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM output: {e}, {}", next_state))?;
 
         if let Some(next_state) = &next_fsm_step_response.next_state {

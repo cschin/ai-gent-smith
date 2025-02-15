@@ -12,7 +12,7 @@ mod fsm_chat_agent;
 
 use agent_cards::{LibraryCards, LibraryCardsBuilder};
 use agent_workspace::*;
-use ai_gent_lib::llm_agent::{FSMAgentConfig, FSMAgentConfigBuilder, StatePrompts};
+use ai_gent_lib::llm_agent::{FsmAgentConfig, FsmAgentConfigBuilder, StatePrompts};
 use ammonia::clean_text;
 use askama::Template;
 use asset_cards::{AssetCards, AssetCardsBuilder};
@@ -705,7 +705,7 @@ fn show_basic_agent_setting(
     let model_name = agent_setting.model_name;
     let fsm_agent_config = agent_setting.fsm_agent_config;
 
-    let fsm_config = FSMAgentConfigBuilder::from_toml(&fsm_agent_config)
+    let fsm_config = FsmAgentConfigBuilder::from_toml(&fsm_agent_config)
         .unwrap_or_default()
         .build()
         .unwrap_or_default();
@@ -989,7 +989,7 @@ fn get_basic_fsm_agent_config_toml_string(sys_prompt: String, follow_up: Option<
     }
     .render()
     .unwrap();
-    let c = FSMAgentConfigBuilder::from_toml(&simple_agent_config)
+    let c = FsmAgentConfigBuilder::from_toml(&simple_agent_config)
         .unwrap()
         .build()
         .unwrap();
@@ -1101,7 +1101,7 @@ async fn create_adv_agent(
         None
     };
 
-    if toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
+    if toml::from_str::<FsmAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
         return Html::from(
             r##"
         <div id="update_agent_notification_msg">
@@ -1296,7 +1296,7 @@ async fn update_adv_agent(
         None
     };
 
-    if toml::from_str::<FSMAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
+    if toml::from_str::<FsmAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
         let html = Html::from(
             r##"
         <div id="update_agent_notification_msg">

@@ -1,14 +1,20 @@
 use crate::{
-    fsm::{TransitionResult, FSM},
+    fsm::{FsmState, TransitionResult, FiniteStateMachine},
     llm_service::LLMStreamOut,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
+
+
+pub trait LlmFsmStateInit {
+    fn new(name: &str, prompts:StatePrompts, config: StateConfig) -> Self;
+}
+
 #[derive(Serialize, Deserialize, Debug)]
-pub struct LLMReqSetting {
+pub struct LlmReqSetting {
     pub summary: String,
     pub context: Option<String>,
     pub messages: Vec<(String, String)>,
@@ -36,8 +42,162 @@ pub struct StateConfig {
     pub get_msg: Option<bool>,
 }
 
+
+#[derive(Clone, Default)]
+pub struct DefaultFsmChatState {
+    name: String,
+    attributes: HashMap<String, String>,
+    _prompts: StatePrompts,
+    _config: StateConfig,
+}
+
+impl LlmFsmStateInit for DefaultFsmChatState {
+    fn new(name: &str, _prompts: StatePrompts, _config: StateConfig) -> Self {
+        DefaultFsmChatState {
+            name: name.to_string(),
+            _prompts,
+            _config,
+            ..Default::default()
+        }
+    }
+}
+
+#[async_trait]
+impl FsmState for DefaultFsmChatState {
+    async fn set_attribute(&mut self, k: &str, v: String) {
+        self.attributes.insert(k.to_string(), v);
+    }
+
+    async fn get_attribute(&self, k: &str) -> Option<String> {
+        self.attributes.get(k).cloned()
+    }
+
+    async fn clone_attribute(&self, k: &str) -> Option<String> {
+        self.attributes.get(k).cloned()
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+pub struct FsmBuilder {
+    states: HashMap<String, Box<dyn FsmState>>,
+    transitions: HashMap<String, HashSet<String>>,
+    current_state: Option<String>,
+}
+
+impl Default for FsmBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+
+impl FsmBuilder {
+    pub fn new() -> Self {
+        FsmBuilder {
+            states: HashMap::new(),
+            transitions: HashMap::new(),
+            current_state: None,
+        }
+    }
+
+    pub fn add_state(mut self, name: String, state: Box<dyn FsmState>) -> Self {
+        self.states.insert(name, state);
+        self
+    }
+
+    pub fn add_transition(mut self, from: String, to: String) -> Self {
+        self.transitions.entry(from).or_default().insert(to);
+        self
+    }
+
+    pub fn set_initial_state(mut self, state: String) -> Self {
+        self.current_state = Some(state);
+        self
+    }
+
+    pub fn from_config<S: LlmFsmStateInit + FsmState + 'static>(
+        config: &FsmAgentConfig,
+        mut state_map: HashMap<String, S>,
+    ) -> Result<Self, anyhow::Error> {
+        let mut builder = FsmBuilder {
+            states: HashMap::new(),
+            transitions: HashMap::new(),
+            current_state: Some(config.initial_state.clone()),
+        };
+
+        // Add states
+        for state_name in &config.states {
+            let state_prompt = config
+                .state_prompts
+                .get(state_name)
+                .unwrap_or(&StatePrompts{..Default::default()})
+                .clone();
+            let state_config = config
+                .state_config
+                .clone()
+                .unwrap_or_default()
+                .get(state_name)
+                .unwrap_or(&StateConfig{..Default::default()})
+                .clone();
+            let state = state_map
+                .remove(state_name)
+                .unwrap_or(S::new(state_name, state_prompt, state_config));
+
+            builder.states.insert(state_name.clone(), Box::new(state));
+        }
+
+        // Add transitions
+        for (from, to) in &config.transitions {
+            builder
+                .transitions
+                .entry(from.clone())
+                .or_default()
+                .insert(to.clone());
+        }
+
+        // Validate initial state
+        if !builder.states.contains_key(&config.initial_state) {
+            return Err(anyhow::anyhow!("Initial state not found in states"));
+        }
+
+        Ok(builder)
+    }
+
+    pub fn build(self) -> Result<FiniteStateMachine, anyhow::Error> {
+        if self.states.is_empty() {
+            return Err(anyhow::anyhow!("FSM must have at least one state".to_string()));
+        }
+
+        if self.current_state.is_none() {
+            return Err(anyhow::anyhow!("Initial state must be set".to_string()));
+        }
+
+        // Validate that all states in transitions exist
+        for (from, tos) in &self.transitions {
+            if !self.states.contains_key(from) {
+                return Err(anyhow::anyhow!("Transition from non-existent state: {}", from));
+            }
+            for to in tos {
+                if !self.states.contains_key(to) {
+                    return Err(anyhow::anyhow!("Transition to non-existent state: {}", to));
+                }
+            }
+        }
+
+        Ok(FiniteStateMachine {
+            states: self.states,
+            transitions: self.transitions,
+            current_state: self.current_state,
+        })
+    }
+}
+
+
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
-pub struct FSMAgentConfig {
+pub struct FsmAgentConfig {
     pub states: Vec<String>,
     pub transitions: Vec<(String, String)>,
     pub initial_state: String,
@@ -48,7 +208,7 @@ pub struct FSMAgentConfig {
     pub fsm_prompt: String,
 }
 
-impl FSMAgentConfig {
+impl FsmAgentConfig {
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
         serde_json::from_str(json_str)
     }
@@ -63,7 +223,7 @@ impl FSMAgentConfig {
 }
 
 #[derive(Default)]
-pub struct FSMAgentConfigBuilder {
+pub struct FsmAgentConfigBuilder {
     states: Vec<String>,
     transitions: Vec<(String, String)>,
     initial_state: String,
@@ -74,7 +234,7 @@ pub struct FSMAgentConfigBuilder {
     system_prompt: String,
 }
 
-impl FSMAgentConfigBuilder {
+impl FsmAgentConfigBuilder {
     pub fn new() -> Self {
         Self::default()
     }
@@ -115,7 +275,7 @@ impl FSMAgentConfigBuilder {
     }
 
     pub fn from_json(json_str: &str) -> Result<Self, serde_json::Error> {
-        let config: FSMAgentConfig = serde_json::from_str(json_str)?;
+        let config: FsmAgentConfig = serde_json::from_str(json_str)?;
         Ok(Self {
             states: config.states,
             transitions: config.transitions,
@@ -129,7 +289,7 @@ impl FSMAgentConfigBuilder {
     }
 
     pub fn from_toml(toml_str: &str) -> Result<Self, toml::de::Error> {
-        let config: FSMAgentConfig = toml::from_str(toml_str)?;
+        let config: FsmAgentConfig = toml::from_str(toml_str)?;
         // if the fsm of system prompt is not set for a state, replace it with the global one
         let state_prompts = config
             .state_prompts
@@ -161,12 +321,12 @@ impl FSMAgentConfigBuilder {
         })
     }
 
-    pub fn build(self) -> Result<FSMAgentConfig, anyhow::Error> {
+    pub fn build(self) -> Result<FsmAgentConfig, anyhow::Error> {
         if self.states.is_empty() {
             return Err(anyhow::anyhow!("At least one state is required"));
         }
 
-        Ok(FSMAgentConfig {
+        Ok(FsmAgentConfig {
             states: self.states,
             transitions: self.transitions,
             initial_state: self.initial_state,
@@ -180,7 +340,7 @@ impl FSMAgentConfigBuilder {
 }
 
 #[derive(Deserialize, Serialize, Debug)]
-pub struct LLMResponse {
+pub struct LlmResponse {
     #[serde(default)]
     message: String,
     #[serde(default)]
@@ -190,15 +350,15 @@ pub struct LLMResponse {
     pub next_state: Option<String>,
 }
 
-pub struct LLMAgent {
-    pub fsm: FSM,
-    pub llm_req_settings: LLMReqSetting,
+pub struct LlmAgent {
+    pub fsm: FiniteStateMachine,
+    pub llm_req_settings: LlmReqSetting,
     pub fsm_prompt: String,
     pub summary_prompt: String,
 }
 
 #[async_trait]
-pub trait LLMClient {
+pub trait LlmClient {
     async fn generate(
         &self,
         prompt: &str,
@@ -222,9 +382,9 @@ pub struct AgentSettings {
     pub api_key: String,
 }
 
-impl LLMAgent {
-    pub fn new(fsm: FSM, agent_settings: AgentSettings) -> Self {
-        let llm_req_setting = LLMReqSetting {
+impl LlmAgent {
+    pub fn new(fsm: FiniteStateMachine, agent_settings: AgentSettings) -> Self {
+        let llm_req_setting = LlmReqSetting {
             summary: String::default(),
             messages: Vec::default(),
             temperature: None,
@@ -410,7 +570,7 @@ fn get_fsm_state_communication_handle(
 #[cfg(test)]
 mod tests {
 
-    use crate::fsm::{FSMBuilder, FSMState};
+    use crate::fsm::FsmState;
 
     use super::*;
 
@@ -419,7 +579,7 @@ mod tests {
     pub struct ProcessingState;
 
     #[async_trait]
-    impl FSMState for InitialState {
+    impl FsmState for InitialState {
         async fn on_enter(&self) {
             println!("Entering Initial State");
         }
@@ -447,7 +607,7 @@ mod tests {
     }
 
     #[async_trait]
-    impl FSMState for ProcessingState {
+    impl FsmState for ProcessingState {
         async fn on_enter(&self) {
             println!("Entering Processing State");
         }
@@ -482,7 +642,7 @@ mod tests {
             fsm: Some("".into()),
         };
 
-        let fsm_config = FSMAgentConfigBuilder::new()
+        let fsm_config = FsmAgentConfigBuilder::new()
             .add_state("Initial".to_string())
             .add_state("Processing".to_string())
             .add_transition("Initial".to_string(), "Processing".to_string())
@@ -493,7 +653,7 @@ mod tests {
             .build()
             .unwrap();
 
-        let fsm = FSMBuilder::from_config::<crate::fsm::DefaultFSMChatState>(
+        let fsm = FsmBuilder::from_config::<DefaultFsmChatState>(
             &fsm_config,
             HashMap::default(),
         )
@@ -503,7 +663,7 @@ mod tests {
 
         let fsm_config_str = include_str!("../dev_config/fsm_config.toml");
 
-        let fsm_config = FSMAgentConfigBuilder::from_toml(fsm_config_str)
+        let fsm_config = FsmAgentConfigBuilder::from_toml(fsm_config_str)
             .unwrap()
             .build()
             .unwrap();
@@ -517,12 +677,12 @@ mod tests {
             fsm_initial_state: "Initial".into(),
         };
 
-        let _agent = LLMAgent::new(fsm, agent_settings);
+        let _agent = LlmAgent::new(fsm, agent_settings);
     }
 
     #[tokio::test]
     async fn test_fsm_transitions() {
-        let mut fsm_builder = FSMBuilder::new();
+        let mut fsm_builder = FsmBuilder::new();
         fsm_builder = fsm_builder.add_state("Initial".to_string(), Box::new(InitialState));
         fsm_builder = fsm_builder.add_state("Processing".to_string(), Box::new(ProcessingState));
         fsm_builder = fsm_builder.add_transition("Initial".to_string(), "Processing".to_string());
@@ -537,5 +697,95 @@ mod tests {
 
         let (result, _) = fsm.make_transition_to("NonExistentState".into()).await;
         assert_eq!(result, TransitionResult::NoTransitionAvailable);
+    }
+
+
+    #[derive(Debug, Default)]
+    struct TestState {
+        name: String,
+        attributes: HashMap<String, String>,
+    }
+
+    #[async_trait]
+    impl FsmState for TestState {
+        async fn on_enter(&self) {
+            println!("Entering state: {}", self.name);
+        }
+
+        async fn on_exit(&self) {
+            println!("Exiting state: {}", self.name);
+        }
+
+        async fn on_enter_mut(&mut self) {
+            println!("Entering state (mut): {}", self.name);
+        }
+
+        async fn on_exit_mut(&mut self) {
+            println!("Exiting state (mut): {}", self.name);
+        }
+
+        async fn set_attribute(&mut self, k: &str, v: String) {
+            self.attributes.insert(k.into(), v);
+        }
+
+        async fn clone_attribute(&self, k: &str) -> Option<String> {
+            self.attributes.get(k).cloned()
+        }
+
+        fn name(&self) -> String {
+            self.name.clone()
+        }
+    }
+
+    #[tokio::test]
+    
+    async fn test_finite_state_machine_builder() {
+        let fsm = FsmBuilder::new()
+            .add_state(
+                "State1".to_string(),
+                Box::new(TestState {
+                    name: "State1".to_string(),
+                    attributes: HashMap::default(),
+                }),
+            )
+            .add_state(
+                "State2".to_string(),
+                Box::new(TestState {
+                    name: "State2".to_string(),
+                    attributes: HashMap::default(),
+                }),
+            )
+            .add_state(
+                "State3".to_string(),
+                Box::new(TestState {
+                    name: "State3".to_string(),
+                    attributes: HashMap::default(),
+                }),
+            )
+            .add_transition("State1".to_string(), "State2".to_string())
+            .add_transition("State2".to_string(), "State3".to_string())
+            .add_transition("State3".to_string(), "State1".to_string())
+            .set_initial_state("State1".to_string())
+            .build();
+
+        assert!(fsm.is_ok(), "FSM builder should succeed");
+        let mut fsm = fsm.unwrap();
+
+        assert_eq!(fsm.current_state, Some("State1".to_string()));
+
+        // Test valid transition
+        let (result, new_state) = fsm.make_transition_to("State2".to_string()).await;
+        assert_eq!(result, TransitionResult::Success);
+        assert_eq!(new_state, Some("State2".to_string()));
+
+        // Test invalid transition
+        let (result, new_state) = fsm.make_transition_to("State1".to_string()).await;
+        assert_eq!(result, TransitionResult::InvalidTransition);
+        assert_eq!(new_state, Some("State2".to_string()));
+
+        // Test valid transition
+        let (result, new_state) = fsm.make_transition_to("State3".to_string()).await;
+        assert_eq!(result, TransitionResult::Success);
+        assert_eq!(new_state, Some("State3".to_string()));
     }
 }

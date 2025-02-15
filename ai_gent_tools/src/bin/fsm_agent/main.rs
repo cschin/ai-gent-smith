@@ -1,16 +1,16 @@
-use ai_gent_lib::{llm_agent::StateConfig, GenaiLlmclient};
+use ai_gent_lib::{llm_agent::{FsmBuilder, LlmFsmStateInit, StateConfig}, GenaiLlmclient};
 use async_trait::async_trait;
 use futures::StreamExt;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
-use ai_gent_lib::fsm::{FSMBuilder, FSMState, FSMStateInit};
+use ai_gent_lib::fsm::FsmState;
 use anyhow::Result;
 use serde::Deserialize;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use ai_gent_lib::llm_agent::{
-    self, AgentSettings, FSMAgentConfigBuilder, LLMAgent, LLMClient, LLMResponse, StatePrompts,
+    self, AgentSettings, FsmAgentConfigBuilder, LlmAgent, LlmClient, LlmResponse, StatePrompts,
 };
 use tokio::task::JoinHandle;
 
@@ -24,7 +24,7 @@ pub struct FSMChatState {
     handle: Option<JoinHandle<String>>,
 }
 
-impl FSMStateInit for FSMChatState {
+impl LlmFsmStateInit for FSMChatState {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
         let mut attributes = HashMap::<String, String>::default();
         if let Some(get_msg) = config.get_msg {
@@ -132,14 +132,14 @@ fn run_code_in_docker(code: &str) -> (String, String) {
 }
 
 #[async_trait]
-impl FSMState for FSMChatState {
+impl FsmState for FSMChatState {
     async fn start_service(
         &mut self,
         tx: Sender<(String, String, String)>,
         _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>,
     ) -> Option<String> {
-        let llm_req_settings: llm_agent::LLMReqSetting =
+        let llm_req_settings: llm_agent::LlmReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
 
         if !self.config.disable_llm_request.unwrap_or(false) {
@@ -255,7 +255,7 @@ impl FSMState for FSMChatState {
                         .await
                         .unwrap();
 
-                    let next_fsm_state_response: LLMResponse = serde_json::from_str(&next_state)
+                    let next_fsm_state_response: LlmResponse = serde_json::from_str(&next_state)
                         .map_err(|e| {
                             anyhow::anyhow!("Failed to parse LLM output: {e}, {}", next_state)
                         })
@@ -297,9 +297,9 @@ use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let fsm_config = FSMAgentConfigBuilder::from_toml(FSM_CONFIG)?.build()?;
+    let fsm_config = FsmAgentConfigBuilder::from_toml(FSM_CONFIG)?.build()?;
 
-    let fsm = FSMBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default())?.build()?;
+    let fsm = FsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default())?.build()?;
 
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {
@@ -315,7 +315,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_key,
         fsm_initial_state: fsm_config.initial_state,
     };
-    let mut agent = LLMAgent::new(fsm, llm_req_setting);
+    let mut agent = LlmAgent::new(fsm, llm_req_setting);
 
     // tracing::info!("agent config: {}", fsm_config.to_json().unwrap());
 
