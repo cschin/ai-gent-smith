@@ -629,7 +629,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let fsm_config = LlmFsmAgentConfigBuilder::from_toml(&fsm_agent_config).unwrap().build().unwrap();
 
-        let fsm = LlmFsmBuilder::from_config::<FsmChatState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
+        let fsm = LlmFsmBuilder::from_config::<ChatState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
 
         // fsm.states.iter_mut().for_each(|(_, v)| v.as_mut()) ;
 
