@@ -245,7 +245,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(AGENT_CHAT_TEXTAREA.into(), vec![])
             .set_attr(
                 "class",
-                "min-h-[435px] max-h-[435px] overflow-auto  flex-1 p-2 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400",
+                "min-h-[435px] max-h-[435px] overflow-auto  flex-1 p-2 border mb-1 border-gray-500 rounded-lg p-1 h-min bg-gray-400",
             )
             .build();
 
@@ -253,7 +253,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(AGENT_QUERY_TEXT_INPUT.into(), "".into())
             .set_attr(
                 "class",
-                "flex-1 w-5/6 p-1 border-2 mb-1 border-gray-600 rounded-lg bg-gray-400 text-black",
+                "flex-1 w-5/6 p-1 border mb-1 border-gray-500 rounded-lg bg-gray-400 text-black",
             )
             .set_attr("style", "resize:none")
             .set_attr("hx-trigger", "change, server_event")
@@ -265,7 +265,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
             .init(AGENT_STREAM_OUTPUT.into(), Vec::new())
             .set_attr(
                 "class",
-                "min-h-[55px] flex-1 border-2 mb-1 border-gray-600 rounded-lg p-1 h-min bg-gray-400 text-black",
+                "min-h-[55px] flex-1 border mb-1 border-gray-500 rounded-lg p-1 h-min bg-gray-400 text-black",
             )
             .set_attr("style", r#"resize:none"#)
             .build();
@@ -290,7 +290,7 @@ impl<'a: 'static> AgentWorkSpaceBuilder<'a> {
 
         let asset_search_output = TnDiv::builder()
         .init(ASSET_SEARCH_OUTPUT.into(), "Asset Search Results\n".to_string())
-        .set_attr("class", "flex flex-1 border-2 overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 rounded-lg p-1 min-h-[520px] max-h-[520px] min-w-[140px] max-w-[280px]")
+        .set_attr("class", "flex flex-1 border overflow-y-scroll scrollbar-thin text-wrap mb-1 border-gray-600 bg-gray-800 rounded-lg p-1 min-h-[520px] max-h-[520px] min-w-[140px] max-w-[280px]")
         .build();
 
         let top_k_slider = TnRangeSlider::builder()
@@ -965,35 +965,38 @@ fn get_search_context_plain_text(top_hits: &[TwoDPoint]) -> String {
 }
 
 fn get_search_context_html(top_hits: &[TwoDPoint]) -> String {
-    let md_text = top_hits
+    let mut comrak_options = Options::default();
+    comrak_options.render.width = 20;
+    let comrak_plugins = get_comrak_plugins();
+    let references = top_hits
         .iter()
         .map(|p| {
             let c = &p.chunk;
-            let context = c
+            let chunk = c
                 .text
                 .split("\n")
                 .map(|s| format!("> {}", s))
                 .collect::<Vec<String>>()
                 .join("\n");
 
-            format!(
+            let reference = format!(
                 "### {}\n Similarity: {:0.5} \n\n CONTEXT:\n{}",
                 c.title,
                 1.0 - p.d.to_f64(),
-                context
-            )
+                chunk
+            );
+            [
+                r#"<article class="flex flex-1 flex-col markdown-body bg-gray-700 text-gray-100 min-w-[140px] max-w-[245px] rounded-md m-1 p-1">"#.to_string(),
+                markdown_to_html_with_plugins(&reference, &comrak_options, comrak_plugins),
+                r#"</article>"#.to_string(),
+            ]
+            .join("\n")
         })
         .collect::<Vec<String>>()
         .join("\n\n");
-    let mut comrak_options = Options::default();
-    comrak_options.render.width = 20;
-    let comrak_plugins = get_comrak_plugins();
-    [
-        r#"<article class="flex flex-1 flex-col markdown-body bg-gray-800 text-gray-100 min-w-[140px] max-w-[280px]">"#.to_string(),
-        markdown_to_html_with_plugins(&md_text, &comrak_options, comrak_plugins),
-        r#"<article>"#.to_string(),
-    ]
-    .join("\n")
+    [r#"<div class="flex flex-1 flex-col">"#, &references, "</div>"].join("")
+   
+
 }
 
 async fn extend_query_with_llm(query: &str) -> String {
