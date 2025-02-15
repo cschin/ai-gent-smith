@@ -71,7 +71,6 @@ async fn get_llm_req_process_handle(
             ))
             .await;
         let mut llm_output = String::default();
-        // println!("tracing: llm_request");
         let mut llm_stream = llm_client
             .generate_stream(&full_prompt, &messages, temperature)
             .await;
@@ -220,6 +219,7 @@ impl FsmState for FSMChatState {
                 .cloned()
                 .unwrap_or_default();
             if self.config.get_msg.unwrap_or(false) {
+                // execute code depending on the LLM's response 
                 let llm_output = self
                     .get_attribute("llm_output")
                     .await
@@ -227,18 +227,58 @@ impl FsmState for FSMChatState {
                 let llm_output =
                     serde_json::from_str(&llm_output).unwrap_or(ExecuteCode { run: false });
                 if llm_output.run {
-                    println!("conditionally, run code from the context:\n");
+                    let _ = tx
+                        .send((
+                            self.name.clone(),
+                            "output".into(),
+                            "\nconditionally, run code from the context:\n".into(),
+                        ))
+                        .await;
                     let (stdout, stderr) = run_code_in_docker(&code);
-                    println!("stdout:\n {}\n", stdout);
-                    println!("stderr:\n {}\n", stderr);
+                    let _ = tx
+                        .send((
+                            self.name.clone(),
+                            "output".into(),
+                            format!("stderr: {}\n", stdout),
+                        ))
+                        .await;
+
+                    let _ = tx
+                        .send((
+                            self.name.clone(),
+                            "output".into(),
+                            format!("stderr: {}\n", stderr),
+                        ))
+                        .await;
                 } else {
-                    println!("code execution rejected");
+                    let _ = tx
+                        .send((
+                            self.name.clone(),
+                            "output".into(),
+                            "code execution rejected\n".into(),
+                        ))
+                        .await;
                 }
             } else {
-                println!("run code from the context\n");
+                // execute code without confirmation
                 let (stdout, stderr) = run_code_in_docker(&code);
-                println!("stdout:\n {}\n", stdout);
-                println!("stderr:\n {}\n", stderr);
+                let _ = tx
+                    .send((
+                        self.name.clone(),
+                        "output".into(),
+                        format!("stderr: {}\n", stdout),
+                    ))
+                    .await;
+
+                let _ = tx
+                    .send((
+                        self.name.clone(),
+                        "output".into(),
+                        format!("stderr: {}\n", stderr),
+                    ))
+                    .await;
+                //println!("stdout:\n {}\n", stdout);
+                //println!("stderr:\n {}\n", stderr);
             }
         }
 
@@ -353,7 +393,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let _ = rl.add_history_entry(user_input.as_str());
                 let (tx, mut rx) = mpsc::channel::<(String, String, String)>(1);
-
                 let t = tokio::spawn(async move {
                     let mut llm_output = Vec::<String>::new();
                     while let Some(message) = rx.recv().await {
@@ -364,9 +403,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             (s, "token") if s != "MakeSummary" => {
                                 print!("{}", message.2);
                             }
+                            (_, "output") => {
+                                println!("{}", message.2);
+                                llm_output.push(message.2);
+                            }
                             (_, "llm_output") => {
                                 llm_output.push(message.2);
-                                println!(); // clean rustline's buffer, or we miss the final line of the output
                             }
                             _ => {}
                         }
@@ -379,7 +421,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("LLM error, please retry your question. {:?}", err)
                     }
                 }
-
+                println!(); // clear rustyline's buffer
                 let _llm_output = tokio::join!(t).0.unwrap();
                 //println!("\nout: {}", llm_output);              // if let Some(current_state) = agent.fsm.current_state() {
                 //     tracing::info!("Current state: {}", current_state);
