@@ -4,6 +4,7 @@ use crate::{
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
@@ -31,7 +32,7 @@ pub trait LlmFsmStateInit {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LlmReqSetting {
-    pub context: HashMap<String, String>,
+    pub memory: HashMap<String, Value>,
     pub messages: Vec<(String, String)>,
     pub temperature: Option<f32>,
     pub model: String,
@@ -392,7 +393,7 @@ impl LlmFsmAgent {
         let llm_req_setting = LlmReqSetting {
             messages: Vec::default(),
             temperature: None,
-            context: HashMap::default(),
+            memory: HashMap::default(),
             model: agent_settings.model,
             api_key: agent_settings.api_key,
             fsm_initial_state: agent_settings.fsm_initial_state,
@@ -408,7 +409,7 @@ impl LlmFsmAgent {
 
     pub fn set_context(&mut self, key: &str, value: &str) {
         self.llm_req_settings
-            .context
+            .memory
             .insert(key.into(), value.into());
     }
 
@@ -447,7 +448,7 @@ impl LlmFsmAgent {
                     continue
                 }
                 "clear_context" => {
-                    self.llm_req_settings.context.clear();
+                    self.llm_req_settings.memory.clear();
                     continue
                 }
                 "terminate" => break,
@@ -498,16 +499,16 @@ impl LlmFsmAgent {
                     .start_service(fsm_tx, None, Some(next_states))
                     .await
                 {
-                    let (llm_output, new_context) = tokio::join!(handle).0.unwrap();
-                    self.update_message_and_context(llm_output, new_context);
+                    let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
+                    self.update_message_and_memory(llm_output, new_memory);
                     let _ = self.transition_state(&next_state_name).await;
                     let next_state = self.fsm.states.get(&next_state_name).unwrap();
                     if next_state.get_attribute("wait_for_msg").await.is_some() {
                         break;
                     }
                 } else {
-                    let (llm_output, new_context) = tokio::join!(handle).0.unwrap();
-                    self.update_message_and_context(llm_output, new_context);
+                    let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
+                    self.update_message_and_memory(llm_output, new_memory);
                     break;
                 }
             }
@@ -519,16 +520,16 @@ impl LlmFsmAgent {
         Ok(())
     }
 
-    fn update_message_and_context(
+    fn update_message_and_memory(
         &mut self,
         llm_output: Option<String>,
-        context: HashMap<String, String>,
+        memory: HashMap<String, Value>,
     ) {
         self.llm_req_settings
             .messages
             .push(("bot".into(), llm_output.unwrap_or("".into())));
 
-        self.llm_req_settings.context.extend(context);
+        self.llm_req_settings.memory.extend(memory);
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
@@ -554,23 +555,24 @@ impl LlmFsmAgent {
 fn get_fsm_state_communication_handle(
     tx: Sender<(String, String, String)>,
     mut fsm_rx: Receiver<(String, String, String)>,
-) -> tokio::task::JoinHandle<(Option<String>, HashMap<String, String>)> {
+) -> tokio::task::JoinHandle<(Option<String>, HashMap<String, Value>)> {
     tokio::spawn(async move {
         let mut llm_output = None;
-        let mut context = HashMap::<String, String>::default();
+        let mut memory = HashMap::<String, Value>::default();
         while let Some((a, t, r)) = fsm_rx.recv().await {
             match t.as_str() {
                 "llm_output" => {
                     llm_output = Some(r.clone());
                 }
                 "code" | "summary" | "context" => {
-                    context.insert(t.clone(), r.clone());
+                    let value: Value = serde_json::from_str(&r).unwrap(); 
+                    memory.insert(t.clone(), value);
                 }
                 _ => {}
             }
             let _ = tx.send((a, t, r)).await;
         }
-        (llm_output, context)
+        (llm_output, memory)
     })
 }
 

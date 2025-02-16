@@ -151,14 +151,18 @@ impl FsmState for FSMChatState {
             .await;
 
         if !self.config.disable_llm_request.unwrap_or(false) {
-            let summary = if let Some(summary) = llm_req_settings.context.get("summary") {
-                ["<SUMMARY>", summary, "</SUMMARY>"].join("\n")
+            let summary = if let Some(summary) = llm_req_settings.memory.get("summary") {
+                let summary =
+                    serde_json::from_value::<String>(summary.clone()).unwrap_or("".into());
+                ["<SUMMARY>", &summary, "</SUMMARY>"].join("\n")
             } else {
                 "".into()
             };
 
-            let context = if let Some(context) = llm_req_settings.context.get("context") {
-                ["<CONTEXT>", context, "</CONTEXT>"].join("\n")
+            let context = if let Some(context) = llm_req_settings.memory.get("context") {
+                let context =
+                    serde_json::from_value::<String>(context.clone()).unwrap_or("".into());
+                ["<CONTEXT>", &context, "</CONTEXT>"].join("\n")
             } else {
                 "".into()
             };
@@ -202,11 +206,15 @@ impl FsmState for FSMChatState {
             };
 
             if self.config.save_to_summary.unwrap_or(false) {
-                let _ = tx.send((self.name.clone(), "summary".into(), llm_output.clone())).await;
+                let _ = tx
+                    .send((self.name.clone(), "summary".into(), llm_output.clone()))
+                    .await;
             }
 
             if self.config.save_to_context.unwrap_or(false) {
-                let _ = tx.send((self.name.clone(), "context".into(), llm_output.clone())).await;
+                let _ = tx
+                    .send((self.name.clone(), "context".into(), llm_output.clone()))
+                    .await;
             }
 
             if self.config.extract_code.unwrap_or(false) {
@@ -222,10 +230,11 @@ impl FsmState for FSMChatState {
 
         if self.config.execute_code.unwrap_or(false) {
             let code = llm_req_settings
-                .context
+                .memory
                 .get("code")
                 .cloned()
                 .unwrap_or_default();
+            let code = serde_json::from_value::<String>(code).unwrap_or("".into());
             if self.config.wait_for_msg.unwrap_or(false) {
                 // execute code depending on the LLM's response
                 let llm_output = self
@@ -298,7 +307,7 @@ impl FsmState for FSMChatState {
                 } else if let Some(fsm_prompt) = self.prompts.fsm.clone() {
                     let available_transitions = next_states.join(", ");
                     let summary = llm_req_settings
-                        .context
+                        .memory
                         .get("summary")
                         .cloned()
                         .unwrap_or_default();
@@ -314,26 +323,21 @@ impl FsmState for FSMChatState {
                     let last_message = if llm_req_settings.messages.is_empty() {
                         ("usre".into(), "".into())
                     } else {
-                        llm_req_settings.messages.last().unwrap().clone() 
+                        llm_req_settings.messages.last().unwrap().clone()
                     };
                     let next_state = llm_client
-                        .generate(
-                            &fsm_prompt,
-                            &[last_message],
-                            llm_req_settings.temperature,
-                        )
+                        .generate(&fsm_prompt, &[last_message], llm_req_settings.temperature)
                         .await
                         .unwrap();
 
-                    let next_fsm_state_response  = serde_json::from_str::<LlmResponse>(&next_state);
+                    let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state);
                     match next_fsm_state_response {
                         Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
                         Err(e) => {
-                            eprintln!("fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}", e, next_state);  
+                            eprintln!("fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}", e, next_state);
                             None
                         }
-
-                    } 
+                    }
                 } else {
                     None
                 }
@@ -401,8 +405,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String, String)>(8);
     let (send_msg, rcv_msg) = mpsc::channel::<(String, String)>(8);
     let agent_handler = tokio::spawn(async move {
-        agent.fsm_message_service(rcv_msg, fsm_tx.clone(), None).await
-    }); 
+        agent
+            .fsm_message_service(rcv_msg, fsm_tx.clone(), None)
+            .await
+    });
 
     loop {
         let readline = rl.readline("\n>> ");
@@ -419,7 +425,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = send_msg.send(("message".into(), user_input)).await;
 
                 let mut llm_output = Vec::<String>::new();
-                
+
                 while let Some(message) = fsm_rx.recv().await {
                     match (message.0.as_str(), message.1.as_str()) {
                         (_, "state") => {
@@ -437,7 +443,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         (_, "message_processed") => {
                             println!(); // clear rustyline's buffer
-                            break
+                            break;
                         }
                         _ => {}
                     }

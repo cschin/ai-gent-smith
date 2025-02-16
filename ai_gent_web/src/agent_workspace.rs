@@ -1,13 +1,13 @@
-use ai_gent_lib::llm_agent::LlmFsmBuilder;
-use ai_gent_lib::fsm::FsmState;
-use ai_gent_lib::llm_agent::LlmFsmStateInit;
 use ai_gent_lib::fsm::FiniteStateMachine;
+use ai_gent_lib::fsm::FsmState;
 use ai_gent_lib::llm_agent;
 use ai_gent_lib::llm_agent::AgentSettings;
+use ai_gent_lib::llm_agent::LlmClient;
+use ai_gent_lib::llm_agent::LlmFsmAgent;
 use ai_gent_lib::llm_agent::LlmFsmAgentConfig;
 use ai_gent_lib::llm_agent::LlmFsmAgentConfigBuilder;
-use ai_gent_lib::llm_agent::LlmFsmAgent;
-use ai_gent_lib::llm_agent::LlmClient;
+use ai_gent_lib::llm_agent::LlmFsmBuilder;
+use ai_gent_lib::llm_agent::LlmFsmStateInit;
 use ai_gent_lib::llm_agent::LlmResponse;
 use ai_gent_lib::llm_agent::StateConfig;
 use ai_gent_lib::llm_agent::StatePrompts;
@@ -41,11 +41,11 @@ use tron_app::tron_components::div::update_and_send_div_with_context;
 use tron_app::tron_components::text::append_textarea_value;
 use tron_app::tron_components::text::clean_textarea_with_context;
 // use tron_app::tron_components::text::update_and_send_textarea_with_context;
+use crate::fsm_chat_agent::*;
 use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 use tron_app::HtmlAttributes;
 use tron_app::TRON_APP;
-use crate::fsm_chat_agent::*;
 
 use super::DB_POOL;
 use crate::embedding_service::vector_query_and_sort_points;
@@ -689,9 +689,9 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 let fsm_state = agent.base.fsm.get_current_state_name();
                 agent.base.set_current_state(fsm_state, true).await.expect("set current state fail");
             };
-            let e = agent.base.llm_req_settings.context.entry("summary".into()).or_default();
-
-            *e = get_chat_summary(chat_id).await.unwrap_or_default();
+            let e = agent.base.llm_req_settings.memory.entry("summary".into()).or_default();
+            let summary = get_chat_summary(chat_id).await.unwrap_or_default(); 
+            *e = serde_json::from_str(&summary).unwrap_or_default();
             // we may want to load a couple of last message from the database for the agent providing some memory beyond the summary
         }
 
@@ -721,8 +721,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             let query_context = get_search_context_plain_text(&search_asset_results);
 
             {
-                let context = agent.base.llm_req_settings.context.entry("context".into()).or_default();
-                *context = query_context; 
+                let context = agent.base.llm_req_settings.memory.entry("context".into()).or_default();
+                *context = serde_json::from_str(&query_context).unwrap_or_default(); 
             }
 
             let query_context_html = get_search_context_html(&search_asset_results);
@@ -749,7 +749,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 Ok(res) => {
                     let current_state = agent.base.get_current_state().await;
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text", current_state).await;
-                    let summary = agent.base.llm_req_settings.context.get("summary").cloned().unwrap_or_default(); 
+                    let summary = agent.base.llm_req_settings.memory.get("summary").cloned().unwrap_or_default();
+                    let summary = serde_json::from_value::<String>(summary.clone()).unwrap_or("".into());
                     let _ = update_chat_summary(chat_id, &summary).await;
                 },
                 Err(err) => {
