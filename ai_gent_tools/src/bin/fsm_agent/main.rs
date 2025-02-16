@@ -150,7 +150,7 @@ impl FsmState for FSMChatState {
             .send((state_name.clone(), "state".into(), state_name.clone()))
             .await;
 
-        if !self.config.disable_llm_request.unwrap_or(false) {
+        let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
             let summary = if let Some(summary) = llm_req_settings.memory.get("summary") {
                 let summary = summary.last().cloned().unwrap_or_default();
                 let summary =
@@ -223,6 +223,9 @@ impl FsmState for FSMChatState {
                 let code = extract_code(&llm_output);
                 let _ = tx.send((self.name.clone(), "code".into(), code)).await;
             }
+            llm_output
+        } else {
+            "".into()
         };
 
         #[derive(Deserialize, Debug)]
@@ -331,29 +334,52 @@ impl FsmState for FSMChatState {
                         .get("summary")
                         .cloned()
                         .unwrap_or_default();
-                    let summary = summary.last().cloned().unwrap_or_default();
+                    let summary = summary.last().cloned().unwrap_or_default().to_string();
+                    let last_messages = llm_req_settings
+                        .messages
+                        .last()
+                        .cloned()
+                        .unwrap_or(("".into(), "".into()));
+
                     let msg = format!(
-                        r#"\nSummary of the previous chat:<SUMMARY>{}</SUMMARY> \n\n Current State: {}\nAvailable Next States: {}\n  "#,
-                        summary, self.name, available_transitions
+                        r#"
+Summary of the previous chat: 
+
+{}
+
+Current State: {}
+
+Available Next States: {}
+
+The user input: 
+
+{}
+
+The last response: 
+
+{}"#,
+                        summary, self.name, available_transitions, last_messages.1, llm_output
                     );
                     let fsm_prompt = [fsm_prompt, msg].join("\n");
                     let llm_client = GenaiLlmclient {
                         model: llm_req_settings.model.clone(),
                         api_key: llm_req_settings.api_key.clone(),
                     };
-                    let last_message = if llm_req_settings.messages.is_empty() {
-                        ("usre".into(), "".into())
-                    } else {
-                        llm_req_settings.messages.last().unwrap().clone()
-                    };
+                    // println!("for debug: \n<FSM> {} </FSM>\n", fsm_prompt);
                     let next_state = llm_client
-                        .generate(&fsm_prompt, &[last_message], llm_req_settings.temperature)
+                        .generate(
+                            &fsm_prompt,
+                            &[("user".into(), "determine the next state".into())],
+                            llm_req_settings.temperature,
+                        )
                         .await
                         .unwrap();
 
                     let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state);
+                    // println!("res: {:?}", next_fsm_state_response);
                     match next_fsm_state_response {
-                        Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
+                        Ok(next_fsm_state_response) => {
+                            next_fsm_state_response.next_state},
                         Err(e) => {
                             eprintln!("fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}", e, next_state);
                             None
@@ -420,7 +446,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //write_agent_config_to_file(&fsm_config);
 
-    println!("Welcome to the LLM Agent CLI. Type 'exit' to quit.");
+    println!("Welcome to the Ai-gent Smith. Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
 
     let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String, String)>(8);

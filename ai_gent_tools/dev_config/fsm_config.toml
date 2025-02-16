@@ -88,6 +88,10 @@ transitions = [
         "GenerateCode",
         "CodeExecution",
     ],
+    [
+        "GenerateCode",
+        "Finish",
+    ],
     [ "CodeExecution", "Finish"],
     [
         "MakeSummary",
@@ -230,6 +234,7 @@ MakeSummary -> Finish
 ShowSummary -> Finish
 ShowContext -> Finish
 GenerateCode -> CodeExecution
+GenerateCode -> Finish
 
 CodeExecution -> Finish 
 
@@ -308,8 +313,19 @@ print(f"The value of pi is: {pi_value}")
 Do you want to execute it?
 """
 
-CodeExecution.system = """Check if the use want to execute the generate, output the decision in json format as
-{"run": true} or {"run": false}, use the exact strings """
+GenerateCode.fsm = """
+If any code is generated in the last response, output the raw json string 
+{"next_state": "CodeExecution"}
+
+if not, just output the raw json string 
+{"next_state": "Finish"}
+"""
+
+CodeExecution.system = """
+Check if the use want to execute the generate, 
+output the decision in json format as
+{"run": true} or {"run": false}, 
+use the exact strings """
 
 [state_config]
 # don't make chat request but making the fsm transition request

@@ -472,7 +472,7 @@ impl LlmFsmAgent {
                     .set_initial_state(self.llm_req_settings.fsm_initial_state.clone(), true)
                     .await;
             };
-
+            let tx2 = tx.clone();
             loop {
                 let current_state_name = self
                     .fsm
@@ -481,11 +481,10 @@ impl LlmFsmAgent {
 
                 // println!("trace: current_state: {}", current_state_name);
 
-                let next_states = if let Some(next_state) = self.fsm.available_transitions() {
-                    next_state.iter().cloned().collect::<Vec<_>>()
-                } else {
-                    break;
-                };
+                let next_states = self
+                    .fsm
+                    .available_transitions()
+                    .map(|next_state| next_state.iter().cloned().collect::<Vec<_>>());
 
                 // println!("trace: available_transitions: {:?}", next_states);
 
@@ -500,20 +499,30 @@ impl LlmFsmAgent {
                 let tx = tx.clone();
                 let handle = get_fsm_state_communication_handle(tx, fsm_rx);
 
-                if let Some(next_state_name) = current_state
-                    .start_service(fsm_tx, None, Some(next_states))
-                    .await
+                if let Some(next_state_name) =
+                    current_state.start_service(fsm_tx, None, next_states).await
                 {
                     let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
                     self.update_message_and_memory(llm_output, new_memory);
-                    let _ = self.transition_state(&next_state_name).await;
-                    let next_state = self.fsm.states.get(&next_state_name).unwrap();
-                    // if the next state has an attribute `wait_for_msa` set, break the inner loop to get next
-                    // message
-                    if let Some(wait_for_msg) = next_state.get_attribute("wait_for_msg").await {
-                        if wait_for_msg == "true" {
-                            break;
+                    if self.transition_state(&next_state_name).await.is_ok() {
+                        let next_state = self.fsm.states.get(&next_state_name).unwrap();
+                        // if the next state has an attribute `wait_for_msg` set, break the inner loop to get next
+                        // message
+                        if let Some(wait_for_msg) = next_state.get_attribute("wait_for_msg").await {
+                            if wait_for_msg == "true" {
+                                break;
+                            }
                         }
+                    } else {
+                        let _ = tx2
+                            .send((
+                                "".into(),
+                                "error".into(),
+                                format!("next state {} not available", next_state_name),
+                            ))
+                            .await;
+
+                        break;
                     }
                 } else {
                     let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
@@ -521,7 +530,6 @@ impl LlmFsmAgent {
                     break;
                 }
             }
-            let tx = tx.clone();
             let _ = tx
                 .send(("".into(), "message_processed".into(), "".into()))
                 .await;
