@@ -1,7 +1,7 @@
 FROM ubuntu:latest AS build
 RUN apt-get update && apt-get install -y locales curl && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 RUN locale-gen "en_US.UTF-8"
-ENV LANG en_US.utf8
+ENV LANG=en_US.utf8
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get install -y build-essential git zlib1g-dev curl openssl pkg-config libssl-dev postgresql
 RUN rm -rf /var/lib/apt/lists/*
@@ -18,7 +18,7 @@ RUN bash /opt/bin/setup_db.sh && cd /opt/ai-gent-smith/ai_gent_web && . $HOME/.c
 FROM ubuntu:latest
 RUN apt-get update && apt-get install -y locales curl && localedef -i en_US -c -f UTF-8 -A /usr/share/locale/locale.alias en_US.UTF-8
 RUN locale-gen "en_US.UTF-8"
-ENV LANG en_US.utf8
+ENV LANG=en_US.utf8
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get install -y ca-certificates postgresql
 RUN /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y && apt-get install postgresql-16-pgvector
@@ -34,4 +34,4 @@ ENV PGUSER=db_user
 ENV PGPASSWORD=dslakdasd
 COPY run.sh /opt/bin/run.sh
 COPY --from=build /opt/ai-gent-smith/target/release/ai_gent_web /opt/bin/ai_gent_web
-CMD bash /opt/bin/run.sh
+CMD ["bash", "/opt/bin/run.sh"]
