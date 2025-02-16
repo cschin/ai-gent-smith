@@ -503,8 +503,12 @@ impl LlmFsmAgent {
                     self.update_message_and_memory(llm_output, new_memory);
                     let _ = self.transition_state(&next_state_name).await;
                     let next_state = self.fsm.states.get(&next_state_name).unwrap();
-                    if next_state.get_attribute("wait_for_msg").await.is_some() {
-                        break;
+                    // if the next state has an attribute `wait_for_msa` set, break the inner loop to get next
+                    // message 
+                    if let Some(wait_for_msg)= next_state.get_attribute("wait_for_msg").await {
+                        if wait_for_msg == "true" {
+                            break;
+                        }
                     }
                 } else {
                     let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
@@ -565,7 +569,7 @@ fn get_fsm_state_communication_handle(
                     llm_output = Some(r.clone());
                 }
                 "code" | "summary" | "context" => {
-                    let value: Value = serde_json::from_str(&r).unwrap(); 
+                    let value: Value = Value::String(r.clone()); 
                     memory.insert(t.clone(), value);
                 }
                 _ => {}
