@@ -8,6 +8,12 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
+#[derive(Serialize, Deserialize, Default, Debug)]
+pub struct ExecutionOutput {
+    pub stdout: String,
+    pub stderr: String,
+}
+
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct StatePrompts {
     pub system: Option<String>,
@@ -23,6 +29,7 @@ pub struct StateConfig {
     pub ignore_llm_output: Option<bool>,
     pub save_to_summary: Option<bool>,
     pub save_to_context: Option<bool>,
+    pub save_execution_output: Option<bool>,
     pub wait_for_msg: Option<bool>,
 }
 
@@ -32,7 +39,7 @@ pub trait LlmFsmStateInit {
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LlmReqSetting {
-    pub memory: HashMap<String, Value>,
+    pub memory: HashMap<String, Vec<Value>>,
     pub messages: Vec<(String, String)>,
     pub temperature: Option<f32>,
     pub model: String,
@@ -407,10 +414,9 @@ impl LlmFsmAgent {
         }
     }
 
-    pub fn set_context(&mut self, key: &str, value: &str) {
-        self.llm_req_settings
-            .memory
-            .insert(key.into(), value.into());
+    pub fn append_context(&mut self, key: &str, value: &str) {
+        let e = self.llm_req_settings.memory.entry(key.into()).or_default();
+        e.push(value.into());
     }
 
     pub async fn set_current_state(
@@ -435,21 +441,20 @@ impl LlmFsmAgent {
         tx: Sender<(String, String, String)>,
         temperature: Option<f32>,
     ) -> Result<(), anyhow::Error> {
-
         self.llm_req_settings.temperature = temperature;
 
         while let Some((msg_type, msg)) = user_input.recv().await {
             match msg_type.as_str() {
                 "message" => {
                     self.llm_req_settings.messages.push(("user".into(), msg));
-                },
+                }
                 "clear_message" => {
                     self.llm_req_settings.messages.clear();
-                    continue
+                    continue;
                 }
                 "clear_context" => {
                     self.llm_req_settings.memory.clear();
-                    continue
+                    continue;
                 }
                 "terminate" => break,
                 _ => {}
@@ -504,8 +509,8 @@ impl LlmFsmAgent {
                     let _ = self.transition_state(&next_state_name).await;
                     let next_state = self.fsm.states.get(&next_state_name).unwrap();
                     // if the next state has an attribute `wait_for_msa` set, break the inner loop to get next
-                    // message 
-                    if let Some(wait_for_msg)= next_state.get_attribute("wait_for_msg").await {
+                    // message
+                    if let Some(wait_for_msg) = next_state.get_attribute("wait_for_msg").await {
                         if wait_for_msg == "true" {
                             break;
                         }
@@ -532,8 +537,10 @@ impl LlmFsmAgent {
         self.llm_req_settings
             .messages
             .push(("bot".into(), llm_output.unwrap_or("".into())));
-
-        self.llm_req_settings.memory.extend(memory);
+        memory.into_iter().for_each(|(k, v)| {
+            let e = self.llm_req_settings.memory.entry(k).or_default();
+            e.push(v);
+        });
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
@@ -569,7 +576,11 @@ fn get_fsm_state_communication_handle(
                     llm_output = Some(r.clone());
                 }
                 "code" | "summary" | "context" => {
-                    let value: Value = Value::String(r.clone()); 
+                    let value: Value = Value::String(r.clone());
+                    memory.insert(t.clone(), value);
+                }
+                "execution_output" => {
+                    let value: Value = serde_json::from_str(&r).unwrap();
                     memory.insert(t.clone(), value);
                 }
                 _ => {}

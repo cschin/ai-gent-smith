@@ -73,12 +73,14 @@ impl FsmState for ChatState {
             .get("summary")
             .cloned()
             .unwrap_or_default();
+        let summary = summary.last().cloned().unwrap_or_default();
         let summary = serde_json::from_value::<String>(summary).unwrap_or_default();
         let context = llm_req_setting
             .memory
             .get("context")
             .cloned()
             .unwrap_or_default();
+        let context = context.last().cloned().unwrap_or_default();
         let context = serde_json::from_value::<String>(context.clone()).ok();
 
         let full_prompt = match prompt {
@@ -234,6 +236,7 @@ impl ChatAgent<LlmFsmAgent> {
             .get("summary")
             .cloned()
             .unwrap_or_default();
+        let summary = summary.last().cloned().unwrap_or_default();
         let msg = format!(
             "Current State: {}\nAvailable Next Steps: {}\n Summary of the previous chat:<summary>{}</summary> \n\n ",
             current_state_name, available_transitions, summary
@@ -319,7 +322,8 @@ impl ChatAgent<LlmFsmAgent> {
             .memory
             .entry("summary".into())
             .or_default();
-        let summary_str = &serde_json::from_value::<String>(summary.clone()).unwrap_or_default();
+        let summary_value = summary.last().cloned().unwrap_or_default();
+        let summary_str = &serde_json::from_value::<String>(summary_value.clone()).unwrap_or_default();
         let summary_prompt = [
             agent.summary_prompt.as_str(),
             "<summary>",
@@ -334,7 +338,7 @@ impl ChatAgent<LlmFsmAgent> {
                 agent.llm_req_settings.temperature,
             )
             .await?;
-        *summary = serde_json::from_str(&updated_summary).unwrap_or_default();
+        summary.push(serde_json::from_str(&updated_summary).unwrap_or_default());
 
         if let Some(tx) = tx {
             let _ = tx

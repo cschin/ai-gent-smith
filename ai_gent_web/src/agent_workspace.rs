@@ -691,7 +691,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             };
             let e = agent.base.llm_req_settings.memory.entry("summary".into()).or_default();
             let summary = get_chat_summary(chat_id).await.unwrap_or_default(); 
-            *e = Value::String(summary);
+            e.clear();
+            e.push(Value::String(summary));
             // we may want to load a couple of last message from the database for the agent providing some memory beyond the summary
         }
 
@@ -722,7 +723,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
             {
                 let context = agent.base.llm_req_settings.memory.entry("context".into()).or_default();
-                *context = Value::String(query_context); 
+                context.clear();
+                context.push(Value::String(query_context)); 
             }
 
             let query_context_html = get_search_context_html(&search_asset_results);
@@ -750,6 +752,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     let current_state = agent.base.get_current_state().await;
                     let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text", current_state).await;
                     let summary = agent.base.llm_req_settings.memory.get("summary").cloned().unwrap_or_default();
+                    let summary = summary.last().cloned().unwrap_or_default();
                     let summary = serde_json::from_value::<String>(summary.clone()).unwrap_or("".into());
                     let _ = update_chat_summary(chat_id, &summary).await;
                 },

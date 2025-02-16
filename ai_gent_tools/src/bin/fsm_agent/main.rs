@@ -1,5 +1,5 @@
 use ai_gent_lib::{
-    llm_agent::{LlmFsmBuilder, LlmFsmStateInit, StateConfig},
+    llm_agent::{ExecutionOutput, LlmFsmBuilder, LlmFsmStateInit, StateConfig},
     GenaiLlmclient,
 };
 use async_trait::async_trait;
@@ -152,6 +152,7 @@ impl FsmState for FSMChatState {
 
         if !self.config.disable_llm_request.unwrap_or(false) {
             let summary = if let Some(summary) = llm_req_settings.memory.get("summary") {
+                let summary = summary.last().cloned().unwrap_or_default();
                 let summary =
                     serde_json::from_value::<String>(summary.clone()).unwrap_or("".into());
                 ["<SUMMARY>", &summary, "</SUMMARY>"].join("\n")
@@ -160,6 +161,7 @@ impl FsmState for FSMChatState {
             };
 
             let context = if let Some(context) = llm_req_settings.memory.get("context") {
+                let context = context.last().cloned().unwrap_or_default();
                 let context =
                     serde_json::from_value::<String>(context.clone()).unwrap_or("".into());
                 ["<CONTEXT>", &context, "</CONTEXT>"].join("\n")
@@ -228,12 +230,13 @@ impl FsmState for FSMChatState {
             run: bool,
         }
 
-        if self.config.execute_code.unwrap_or(false) {
+        let (stdout, stderr) = if self.config.execute_code.unwrap_or(false) {
             let code = llm_req_settings
                 .memory
                 .get("code")
                 .cloned()
                 .unwrap_or_default();
+            let code = code.last().cloned().unwrap_or_default();
             let code = serde_json::from_value::<String>(code).unwrap_or("".into());
             if self.config.wait_for_msg.unwrap_or(false) {
                 // execute code depending on the LLM's response
@@ -267,6 +270,7 @@ impl FsmState for FSMChatState {
                             format!("stderr: {}\n", stderr),
                         ))
                         .await;
+                    (stdout, stderr)
                 } else {
                     let _ = tx
                         .send((
@@ -275,6 +279,7 @@ impl FsmState for FSMChatState {
                             "code execution rejected\n".into(),
                         ))
                         .await;
+                    ("".into(), "".into())
                 }
             } else {
                 // execute code without confirmation
@@ -294,9 +299,24 @@ impl FsmState for FSMChatState {
                         format!("stderr:\n{}\n", stderr),
                     ))
                     .await;
-                //println!("stdout:\n {}\n", stdout);
-                //println!("stderr:\n {}\n", stderr);
+                (stdout, stderr)
             }
+        } else {
+            ("".into(), "".into())
+        };
+
+        if self.config.save_execution_output.unwrap_or(false) {
+            let execution_output = serde_json::to_value(ExecutionOutput { stdout, stderr })
+                .unwrap()
+                .to_string();
+
+            let _ = tx
+                .send((
+                    self.name.clone(),
+                    "execution_output".into(),
+                    execution_output,
+                ))
+                .await;
         }
 
         {
@@ -311,6 +331,7 @@ impl FsmState for FSMChatState {
                         .get("summary")
                         .cloned()
                         .unwrap_or_default();
+                    let summary = summary.last().cloned().unwrap_or_default();
                     let msg = format!(
                         r#"\nSummary of the previous chat:<SUMMARY>{}</SUMMARY> \n\n Current State: {}\nAvailable Next States: {}\n  "#,
                         summary, self.name, available_transitions
