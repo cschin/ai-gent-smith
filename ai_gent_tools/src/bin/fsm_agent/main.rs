@@ -201,6 +201,14 @@ impl FsmState for FSMChatState {
                 String::new()
             };
 
+            if self.config.save_to_summary.unwrap_or(false) {
+                let _ = tx.send((self.name.clone(), "summary".into(), llm_output.clone())).await;
+            }
+
+            if self.config.save_to_context.unwrap_or(false) {
+                let _ = tx.send((self.name.clone(), "context".into(), llm_output.clone())).await;
+            }
+
             if self.config.extract_code.unwrap_or(false) {
                 let code = extract_code(&llm_output);
                 let _ = tx.send((self.name.clone(), "code".into(), code)).await;
@@ -295,18 +303,23 @@ impl FsmState for FSMChatState {
                         .cloned()
                         .unwrap_or_default();
                     let msg = format!(
-                        r#"Current State: {}\nAvailable Next State: {}\n Summary of the previous chat:<SUMMARY>{}</SUMMARY> \n\n "#,
-                        self.name, available_transitions, summary
+                        r#"\nSummary of the previous chat:<SUMMARY>{}</SUMMARY> \n\n Current State: {}\nAvailable Next States: {}\n  "#,
+                        summary, self.name, available_transitions
                     );
                     let fsm_prompt = [fsm_prompt, msg].join("\n");
                     let llm_client = GenaiLlmclient {
                         model: llm_req_settings.model.clone(),
                         api_key: llm_req_settings.api_key.clone(),
                     };
+                    let last_message = if llm_req_settings.messages.is_empty() {
+                        ("usre".into(), "".into())
+                    } else {
+                        llm_req_settings.messages.last().unwrap().clone() 
+                    };
                     let next_state = llm_client
                         .generate(
                             &fsm_prompt,
-                            &llm_req_settings.messages,
+                            &[last_message],
                             llm_req_settings.temperature,
                         )
                         .await
@@ -402,7 +415,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 let _ = rl.add_history_entry(user_input.as_str());
 
-                let _ = send_msg.send(("clear_message".into(), "".into())).await;
+                // let _ = send_msg.send(("clear_message".into(), "".into())).await;
                 let _ = send_msg.send(("message".into(), user_input)).await;
 
                 let mut llm_output = Vec::<String>::new();

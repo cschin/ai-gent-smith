@@ -328,3 +328,6 @@ CodeExecution.execute_code = true
 
 # execute without user confirmation
 CodeExecution.disable_llm_request = true
+
+
+MakeSummary.save_to_summary = true
