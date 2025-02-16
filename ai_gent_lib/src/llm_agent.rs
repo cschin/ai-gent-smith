@@ -434,12 +434,21 @@ impl LlmFsmAgent {
         tx: Sender<(String, String, String)>,
         temperature: Option<f32>,
     ) -> Result<(), anyhow::Error> {
+
         self.llm_req_settings.temperature = temperature;
 
         while let Some((msg_type, msg)) = user_input.recv().await {
             match msg_type.as_str() {
                 "message" => {
                     self.llm_req_settings.messages.push(("user".into(), msg));
+                },
+                "clear_message" => {
+                    self.llm_req_settings.messages.clear();
+                    continue
+                }
+                "clear_context" => {
+                    self.llm_req_settings.context.clear();
+                    continue
                 }
                 "terminate" => break,
                 _ => {}

@@ -312,12 +312,15 @@ impl FsmState for FSMChatState {
                         .await
                         .unwrap();
 
-                    let next_fsm_state_response: LlmResponse = serde_json::from_str(&next_state)
-                        .map_err(|e| {
-                            anyhow::anyhow!("Failed to parse LLM output: {e}, {}", next_state)
-                        })
-                        .unwrap();
-                    next_fsm_state_response.next_state
+                    let next_fsm_state_response  = serde_json::from_str::<LlmResponse>(&next_state);
+                    match next_fsm_state_response {
+                        Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
+                        Err(e) => {
+                            eprintln!("fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}", e, next_state);  
+                            None
+                        }
+
+                    } 
                 } else {
                     None
                 }
@@ -398,7 +401,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let _ = rl.add_history_entry(user_input.as_str());
-               
+
+                let _ = send_msg.send(("clear_message".into(), "".into())).await;
                 let _ = send_msg.send(("message".into(), user_input)).await;
 
                 let mut llm_output = Vec::<String>::new();
