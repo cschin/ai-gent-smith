@@ -24,12 +24,12 @@ pub struct StatePrompts {
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct StateConfig {
     pub extract_code: Option<bool>,
-    pub execute_code: Option<bool>,
-    pub disable_llm_request: Option<bool>,
-    pub ignore_llm_output: Option<bool>,
     pub save_to_summary: Option<bool>,
     pub save_to_context: Option<bool>,
     pub save_execution_output: Option<bool>,
+    pub execute_code: Option<bool>,
+    pub disable_llm_request: Option<bool>,
+    pub ignore_llm_output: Option<bool>,
     pub wait_for_msg: Option<bool>,
 }
 
