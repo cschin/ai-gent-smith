@@ -949,7 +949,7 @@ use uuid::{timestamp::context, Uuid};
 #[derive(Template)] // this will generate the code...
 #[template(path = "simple_agent_config.toml.template", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct SimpleAgentConfigTemplate {
-    sys_prompt: String,
+    system_prompt: String,
     follow_up: String,
 }
 
@@ -965,9 +965,9 @@ struct FollowUpPromptInConfig {
 }
 
 fn get_basic_fsm_agent_config_toml_string(sys_prompt: String, follow_up: Option<String>) -> String {
-    let sys_prompt = toml::to_string(&SysPromptInConfig { sys_prompt }).unwrap();
+    let system_prompt = toml::to_string(&SysPromptInConfig { sys_prompt }).unwrap();
     //toml::ser::ValueSerializer::new(&mut prompt);
-    tracing::info!(target: TRON_APP, "debug toml string: {}", sys_prompt);
+    tracing::info!(target: TRON_APP, "debug toml string: {}", system_prompt);
     let follow_up = if let Some(follow_up) = follow_up {
         toml::to_string(&FollowUpPromptInConfig {
             FollowUp: follow_up,
@@ -984,7 +984,7 @@ fn get_basic_fsm_agent_config_toml_string(sys_prompt: String, follow_up: Option<
         .unwrap()
     };
     let simple_agent_config = SimpleAgentConfigTemplate {
-        sys_prompt,
+        system_prompt,
         follow_up,
     }
     .render()
