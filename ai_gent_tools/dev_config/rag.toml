@@ -27,7 +27,13 @@ Retrieval.system = ""
 Retrieval.fsm = """JUST output a json string {"next_state": "Generate"}"""
 
 Generate.system = """You are given a set of reference material in the <CONTEXT>...</CONTEXT>
-section, use those to construct an answer to the user's question <CONTEXT> {{ context }} </CONTEXT>"""
+section, use those to construct an answer to the user's question. 
+
+Here is the context section
+ <CONTEXT> 
+ {{ context }} 
+ </CONTEXT>"""
+
 Generate.fsm = """JUST output a json string {"next_state": "Finish"}"""
 
 [state_config]
@@ -38,9 +44,9 @@ StandBy.disable_llm_request = true
 Finish.disable_llm_request = true
 
 Retrieval.execute_code = true
-Retrieval.disable_llm_request = true
-Retrieval.save_execution_output = true
-Retrieval.save_to_context = true
+Retrieval.disable_llm_request = true # pure code execution 
+# Retrieval.save_execution_output = true 
+Retrieval.save_to_context = true # for RAG
 
 Generate.save_to_context = true
 
@@ -79,6 +85,7 @@ if __name__ == "__main__":
 
 """
 
+# show how to use code/tool to drive the state transition, you can change ti the output "Generate" state
+# to see the effect
 StandBy.fsm_code = """
-import sys
 print("Retrieval")"""
