@@ -238,7 +238,7 @@ impl FsmState for FSMChatState {
 
                 self.handle = Some(
                     get_llm_req_process_handle(
-                        state_name,
+                        state_name.clone(),
                         tx.clone(),
                         messages.clone(),
                         full_prompt,
@@ -294,9 +294,11 @@ impl FsmState for FSMChatState {
                 let messages = escape_json_string(&json!(&messages).to_string());
                 let context = escape_json_string(&json!(&context).to_string());
                 let summary = escape_json_string(&json!(&summary).to_string());
+                let state_name = escape_json_string(&json!(&state_name).to_string());
                 tera_context.insert("messages", &messages);
                 tera_context.insert("context", &context);
                 tera_context.insert("summary", &summary);
+                tera_context.insert("state_name", &state_name);
                 Tera::one_off(&code, &tera_context, false).unwrap()
             } else {
                 let code = llm_req_settings
