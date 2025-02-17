@@ -144,6 +144,16 @@ fn escape_json_string(input: &str) -> String {
         .replace('\x0C', "\\f") // Escape form feed
 }
 
+fn _format_messages(messages: &[(String, String)]) -> String {
+    messages.iter().map( |(tag,msg) | {
+        match tag.as_str() {
+            "user" => format!("user: {}", msg),
+            "bot" => format!("assistant: {}", msg),
+            other => format!("{}: {}", other, msg)
+        }
+    }).collect::<Vec<String>>().join("\n")
+}
+
 #[async_trait]
 impl FsmState for FSMChatState {
     async fn start_service(
