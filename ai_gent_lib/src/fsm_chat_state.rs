@@ -202,8 +202,18 @@ impl FsmState for FSMChatState {
             let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
 
             let llm_output = if system_prompt.len() + chat_prompt.len() > 0 {
+
+                let mut tera_context = tera::Context::new();
+                let context = escape_json_string(&json!(&context).to_string());
+                let summary = escape_json_string(&json!(&summary).to_string());
+                tera_context.insert("context", &context);
+                tera_context.insert("summary", &summary);
+
                 let full_prompt =
-                    [system_prompt, summary.clone(), context.clone(), chat_prompt].join("\n");
+                    [system_prompt, chat_prompt].join("\n");
+                
+                let full_prompt = Tera::one_off(&full_prompt, &tera_context, false).unwrap();
+
                 let model = llm_req_settings.model.clone();
                 let api_key = llm_req_settings.api_key.clone();
                 let temperature = llm_req_settings.temperature;
