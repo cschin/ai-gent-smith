@@ -145,13 +145,15 @@ fn escape_json_string(input: &str) -> String {
 }
 
 fn _format_messages(messages: &[(String, String)]) -> String {
-    messages.iter().map( |(tag,msg) | {
-        match tag.as_str() {
+    messages
+        .iter()
+        .map(|(tag, msg)| match tag.as_str() {
             "user" => format!("user: {}", msg),
             "bot" => format!("assistant: {}", msg),
-            other => format!("{}: {}", other, msg)
-        }
-    }).collect::<Vec<String>>().join("\n")
+            other => format!("{}: {}", other, msg),
+        })
+        .collect::<Vec<String>>()
+        .join("\n")
 }
 
 #[async_trait]
@@ -416,8 +418,23 @@ impl FsmState for FSMChatState {
             tera_context.insert("state_name", &state_name);
             tera_context.insert("next_states", &next_states);
             tera_context.insert("state_history", &state_history);
-            let code = Tera::one_off(&fsm_code, &tera_context, false).unwrap();
-            let (stdout, _stderr) = run_code_in_docker(&code);
+            let code = Tera::one_off(&fsm_code, &tera_context, true).unwrap();
+            let (stdout, stderr) = run_code_in_docker(&code);
+            let _ = tx
+                .send((
+                    self.name.clone(),
+                    "fsm_exec_output".into(),
+                    format!("stdout:\n{}\n", stdout),
+                ))
+                .await;
+
+            let _ = tx
+                .send((
+                    self.name.clone(),
+                    "fsm_exec_output".into(),
+                    format!("stderr:\n{}\n", stderr),
+                ))
+                .await;
             // TODO: check if the stdout is a single string contained in the next_states
             Some(stdout.trim().into())
         } else {
