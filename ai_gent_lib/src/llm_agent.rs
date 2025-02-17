@@ -35,6 +35,7 @@ pub struct StateConfig {
     pub extract_code: Option<bool>,
     pub execute_code: Option<bool>,
     pub code: Option<String>,
+    pub fsm_code: Option<String>,
     pub wait_for_msg: Option<bool>,
 }
 
@@ -458,7 +459,6 @@ impl LlmFsmAgent {
                     continue;
                 }
                 "clear_context" => {
-                    println!("XXXX Context cleared");
                     self.llm_req_settings.memory.clear();
                     continue;
                 }
@@ -510,25 +510,30 @@ impl LlmFsmAgent {
                 {
                     let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
                     self.update_message_and_memory(llm_output, new_memory);
-                    if self.transition_state(&next_state_name).await.is_ok() {
-                        let next_state = self.fsm.states.get(&next_state_name).unwrap();
-                        // if the next state has an attribute `wait_for_msg` set, break the inner loop to get next
-                        // message
-                        if let Some(wait_for_msg) = next_state.get_attribute("wait_for_msg").await {
-                            if wait_for_msg == "true" {
-                                break;
+                    match self.transition_state(&next_state_name).await {
+                        Ok(()) => {
+                            let next_state = self.fsm.states.get(&next_state_name).unwrap();
+                            // if the next state has an attribute `wait_for_msg` set, break the inner loop to get next
+                            // message
+                            if let Some(wait_for_msg) =
+                                next_state.get_attribute("wait_for_msg").await
+                            {
+                                if wait_for_msg == "true" {
+                                    break;
+                                }
                             }
                         }
-                    } else {
-                        let _ = tx2
-                            .send((
-                                "".into(),
-                                "error".into(),
-                                format!("next state {} not available", next_state_name),
-                            ))
-                            .await;
+                        Err(e) => {
+                            let _ = tx2
+                                .send((
+                                    "".into(),
+                                    "error".into(),
+                                    format!("next state {} not available, error: {}", next_state_name, e),
+                                ))
+                                .await;
 
-                        break;
+                            break;
+                        }
                     }
                 } else {
                     let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
@@ -555,7 +560,6 @@ impl LlmFsmAgent {
             let e = self.llm_req_settings.memory.entry(k).or_default();
             e.extend(v);
         });
-        // println!("\n XXXX memory: {:?}", self.llm_req_settings.memory);
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {

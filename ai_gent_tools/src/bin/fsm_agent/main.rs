@@ -399,7 +399,28 @@ impl FsmState for FSMChatState {
             }
         }
 
-        {
+
+        if let Some(fsm_code) = self.config.fsm_code.clone() {
+            let mut tera_context = tera::Context::new();
+            let messages = escape_json_string(&json!(&messages).to_string());
+            let context = escape_json_string(&json!(&context).to_string());
+            let summary = escape_json_string(&json!(&summary).to_string());
+            let state_name = escape_json_string(&json!(&state_name).to_string());
+            let next_states = if let Some(next_states) = next_states {
+                escape_json_string(&json!(&next_states).to_string()) 
+            } else {
+                "[]".into()
+            };
+            tera_context.insert("messages", &messages);
+            tera_context.insert("context", &context);
+            tera_context.insert("summary", &summary);
+            tera_context.insert("state_name", &state_name);
+            tera_context.insert("next_states", &next_states);
+            let code = Tera::one_off(&fsm_code, &tera_context, false).unwrap();
+            let (stdout, _stderr) = run_code_in_docker(&code);
+            // TODO: check if the stdout is a single string contained in the next_states
+            Some(stdout.trim().into())
+        } else {
             // get the the FSM state
             if let Some(next_states) = next_states {
                 if next_states.len() == 1 {
