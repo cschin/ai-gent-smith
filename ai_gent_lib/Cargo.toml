@@ -24,7 +24,7 @@ futures-util = { workspace = true }
 futures = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
-async-trait = { workspace = true }
+async-trait.workspace = true
 uuid = { workspace = true }
 lazy_static = { workspace = true }
 once_cell = { workspace = true }
@@ -32,3 +32,5 @@ tokio-test = { workspace = true }
 rustyline = { workspace = true }
 genai = { workspace = true }
 toml = { workspace = true }
+tempfile = { workspace = true }
+tera = { workspace = true }

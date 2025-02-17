@@ -5,6 +5,7 @@ use llm_service::{genai_service, genai_stream_service, LLMStreamOut};
 pub mod fsm;
 pub mod llm_service;
 pub mod llm_agent;
+pub mod fsm_chat_state;
 
 
 pub struct GenaiLlmclient {

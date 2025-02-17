@@ -32,5 +32,3 @@ tokio-test = { workspace = true }
 rustyline = { workspace = true }
 ai_gent_lib = {path = "../ai_gent_lib" }
 genai = {workspace = true}
-tempfile = "3.16.0"
-tera = "1"
