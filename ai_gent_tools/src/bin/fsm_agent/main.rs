@@ -295,7 +295,8 @@ impl FsmState for FSMChatState {
                 let context = escape_json_string(&json!(&context).to_string());
                 let summary = escape_json_string(&json!(&summary).to_string());
                 let state_name = escape_json_string(&json!(&state_name).to_string());
-                let state_history = escape_json_string(&json!(llm_req_settings.state_history).to_string());
+                let state_history =
+                    escape_json_string(&json!(llm_req_settings.state_history).to_string());
                 tera_context.insert("messages", &messages);
                 tera_context.insert("context", &context);
                 tera_context.insert("summary", &summary);
@@ -401,7 +402,6 @@ impl FsmState for FSMChatState {
             }
         }
 
-
         if let Some(fsm_code) = self.config.fsm_code.clone() {
             let mut tera_context = tera::Context::new();
             let messages = escape_json_string(&json!(&messages).to_string());
@@ -409,11 +409,12 @@ impl FsmState for FSMChatState {
             let summary = escape_json_string(&json!(&summary).to_string());
             let state_name = escape_json_string(&json!(&state_name).to_string());
             let next_states = if let Some(next_states) = next_states {
-                escape_json_string(&json!(&next_states).to_string()) 
+                escape_json_string(&json!(&next_states).to_string())
             } else {
                 "[]".into()
             };
-            let state_history = escape_json_string(&json!(llm_req_settings.state_history).to_string());
+            let state_history =
+                escape_json_string(&json!(llm_req_settings.state_history).to_string());
             tera_context.insert("messages", &messages);
             tera_context.insert("context", &context);
             tera_context.insert("summary", &summary);
@@ -516,7 +517,6 @@ The last response:
     }
 }
 
-
 use std::collections::HashMap;
 
 #[tokio::main]
@@ -594,7 +594,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         (_, "llm_output") => {
                             llm_output.push(message.2);
                         }
-                        (_,"error") => {eprintln!("Error received: '{}'", message.2)}
+                        (state_name, "error") => {
+                            eprintln!("Error received from state '{}': '{}'", state_name, message.2)
+                        }
                         (_, "message_processed") => {
                             println!(); // clear rustyline's buffer
                             break;
