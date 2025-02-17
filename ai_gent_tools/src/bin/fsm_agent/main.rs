@@ -295,10 +295,12 @@ impl FsmState for FSMChatState {
                 let context = escape_json_string(&json!(&context).to_string());
                 let summary = escape_json_string(&json!(&summary).to_string());
                 let state_name = escape_json_string(&json!(&state_name).to_string());
+                let state_history = escape_json_string(&json!(llm_req_settings.state_history).to_string());
                 tera_context.insert("messages", &messages);
                 tera_context.insert("context", &context);
                 tera_context.insert("summary", &summary);
                 tera_context.insert("state_name", &state_name);
+                tera_context.insert("state_history", &state_history);
                 Tera::one_off(&code, &tera_context, false).unwrap()
             } else {
                 let code = llm_req_settings
@@ -411,11 +413,13 @@ impl FsmState for FSMChatState {
             } else {
                 "[]".into()
             };
+            let state_history = escape_json_string(&json!(llm_req_settings.state_history).to_string());
             tera_context.insert("messages", &messages);
             tera_context.insert("context", &context);
             tera_context.insert("summary", &summary);
             tera_context.insert("state_name", &state_name);
             tera_context.insert("next_states", &next_states);
+            tera_context.insert("state_history", &state_history);
             let code = Tera::one_off(&fsm_code, &tera_context, false).unwrap();
             let (stdout, _stderr) = run_code_in_docker(&code);
             // TODO: check if the stdout is a single string contained in the next_states
@@ -590,6 +594,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         (_, "llm_output") => {
                             llm_output.push(message.2);
                         }
+                        (_,"error") => {eprintln!("Error received: '{}'", message.2)}
                         (_, "message_processed") => {
                             println!(); // clear rustyline's buffer
                             break;

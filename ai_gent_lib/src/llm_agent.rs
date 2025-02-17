@@ -46,6 +46,7 @@ pub trait LlmFsmStateInit {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct LlmReqSetting {
     pub memory: HashMap<String, Vec<Value>>,
+    pub state_history: Vec<String>, // maybe add time stamp in the future
     pub messages: Vec<(String, String)>,
     pub temperature: Option<f32>,
     pub model: String,
@@ -406,6 +407,7 @@ impl LlmFsmAgent {
         let llm_req_setting = LlmReqSetting {
             messages: Vec::default(),
             temperature: None,
+            state_history: Vec::default(),
             memory: HashMap::default(),
             model: agent_settings.model,
             api_key: agent_settings.api_key,
@@ -504,7 +506,7 @@ impl LlmFsmAgent {
                 let (fsm_tx, fsm_rx) = mpsc::channel::<(String, String, String)>(16);
                 let tx = tx.clone();
                 let handle = get_fsm_state_communication_handle(tx, fsm_rx);
-
+                self.llm_req_settings.state_history.push(current_state_name.clone());
                 if let Some(next_state_name) =
                     current_state.start_service(fsm_tx, None, next_states).await
                 {
@@ -526,9 +528,9 @@ impl LlmFsmAgent {
                         Err(e) => {
                             let _ = tx2
                                 .send((
-                                    "".into(),
+                                    current_state_name,
                                     "error".into(),
-                                    format!("next state {} not available, error: {}", next_state_name, e),
+                                    format!(r#"next state "{}" not available,\n error: "{}""#, next_state_name, e),
                                 ))
                                 .await;
 
