@@ -188,25 +188,32 @@ impl FsmState for FSMChatState {
 
         let context = if !self.config.disable_context.unwrap_or(false) {
             if let Some(context) = llm_req_settings.memory.get("context") {
-                let context = context.last().cloned().unwrap_or_default();
-                let context =
-                    serde_json::from_value::<String>(context.clone()).unwrap_or("".into());
+                let context = if self.config.use_full_context.unwrap_or(false) {
+                    context
+                        .iter()
+                        .map(|c| serde_json::from_value::<String>(c.clone()).unwrap_or("".into()))
+                        .collect::<Vec<String>>()
+                        .join("\n\n")
+                } else {
+                    let context = context.last().cloned().unwrap_or_default();
+                    serde_json::from_value::<String>(context.clone()).unwrap_or("".into())
+                };
                 ["<CONTEXT>", &context, "</CONTEXT>"].join("\n")
             } else {
                 "".into()
             }
-        } else { 
-             "".into()
+        } else {
+            "".into()
         };
 
         let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
-     
             let system_prompt = self.prompts.system.clone().unwrap_or("".into());
 
             let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
 
             let llm_output = if system_prompt.len() + chat_prompt.len() > 0 {
-                let full_prompt = [system_prompt, summary.clone(), context.clone(), chat_prompt].join("\n");
+                let full_prompt =
+                    [system_prompt, summary.clone(), context.clone(), chat_prompt].join("\n");
                 let model = llm_req_settings.model.clone();
                 let api_key = llm_req_settings.api_key.clone();
                 let temperature = llm_req_settings.temperature;
@@ -351,24 +358,26 @@ impl FsmState for FSMChatState {
             ("".into(), "".into())
         };
 
-        if self.config.save_to_context.unwrap_or(false) {
-            let _ = tx
-                .send((self.name.clone(), "context".into(), stdout.clone()))
-                .await;
-        }
+        if self.config.execute_code.unwrap_or(false) {
+            if self.config.save_to_context.unwrap_or(false) {
+                let _ = tx
+                    .send((self.name.clone(), "context".into(), stdout.clone()))
+                    .await;
+            }
 
-        if self.config.save_execution_output.unwrap_or(false) {
-            let execution_output = serde_json::to_value(ExecutionOutput { stdout, stderr })
-                .unwrap()
-                .to_string();
+            if self.config.save_execution_output.unwrap_or(false) {
+                let execution_output = serde_json::to_value(ExecutionOutput { stdout, stderr })
+                    .unwrap()
+                    .to_string();
 
-            let _ = tx
-                .send((
-                    self.name.clone(),
-                    "execution_output".into(),
-                    execution_output,
-                ))
-                .await;
+                let _ = tx
+                    .send((
+                        self.name.clone(),
+                        "execution_output".into(),
+                        execution_output,
+                    ))
+                    .await;
+            }
         }
 
         {

@@ -326,7 +326,7 @@ Check if the use want to execute the generate, output the decision in json forma
 
 [state_config]
 
-ForScientist.save_to_context = true
+#ForScientist.save_to_context = true
 
 # don't make chat request but making the fsm transition request
 StandBy.disable_llm_request = true
@@ -349,12 +349,15 @@ CodeExecution.ignore_llm_output = true
 # execute code from this content
 CodeExecution.code = """
 import json
+
 messages = \"\"\"{{messages}}\"\"\"
 context = \"\"\"{{context}}\"\"\"
 summary = \"\"\"{{summary}}\"\"\"
+
 messages = json.loads(messages)
 context = json.loads(context)
 summary = json.loads(summary)
+
 print("messages:", messages)
 print("context:", context)
 print("summary:", summary)
@@ -362,6 +365,7 @@ print("summary:", summary)
 
 
 CodeExecution.save_execution_output = true
+CodeExecution.use_full_context = true
 CodeExecution.save_to_context = true
 
 

@@ -25,7 +25,8 @@ pub struct StatePrompts {
 pub struct StateConfig {
     pub disable_llm_request: Option<bool>,
     pub disable_context: Option<bool>,
-    pub disable_summary: Option<bool>, 
+    pub use_full_context: Option<bool>,
+    pub disable_summary: Option<bool>,
     pub use_only_last_message: Option<bool>,
     pub ignore_llm_output: Option<bool>,
     pub save_to_summary: Option<bool>,
@@ -457,6 +458,7 @@ impl LlmFsmAgent {
                     continue;
                 }
                 "clear_context" => {
+                    println!("XXXX Context cleared");
                     self.llm_req_settings.memory.clear();
                     continue;
                 }
@@ -544,17 +546,16 @@ impl LlmFsmAgent {
     fn update_message_and_memory(
         &mut self,
         llm_output: Option<String>,
-        memory: HashMap<String, Value>,
+        memory: HashMap<String, Vec<Value>>,
     ) {
-        if let Some(message) =  llm_output { 
-        self.llm_req_settings
-            .messages
-            .push(("bot".into(), message));
+        if let Some(message) = llm_output {
+            self.llm_req_settings.messages.push(("bot".into(), message));
         }
         memory.into_iter().for_each(|(k, v)| {
             let e = self.llm_req_settings.memory.entry(k).or_default();
-            e.push(v);
+            e.extend(v);
         });
+        // println!("\n XXXX memory: {:?}", self.llm_req_settings.memory);
     }
 
     pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
@@ -580,10 +581,10 @@ impl LlmFsmAgent {
 fn get_fsm_state_communication_handle(
     tx: Sender<(String, String, String)>,
     mut fsm_rx: Receiver<(String, String, String)>,
-) -> tokio::task::JoinHandle<(Option<String>, HashMap<String, Value>)> {
+) -> tokio::task::JoinHandle<(Option<String>, HashMap<String, Vec<Value>>)> {
     tokio::spawn(async move {
         let mut llm_output = None;
-        let mut memory = HashMap::<String, Value>::default();
+        let mut memory = HashMap::<String, Vec<Value>>::default();
         while let Some((a, t, r)) = fsm_rx.recv().await {
             match t.as_str() {
                 "llm_output" => {
@@ -591,11 +592,13 @@ fn get_fsm_state_communication_handle(
                 }
                 "code" | "summary" | "context" => {
                     let value: Value = Value::String(r.clone());
-                    memory.insert(t.clone(), value);
+                    let e = memory.entry(t.clone()).or_default();
+                    e.push(value);
                 }
                 "execution_output" => {
                     let value: Value = serde_json::from_str(&r).unwrap();
-                    memory.insert(t.clone(), value);
+                    let e = memory.entry(t.clone()).or_default();
+                    e.push(value);
                 }
                 _ => {}
             }
