@@ -23,13 +23,17 @@ pub struct StatePrompts {
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct StateConfig {
-    pub extract_code: Option<bool>,
+    pub disable_llm_request: Option<bool>,
+    pub disable_context: Option<bool>,
+    pub disable_summary: Option<bool>, 
+    pub use_only_last_message: Option<bool>,
+    pub ignore_llm_output: Option<bool>,
     pub save_to_summary: Option<bool>,
     pub save_to_context: Option<bool>,
     pub save_execution_output: Option<bool>,
+    pub extract_code: Option<bool>,
     pub execute_code: Option<bool>,
-    pub disable_llm_request: Option<bool>,
-    pub ignore_llm_output: Option<bool>,
+    pub code: Option<String>,
     pub wait_for_msg: Option<bool>,
 }
 
@@ -542,9 +546,11 @@ impl LlmFsmAgent {
         llm_output: Option<String>,
         memory: HashMap<String, Value>,
     ) {
+        if let Some(message) =  llm_output { 
         self.llm_req_settings
             .messages
-            .push(("bot".into(), llm_output.unwrap_or("".into())));
+            .push(("bot".into(), message));
+        }
         memory.into_iter().for_each(|(k, v)| {
             let e = self.llm_req_settings.memory.entry(k).or_default();
             e.push(v);

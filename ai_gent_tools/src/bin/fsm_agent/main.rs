@@ -10,12 +10,14 @@ use rustyline::DefaultEditor;
 use ai_gent_lib::fsm::FsmState;
 use anyhow::Result;
 use serde::Deserialize;
+use serde_json::json;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 
 use ai_gent_lib::llm_agent::{
     self, AgentSettings, LlmClient, LlmFsmAgent, LlmFsmAgentConfigBuilder, LlmResponse,
     StatePrompts,
 };
+use tera::Tera;
 use tokio::task::JoinHandle;
 
 // use futures::StreamExt;
@@ -134,6 +136,17 @@ fn run_code_in_docker(code: &str) -> (String, String) {
     (stdout, stderr)
 }
 
+fn escape_json_string(input: &str) -> String {
+    input
+        .replace('\\', "\\\\") // Escape backslash first!
+        .replace('"', "\\\"") // Escape double quotes
+        .replace('\n', "\\n") // Escape newlines
+        .replace('\r', "\\r") // Escape carriage return
+        .replace('\t', "\\t") // Escape tabs
+        .replace('\x08', "\\b") // Escape backspace
+        .replace('\x0C', "\\f") // Escape form feed
+}
+
 #[async_trait]
 impl FsmState for FSMChatState {
     async fn start_service(
@@ -150,34 +163,52 @@ impl FsmState for FSMChatState {
             .send((state_name.clone(), "state".into(), state_name.clone()))
             .await;
 
-        let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
-            let summary = if let Some(summary) = llm_req_settings.memory.get("summary") {
+        let messages = if self.config.use_only_last_message.unwrap_or(false) {
+            vec![llm_req_settings
+                .messages
+                .last()
+                .cloned()
+                .unwrap_or_default()]
+        } else {
+            llm_req_settings.messages.clone()
+        };
+
+        let summary = if !self.config.disable_summary.unwrap_or(false) {
+            if let Some(summary) = llm_req_settings.memory.get("summary") {
                 let summary = summary.last().cloned().unwrap_or_default();
                 let summary =
                     serde_json::from_value::<String>(summary.clone()).unwrap_or("".into());
                 ["<SUMMARY>", &summary, "</SUMMARY>"].join("\n")
             } else {
                 "".into()
-            };
+            }
+        } else {
+            "".into()
+        };
 
-            let context = if let Some(context) = llm_req_settings.memory.get("context") {
+        let context = if !self.config.disable_context.unwrap_or(false) {
+            if let Some(context) = llm_req_settings.memory.get("context") {
                 let context = context.last().cloned().unwrap_or_default();
                 let context =
                     serde_json::from_value::<String>(context.clone()).unwrap_or("".into());
                 ["<CONTEXT>", &context, "</CONTEXT>"].join("\n")
             } else {
                 "".into()
-            };
+            }
+        } else { 
+             "".into()
+        };
 
+        let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
+     
             let system_prompt = self.prompts.system.clone().unwrap_or("".into());
 
             let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
 
             let llm_output = if system_prompt.len() + chat_prompt.len() > 0 {
-                let full_prompt = [system_prompt, summary, context, chat_prompt].join("\n");
+                let full_prompt = [system_prompt, summary.clone(), context.clone(), chat_prompt].join("\n");
                 let model = llm_req_settings.model.clone();
                 let api_key = llm_req_settings.api_key.clone();
-                let messages = llm_req_settings.messages.clone();
                 let temperature = llm_req_settings.temperature;
                 let ignore_llm_output = self.config.ignore_llm_output.unwrap_or(false);
 
@@ -185,7 +216,7 @@ impl FsmState for FSMChatState {
                     get_llm_req_process_handle(
                         state_name,
                         tx.clone(),
-                        messages,
+                        messages.clone(),
                         full_prompt,
                         temperature,
                         ignore_llm_output,
@@ -234,13 +265,25 @@ impl FsmState for FSMChatState {
         }
 
         let (stdout, stderr) = if self.config.execute_code.unwrap_or(false) {
-            let code = llm_req_settings
-                .memory
-                .get("code")
-                .cloned()
-                .unwrap_or_default();
-            let code = code.last().cloned().unwrap_or_default();
-            let code = serde_json::from_value::<String>(code).unwrap_or("".into());
+            let code = if let Some(code) = self.config.code.clone() {
+                let mut tera_context = tera::Context::new();
+                let messages = escape_json_string(&json!(&messages).to_string());
+                let context = escape_json_string(&json!(&context).to_string());
+                let summary = escape_json_string(&json!(&summary).to_string());
+                tera_context.insert("messages", &messages);
+                tera_context.insert("context", &context);
+                tera_context.insert("summary", &summary);
+                Tera::one_off(&code, &tera_context, false).unwrap()
+            } else {
+                let code = llm_req_settings
+                    .memory
+                    .get("code")
+                    .cloned()
+                    .unwrap_or_default();
+                let code = code.last().cloned().unwrap_or_default();
+                serde_json::from_value::<String>(code).unwrap_or("".into())
+            };
+
             if self.config.wait_for_msg.unwrap_or(false) {
                 // execute code depending on the LLM's response
                 let llm_output = self
@@ -307,6 +350,12 @@ impl FsmState for FSMChatState {
         } else {
             ("".into(), "".into())
         };
+
+        if self.config.save_to_context.unwrap_or(false) {
+            let _ = tx
+                .send((self.name.clone(), "context".into(), stdout.clone()))
+                .await;
+        }
 
         if self.config.save_execution_output.unwrap_or(false) {
             let execution_output = serde_json::to_value(ExecutionOutput { stdout, stderr })
@@ -378,8 +427,7 @@ The last response:
                     let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state);
                     // println!("res: {:?}", next_fsm_state_response);
                     match next_fsm_state_response {
-                        Ok(next_fsm_state_response) => {
-                            next_fsm_state_response.next_state},
+                        Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
                         Err(e) => {
                             eprintln!("fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}", e, next_state);
                             None
