@@ -20,6 +20,23 @@ use ai_gent_lib::llm_agent::{
 use tera::Tera;
 use tokio::task::JoinHandle;
 
+use clap::Parser;
+use std::fs;
+
+// Define a struct to represent the command line arguments
+#[derive(Parser)]
+#[command(
+    name = "AI-Gent Smith",
+    version = "0.1",
+    author = "Jason Chin",
+    about = "Who don't write an AI-agent these days?"
+)]
+struct Cli {
+    /// Path to the file to read
+    #[arg(short, long)]
+    config_file: String,
+}
+
 // use futures::StreamExt;
 #[derive(Default)]
 pub struct FSMChatState {
@@ -472,13 +489,18 @@ The last response:
     }
 }
 
-const FSM_CONFIG: &str = include_str!("../../../dev_config/fsm_config.toml");
 
 use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let fsm_config = LlmFsmAgentConfigBuilder::from_toml(FSM_CONFIG)?.build()?;
+    // Parse the command line arguments
+    let args = Cli::parse();
+
+    // Read the file into a string
+    let content = fs::read_to_string(args.config_file)?;
+
+    let fsm_config = LlmFsmAgentConfigBuilder::from_toml(&content)?.build()?;
 
     let fsm =
         LlmFsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default())?.build()?;
