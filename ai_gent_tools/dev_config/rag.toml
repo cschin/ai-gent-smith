@@ -1,0 +1,84 @@
+states = [
+"StandBy",
+"Retrieval",
+"Generate",
+"Finish"]
+
+transitions = [
+["StandBy",
+"Retrieval"],
+["StandBy",
+"Generate"],
+["Retrieval",
+"Generate"],
+["Generate",
+"Finish"]]
+
+initial_state = "StandBy"
+system_prompt = ""
+fsm_prompt = "" 
+summary_prompt = ""
+
+[state_prompts]
+StandBy.system = ""
+StandBy.fsm = """JUST output a json string {"next_state": "Retrieval"}"""
+
+Retrieval.system = ""
+Retrieval.fsm = """JUST output a json string {"next_state": "Generate"}"""
+
+Generate.system = """You are given a set of reference material in the <CONTEXT>...</CONTEXT>
+section, use those to construct an answer to the user's question <CONTEXT> {{ context }} </CONTEXT>"""
+Generate.fsm = """JUST output a json string {"next_state": "Finish"}"""
+
+[state_config]
+# don't make chat request but making the fsm transition request
+StandBy.disable_llm_request = true
+
+# don't make chat request but making the fsm transition request
+Finish.disable_llm_request = true
+
+Retrieval.execute_code = true
+Retrieval.disable_llm_request = true
+Retrieval.save_execution_output = true
+Retrieval.save_to_context = true
+
+Generate.save_to_context = true
+
+# execute code from this content
+Retrieval.code = """
+import json
+import duckduckgo_search
+from duckduckgo_search import DDGS
+
+messages = \"\"\"{{messages}}\"\"\"
+#context = \"\"\"{{context}}\"\"\"
+#summary = \"\"\"{{summary}}\"\"\"
+
+messages = json.loads(messages)[-1][1]
+#context = json.loads(context)
+#summary = json.loads(summary)
+
+
+def search_duckduckgo(query, num_results=10):
+    results = DDGS().text(query, max_results=num_results)
+    
+    markdown_output = f"# DuckDuckGo Search Results for '{query}'\\n\\n"
+    
+    for i, result in enumerate(results, start=1):
+        markdown_output += f"## {i}. {result['title']}\\n"
+        markdown_output += f"**URL:** [{result['href']}]({result['href']})\\n\\n"
+        markdown_output += f"> {result['body']}\\n\\n"
+        
+    return markdown_output
+
+if __name__ == "__main__":
+    state_name = \"\"\"{{state_name}}\"\"\"
+    print("state_name", state_name)
+    markdown_results = search_duckduckgo(messages)
+    print(markdown_results)
+
+"""
+
+StandBy.fsm_code = """
+import sys
+print("Retrieval")"""

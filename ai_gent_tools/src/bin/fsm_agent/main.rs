@@ -62,7 +62,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     //write_agent_config_to_file(&fsm_config);
 
-    println!("Welcome to the Ai-gent Smith. Type 'exit' to quit.");
+    println!("\n ========== Welcome to the Ai-gent Smith. ========== \n Type 'exit' to quit.");
     let mut rl = DefaultEditor::new()?; // Use DefaultEditor instead
 
     let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String, String)>(8);
@@ -92,13 +92,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 while let Some(message) = fsm_rx.recv().await {
                     match (message.0.as_str(), message.1.as_str()) {
                         (_, "state") => {
-                            println!("\n--------- Agent State: {}", message.2);
+                            println!("\n\n--------- Agent State: {}\n", message.2);
                         }
                         (s, "token") if s != "MakeSummary" => {
                             print!("{}", message.2);
                         }
                         (_, "output") => {
                             print!("{}", message.2);
+                            llm_output.push(message.2);
+                        }
+                        (state_name, "exec_output") => {
+                            println!("exec_output received, state:{}, len={}", state_name, message.2.len());
                             llm_output.push(message.2);
                         }
                         (_, "llm_output") => {
@@ -108,7 +112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             eprintln!("Error received from state '{}': '{}'", state_name, message.2)
                         }
                         (_, "message_processed") => {
-                            println!(); // clear rustyline's buffer
+                            println!("message_processed, wait for the next user input"); // clear rustyline's buffer
                             break;
                         }
                         _ => {}

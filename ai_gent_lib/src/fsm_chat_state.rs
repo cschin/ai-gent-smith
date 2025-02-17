@@ -5,10 +5,16 @@ use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
 use tera::Tera;
-use tokio::{sync::mpsc::{Receiver, Sender}, task::JoinHandle};
+use tokio::{
+    sync::mpsc::{Receiver, Sender},
+    task::JoinHandle,
+};
 
-use crate::{fsm::FsmState, llm_agent::{self, *}, GenaiLlmclient};
-
+use crate::{
+    fsm::FsmState,
+    llm_agent::{self, *},
+    GenaiLlmclient,
+};
 
 // use futures::StreamExt;
 #[derive(Default)]
@@ -63,6 +69,7 @@ async fn get_llm_req_process_handle(
             ))
             .await;
         let mut llm_output = String::default();
+        //println!(" --- state: {}; full prompt: {}", state_name, full_prompt);
         let mut llm_stream = llm_client
             .generate_stream(&full_prompt, &messages, temperature)
             .await;
@@ -166,9 +173,7 @@ impl FsmState for FSMChatState {
         let summary = if !self.config.disable_summary.unwrap_or(false) {
             if let Some(summary) = llm_req_settings.memory.get("summary") {
                 let summary = summary.last().cloned().unwrap_or_default();
-                let summary =
-                    serde_json::from_value::<String>(summary.clone()).unwrap_or("".into());
-                ["<SUMMARY>", &summary, "</SUMMARY>"].join("\n")
+                serde_json::from_value::<String>(summary.clone()).unwrap_or("".into())
             } else {
                 "".into()
             }
@@ -178,7 +183,7 @@ impl FsmState for FSMChatState {
 
         let context = if !self.config.disable_context.unwrap_or(false) {
             if let Some(context) = llm_req_settings.memory.get("context") {
-                let context = if self.config.use_full_context.unwrap_or(false) {
+                if self.config.use_full_context.unwrap_or(false) {
                     context
                         .iter()
                         .map(|c| serde_json::from_value::<String>(c.clone()).unwrap_or("".into()))
@@ -187,8 +192,7 @@ impl FsmState for FSMChatState {
                 } else {
                     let context = context.last().cloned().unwrap_or_default();
                     serde_json::from_value::<String>(context.clone()).unwrap_or("".into())
-                };
-                ["<CONTEXT>", &context, "</CONTEXT>"].join("\n")
+                }
             } else {
                 "".into()
             }
@@ -202,16 +206,14 @@ impl FsmState for FSMChatState {
             let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
 
             let llm_output = if system_prompt.len() + chat_prompt.len() > 0 {
-
                 let mut tera_context = tera::Context::new();
                 let context = escape_json_string(&json!(&context).to_string());
                 let summary = escape_json_string(&json!(&summary).to_string());
                 tera_context.insert("context", &context);
                 tera_context.insert("summary", &summary);
 
-                let full_prompt =
-                    [system_prompt, chat_prompt].join("\n");
-                
+                let full_prompt = [system_prompt, chat_prompt].join("\n");
+
                 let full_prompt = Tera::one_off(&full_prompt, &tera_context, false).unwrap();
 
                 let model = llm_req_settings.model.clone();
@@ -308,7 +310,7 @@ impl FsmState for FSMChatState {
                     let _ = tx
                         .send((
                             self.name.clone(),
-                            "output".into(),
+                            "exec_output".into(),
                             "\nconditionally, run code from the context:\n".into(),
                         ))
                         .await;
@@ -316,7 +318,7 @@ impl FsmState for FSMChatState {
                     let _ = tx
                         .send((
                             self.name.clone(),
-                            "output".into(),
+                            "exec_output".into(),
                             format!("stdout:\n {}\n", stdout),
                         ))
                         .await;
@@ -324,7 +326,7 @@ impl FsmState for FSMChatState {
                     let _ = tx
                         .send((
                             self.name.clone(),
-                            "output".into(),
+                            "exec_output".into(),
                             format!("stderr:\n {}\n", stderr),
                         ))
                         .await;
@@ -333,7 +335,7 @@ impl FsmState for FSMChatState {
                     let _ = tx
                         .send((
                             self.name.clone(),
-                            "output".into(),
+                            "exec_output".into(),
                             "code execution rejected\n".into(),
                         ))
                         .await;
@@ -345,7 +347,7 @@ impl FsmState for FSMChatState {
                 let _ = tx
                     .send((
                         self.name.clone(),
-                        "output".into(),
+                        "exec_output".into(),
                         format!("stdout:\n{}\n", stdout),
                     ))
                     .await;
@@ -353,7 +355,7 @@ impl FsmState for FSMChatState {
                 let _ = tx
                     .send((
                         self.name.clone(),
-                        "output".into(),
+                        "exec_output".into(),
                         format!("stderr:\n{}\n", stderr),
                     ))
                     .await;
