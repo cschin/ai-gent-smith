@@ -234,7 +234,9 @@ impl FsmState for FSMChatState {
 
                 let full_prompt = Tera::one_off(&full_prompt, &tera_context, false).unwrap();
 
-                println!("\nfull_prompt: {}\n", full_prompt);
+                // println!("\nfull_prompt: {}\n", full_prompt);
+                // println!("\nmessage length: {}\n", messages.len());
+
                 let model = llm_req_settings.model.clone();
                 let api_key = llm_req_settings.api_key.clone();
                 let temperature = llm_req_settings.temperature;
@@ -425,6 +427,7 @@ impl FsmState for FSMChatState {
             tera_context.insert("state_name", &state_name);
             tera_context.insert("next_states", &next_states);
             tera_context.insert("state_history", &state_history);
+            tera_context.insert("response", &llm_output);
             let code = Tera::one_off(&fsm_code, &tera_context, true).unwrap();
             let (stdout, stderr) = run_code_in_docker(&code);
             let _ = tx
@@ -451,42 +454,36 @@ impl FsmState for FSMChatState {
                     Some(next_states.first().unwrap().clone())
                 } else if let Some(fsm_prompt) = self.prompts.fsm.clone() {
                     let available_transitions = next_states.join(", ");
-                    let summary = llm_req_settings
-                        .memory
-                        .get("summary")
-                        .cloned()
-                        .unwrap_or_default();
-                    let summary = summary.last().cloned().unwrap_or_default().to_string();
-                    let last_messages = llm_req_settings
-                        .messages
-                        .last()
-                        .cloned()
-                        .unwrap_or(("".into(), "".into()));
 
                     let msg = format!(
                         r#"
-Summary of the previous chat: 
-
-{}
+Given these information, you need to determine the next state following the instructions below:
 
 Current State: {}
 
 Available Next States: {}
 
-The user input: 
-
-{}
-
-The last response: 
-
-{}"#,
-                        summary, self.name, available_transitions, last_messages.1, llm_output
+Make sure the output is just a simple valid JSON string in 
+the format following the instruction above: `{{"next_state": SOME_NEXT_STATE}}`. 
+The "SOME_NEXT_STATE" is one of the Available Next States.
+"#,
+                        self.name, available_transitions
                     );
-                    let fsm_prompt = [fsm_prompt, msg].join("\n");
+                    let fsm_prompt = [msg, fsm_prompt].join("\n");
+                    let mut tera_context = tera::Context::new();
+                    tera_context.insert("task", &task);
+                    tera_context.insert("messages", &messages); 
+                    tera_context.insert("summary", &summary);
+                    tera_context.insert("context", &context);
+                    tera_context.insert("summary", &summary);
+                    tera_context.insert("response", &llm_output);
+                    let fsm_prompt = Tera::one_off(&fsm_prompt, &tera_context, true).unwrap();
+
                     let llm_client = GenaiLlmclient {
                         model: llm_req_settings.model.clone(),
                         api_key: llm_req_settings.api_key.clone(),
                     };
+
                     // println!("for debug: \n<FSM> {} </FSM>\n", fsm_prompt);
                     let next_state = llm_client
                         .generate(
@@ -498,7 +495,9 @@ The last response:
                         .unwrap();
 
                     let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state);
-                    // println!("res: {:?}", next_fsm_state_response);
+                    
+                    //println!("res: {:?}", next_fsm_state_response);
+                    
                     match next_fsm_state_response {
                         Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
                         Err(e) => {
