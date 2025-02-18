@@ -86,6 +86,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = rl.add_history_entry(user_input.as_str());
 
                 // let _ = send_msg.send(("clear_message".into(), "".into())).await;
+                let _ = send_msg.send(("task".into(), user_input.clone())).await;
+
+                // this should the last command sent, it will trigger the server to start to response 
                 let _ = send_msg.send(("message".into(), user_input)).await;
 
                 let mut llm_output = Vec::<String>::new();
@@ -104,6 +107,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                         (state_name, "exec_output") => {
                             println!("exec_output received, state:{}, len={}", state_name, message.2.len());
+                            println!("{}", message.2);
                             llm_output.push(message.2);
                         }
                         (_, "llm_output") => {

@@ -471,9 +471,14 @@ impl LlmFsmAgent {
         while let Some((msg_type, msg)) = user_input.recv().await {
 
             match msg_type.as_str() {
+                // once a message is sent, we will start to process the message
                 "message" => {
                     self.llm_req_settings.messages.push(("user".into(), msg.clone()));
+                }
+                // other comment from the 'client' side, it should be ended with continue or break
+                "task" => {
                     self.llm_req_settings.task = Some(msg);
+                    continue;
                 }
                 "clear_message" => {
                     self.llm_req_settings.messages.clear();
