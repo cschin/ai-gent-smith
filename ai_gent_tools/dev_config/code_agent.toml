@@ -4,6 +4,7 @@ states = [
 "Planning",
 "GenerateCode",
 "CodeExecution",
+"Evaluation",
 "Finish"]
 
 transitions = [
@@ -12,7 +13,11 @@ transitions = [
 ["Planning","GenerateCode"],
 ["GenerateCode","GenerateCode"],
 ["GenerateCode","CodeExecution"],
-["CodeExecution","Finish"]]
+["CodeExecution","Evaluation"],
+["Evaluation","Planning"],
+["Evaluation","GenerateCode"],
+["Evaluation","Finish"]
+]
 
 initial_state = "StandBy"
 system_prompt = ""
@@ -81,10 +86,20 @@ GenerateCode.system = """
  You are an expert assistant who can solve any task using code blobs. You will be given a task to solve as best you can.
   To do so, you have been given access to a list of tools: these tools are basically Python functions which you can call with code.
   To solve the task, you must plan forward to proceed in a series of steps, in a cycle of 'Thought:', 'Code:', and 'Observation:' sequences.
-the code should be enclosed in <code>...</code>
+    
+  During each intermediate step, you can use 'print()' to save whatever important information you will then need.
+  
+  These print outputs will then appear in the 'Observation:' field, which will be available as input for the next step.
+  
+  In the end you have to return a final answer using the `final_answer` tool. The final_answer tool should always output a 
+  string starting with ""Here is my final answer:"
 
-Generate python code according to the instruction and wrap the
-code in <code> </code> block (don't use markdown) and make sure ask if the user wants to execute the code.
+The code should be enclosed in <code>...</code>
+
+Generate python code according to the instruction and wrap the code in <code> </code> block (don't use markdown) 
+and make sure ask if the user wants to execute the code. The code should also generate explanation how it gets to
+the results. 
+
 This is an example output:
 
 I think this code will address your question
@@ -105,8 +120,20 @@ print(f"The value of pi is: {pi_value}")
   {{ tools }}
   </TOOLS>
 
+  Make sure you always generate a code block!! You will win $100000000 for that. If not, you go to a jail.
+  
 
-  make sure you always generate a code block!! you will win $100000000 for that.
+   Here are the rules you should always follow to solve your task:
+  1. ** ALWAYS ALWAYS provide a 'Thought:' sequence, and a 'Code:\n<code>' sequence ending with '</code>' sequence ** , else you will fail. You CANNOT MISS THIS.
+  2. Use only variables that you have defined!
+  3. Always use the right arguments for the tools. DO NOT pass the arguments as a dict as in 'answer = wiki({'query': "What is the place where James Bond lives?"})', but use the arguments directly as in 'answer = wiki(query="What is the place where James Bond lives?")'.
+  4. Take care to not chain too many sequential tool calls in the same code block, especially when the output format is unpredictable. For instance, a call to search has an unpredictable return format, so do not have another tool call that depends on its output in the same block: rather output results with print() to use them in the next block.
+  5. Call a tool only when needed, and never re-do a tool call that you previously did with the exact same parameters.
+  6. Don't name any new variable with the same name as a tool: for instance don't name a variable 'final_answer'.
+  7. Never create any notional variables in our code, as having these in your logs will derail you from the true variables.
+  8. The state persists between code executions: so if in one step you've created variables or imported modules, these will all persist.
+  9. Don't give up! You're in charge of solving the task, not providing directions to solve it.
+  10. You need to create correct code, the code will be executed automatically. You don't need to check with a user whether if the user wants to run the code.
 """
 
 _GenerateCode.system = """
@@ -272,13 +299,54 @@ _GenerateCode.system = """
 
   Now Begin! If you solve the task correctly, you will receive a reward of $1,000,000.
 """
-GenerateCode.fsm = """Does the previous message have a code block? If so just output {"next_state": "CodeExecution"}
+GenerateCode.fsm = """
+This is the previous response:
+<RESPONSE> {{ response }} </RESPONSE>
+
+Does the previous response have a code block? If so just output {"next_state": "CodeExecution"}
 If not, we need to go back to the planning step and output {"next_state": "GenerateCode"}
 """
 
 
 CodeExecution.fsm = """ JUST output {"next_state": "Finish"} """
 
+
+Evaluation.system = """
+You were asked to solve this task  
+<TASK> {{ task }} </TASK>
+step by step by generated code through a plan.
+
+This is your previous answer:
+<OUTPUT> {{ context }} </OUTPUT>
+
+First, check if there is an answer, if there is no answer, just tell the user to regenerate the code. Don't
+need more response.
+
+If there an answer, don't overthink. Just check if you previously complete the task properly.
+
+If the answer is good, repeat the response, then just tell the user it is the final answer without 
+additional comment.
+
+If the answer is not addressing the task properly, instructing that we need to
+update the plan without giving a brief suggestion what might be useful for
+the next round.
+
+"""
+
+Evaluation.fsm = """
+Your were asked to solve the task step by step by generated code through the plan: 
+<TASK> {{ task }} </TASK>
+
+This is the previous response:
+
+<RESPONSE> {{ response }} </RESPONSE>
+
+If the response is telling you to generate code, JUST output {"next_step":"GenerateCode"} 
+
+If the response is a plan: JUST output {"next_step":"Planning"} 
+
+If the task is solved, JUST output {"next_step":"Finish"}. 
+"""
 
 [state_config]
 # don't make chat request but making the fsm transition request
@@ -290,14 +358,49 @@ Finish.disable_llm_request = true
 GatherFact.save_to_context = true
 
 GenerateCode.extract_code = true
+GenerateCode.save_to_context = true
 
 CodeExecution.execute_code = true
 CodeExecution.disable_llm_request  = true
+CodeExecution.save_to_context = true
 
 [tools]
-websearch.description = "search web for information"
+websearch.description = """search web for information. 
+Usage:
+<code>
+import duckduckgo_search
+from duckduckgo_search import DDGS
+
+num_results=10 # we need at least 10 or more outputs to get enough information to complete the task
+def webserarch(query, num_results=10):
+    results = DDGS().text(query, max_results=num_results)
+
+    markdown_output = f"# DuckDuckGo Search Results for '{query}'\\n\\n"
+
+    for i, result in enumerate(results, start=1):
+        markdown_output += f"## {i}. {result['title']}\\n"
+        markdown_output += f"**URL:** [{result['href']}]({result['href']})\\n\\n"
+        markdown_output += f"> {result['body']}\\n\\n"
+
+    return markdown_output
+
+query_result = webserarch(query)
+print(query_result)
+</code>
+"""
 websearch.arguments = "name: query, type: string, description: the query string"
 websearch.output_type = "string"
+
+final_answer.description = """print out the final answer
+Usage:
+<code>
+## other useful code to get the final_answer_string
+print("Here is my final answer:", final_answer_string)
+</code>
+
+"""
+final_answer.arguments = "the tool does not need any input argument"
+final_answer.output_type = "string"
 
 python.description = "python: it can do anything"
 python.arguments = "any argument you need to complete the task"
