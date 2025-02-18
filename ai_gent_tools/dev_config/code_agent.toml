@@ -1,0 +1,91 @@
+states = [
+"StandBy",
+"GatherFact",
+"Planning",
+"Finish"]
+
+transitions = [
+["StandBy",
+"GatherFact"],
+["GatherFact",
+"Planning"],
+["Planning",
+"Finish"]]
+
+initial_state = "StandBy"
+system_prompt = ""
+fsm_prompt = "" 
+summary_prompt = ""
+
+[state_prompts]
+StandBy.system = ""
+StandBy.fsm = """JUST output a json string {"next_state": "GatherFact"}"""
+
+GatherFact.system = """
+Below I will present you a task.
+
+    You will now build a comprehensive preparatory survey of which facts we have at our disposal and which ones we still need.
+    To do so, you will have to read the task and identify things that must be discovered in order to successfully complete it.
+    Don't make any assumptions. For each item, provide a thorough reasoning. Here is how you will structure this survey:
+
+    ---
+    ### 1. Facts given in the task
+    List here the specific facts given in the task that could help you (there might be nothing here).
+
+    ### 2. Facts to look up
+    List here any facts that we may need to look up.
+    Also list where to find each of these, for instance a website, a file... - maybe the task contains some sources that you should re-use here.
+
+    ### 3. Facts to derive
+    List here anything that we want to derive from the above by logical reasoning, for instance computation or simulation.
+
+    Keep in mind that "facts" will typically be specific names, dates, values, etc. Your answer should use the below headings:
+    ### 1. Facts given in the task
+    ### 2. Facts to look up
+    ### 3. Facts to derive
+    Do not add anything else.
+"""
+GatherFact.fsm = """JUST output a json string {"next_state": "Planning"}"""
+
+Planning.system = """
+    You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
+
+    Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
+    This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
+    Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
+    After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.
+
+    Here is your task:
+
+    <TASK> 
+    {{ task }} 
+    </TASK>
+
+    List of facts that you know:
+    <FACTS> 
+    {{ context }} 
+    </FACTS>
+
+
+    You can leverage these tools:
+    <TOOLS> 
+    {{ tools }} 
+    </TOOLS>
+
+"""
+Planning.fsm = """JUST output a json string {"next_state": "Finish"}"""
+
+[state_config]
+# don't make chat request but making the fsm transition request
+StandBy.disable_llm_request = true
+
+# don't make chat request but making the fsm transition request
+Finish.disable_llm_request = true
+
+GatherFact.save_to_context = true
+
+
+[tools]
+websearch.description = "search web for information"
+websearch.arguments = "query: string"
+websearch.output_type = "string"

@@ -182,35 +182,41 @@ impl FsmState for FSMChatState {
             llm_req_settings.messages.clone()
         };
 
-        let summary = if !self.config.disable_summary.unwrap_or(false) {
-            if let Some(summary) = llm_req_settings.memory.get("summary") {
-                let summary = summary.last().cloned().unwrap_or_default();
-                serde_json::from_value::<String>(summary.clone()).unwrap_or("".into())
+        let summary = if let Some(summary) = llm_req_settings.memory.get("summary") {
+            let summary = summary.last().cloned().unwrap_or_default();
+            serde_json::from_value::<String>(summary.clone()).unwrap_or("".into())
+        } else {
+            "".into()
+        };
+
+        let task = llm_req_settings.task.clone().unwrap_or_default();
+
+        let context = if let Some(context) = llm_req_settings.memory.get("context") {
+            if self.config.use_full_context.unwrap_or(false) {
+                context
+                    .iter()
+                    .map(|c| serde_json::from_value::<String>(c.clone()).unwrap_or("".into()))
+                    .collect::<Vec<String>>()
+                    .join("\n\n")
             } else {
-                "".into()
+                let context = context.last().cloned().unwrap_or_default();
+                serde_json::from_value::<String>(context.clone()).unwrap_or("".into())
             }
         } else {
             "".into()
         };
 
-        let context = if !self.config.disable_context.unwrap_or(false) {
-            if let Some(context) = llm_req_settings.memory.get("context") {
-                if self.config.use_full_context.unwrap_or(false) {
-                    context
-                        .iter()
-                        .map(|c| serde_json::from_value::<String>(c.clone()).unwrap_or("".into()))
-                        .collect::<Vec<String>>()
-                        .join("\n\n")
-                } else {
-                    let context = context.last().cloned().unwrap_or_default();
-                    serde_json::from_value::<String>(context.clone()).unwrap_or("".into())
-                }
-            } else {
-                "".into()
-            }
+        let tools = if let Some(tools) = llm_req_settings.tools {
+            tools.iter().map( |(tool_name, tool) | {
+                format!("\n<tool>\nName:: {}\nDescription:: {}\nTake input:: {}\nReturn an output of type:: {}\n<tool>\n", 
+                tool_name,
+                tool.description,
+                tool.arguments,
+                tool.output_type)
+            }).collect::<Vec<_>>().join("\n")
         } else {
             "".into()
-        };
+        }; 
 
         let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
             let system_prompt = self.prompts.system.clone().unwrap_or("".into());
@@ -219,15 +225,16 @@ impl FsmState for FSMChatState {
 
             let llm_output = if system_prompt.len() + chat_prompt.len() > 0 {
                 let mut tera_context = tera::Context::new();
-                let context = escape_json_string(&json!(&context).to_string());
-                let summary = escape_json_string(&json!(&summary).to_string());
                 tera_context.insert("context", &context);
                 tera_context.insert("summary", &summary);
+                tera_context.insert("task", &task);
+                tera_context.insert("tools", &tools);
 
                 let full_prompt = [system_prompt, chat_prompt].join("\n");
 
                 let full_prompt = Tera::one_off(&full_prompt, &tera_context, false).unwrap();
 
+                println!("\nfull_prompt: {}\n", full_prompt);
                 let model = llm_req_settings.model.clone();
                 let api_key = llm_req_settings.api_key.clone();
                 let temperature = llm_req_settings.temperature;

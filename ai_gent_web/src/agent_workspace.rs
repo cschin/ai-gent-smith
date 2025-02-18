@@ -678,6 +678,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             fsm_prompt: fsm_config.fsm_prompt,
             summary_prompt: fsm_config.summary_prompt,
             model: llm_name.clone(),
+            tools: None,
             api_key,
             fsm_initial_state: fsm_config.initial_state
         };

@@ -24,9 +24,7 @@ pub struct StatePrompts {
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
 pub struct StateConfig {
     pub disable_llm_request: Option<bool>,
-    pub disable_context: Option<bool>,
     pub use_full_context: Option<bool>,
-    pub disable_summary: Option<bool>,
     pub use_only_last_message: Option<bool>,
     pub ignore_llm_output: Option<bool>,
     pub save_to_summary: Option<bool>,
@@ -39,6 +37,15 @@ pub struct StateConfig {
     pub wait_for_msg: Option<bool>,
 }
 
+#[derive(Serialize, Deserialize, Default, Debug, Clone)]
+pub struct Tool {
+    pub description: String,
+    pub arguments: String,
+    pub output_type: String
+}
+
+
+
 pub trait LlmFsmStateInit {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self;
 }
@@ -48,6 +55,8 @@ pub struct LlmReqSetting {
     pub memory: HashMap<String, Vec<Value>>,
     pub state_history: Vec<String>, // maybe add time stamp in the future
     pub messages: Vec<(String, String)>,
+    pub task: Option<String>,
+    pub tools: Option<HashMap<String, Tool>>,
     pub temperature: Option<f32>,
     pub model: String,
     pub api_key: String,
@@ -226,6 +235,7 @@ pub struct LlmFsmAgentConfig {
     pub system_prompt: String,
     pub summary_prompt: String,
     pub fsm_prompt: String,
+    pub tools: Option<HashMap<String, Tool>> 
 }
 
 impl LlmFsmAgentConfig {
@@ -252,6 +262,7 @@ pub struct LlmFsmAgentConfigBuilder {
     fsm_prompt: String,
     summary_prompt: String,
     system_prompt: String,
+    tools: Option<HashMap<String, Tool>> 
 }
 
 impl LlmFsmAgentConfigBuilder {
@@ -305,6 +316,7 @@ impl LlmFsmAgentConfigBuilder {
             fsm_prompt: config.fsm_prompt,
             system_prompt: config.system_prompt,
             summary_prompt: config.summary_prompt,
+            tools: config.tools,
         })
     }
 
@@ -338,6 +350,7 @@ impl LlmFsmAgentConfigBuilder {
             fsm_prompt: config.fsm_prompt,
             system_prompt: config.system_prompt,
             summary_prompt: config.summary_prompt,
+            tools: config.tools,
         })
     }
 
@@ -355,6 +368,7 @@ impl LlmFsmAgentConfigBuilder {
             fsm_prompt: self.fsm_prompt,
             system_prompt: self.system_prompt,
             summary_prompt: self.summary_prompt,
+            tools: self.tools,
         })
     }
 }
@@ -400,6 +414,7 @@ pub struct AgentSettings {
     pub fsm_initial_state: String,
     pub model: String,
     pub api_key: String,
+    pub tools: Option<HashMap<String, Tool>>
 }
 
 impl LlmFsmAgent {
@@ -407,6 +422,8 @@ impl LlmFsmAgent {
         let llm_req_setting = LlmReqSetting {
             messages: Vec::default(),
             temperature: None,
+            task: None,
+            tools: agent_settings.tools,
             state_history: Vec::default(),
             memory: HashMap::default(),
             model: agent_settings.model,
@@ -452,9 +469,11 @@ impl LlmFsmAgent {
         self.llm_req_settings.temperature = temperature;
 
         while let Some((msg_type, msg)) = user_input.recv().await {
+
             match msg_type.as_str() {
                 "message" => {
-                    self.llm_req_settings.messages.push(("user".into(), msg));
+                    self.llm_req_settings.messages.push(("user".into(), msg.clone()));
+                    self.llm_req_settings.task = Some(msg);
                 }
                 "clear_message" => {
                     self.llm_req_settings.messages.clear();
@@ -717,6 +736,7 @@ mod tests {
             sys_prompt: fsm_config.system_prompt,
             fsm_prompt: fsm_config.fsm_prompt,
             summary_prompt: fsm_config.summary_prompt,
+            tools: fsm_config.tools,
             model: "".into(),
             api_key: "".into(),
             fsm_initial_state: "Initial".into(),

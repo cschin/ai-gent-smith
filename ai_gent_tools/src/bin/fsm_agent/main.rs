@@ -55,6 +55,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         model: "gpt-4o".into(),
         api_key,
         fsm_initial_state: fsm_config.initial_state,
+        tools: fsm_config.tools,
     };
     let mut agent = LlmFsmAgent::new(fsm, llm_req_setting);
 
