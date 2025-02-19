@@ -380,8 +380,6 @@ impl FSMChatState {
                 serde_json::from_value::<String>(code).unwrap_or("".into())
             };
 
-            println!("XXXX code: {}", code);
-
             if self.config.wait_for_msg.unwrap_or(false) {
                 let llm_output = self
                     .get_attribute("llm_output")
