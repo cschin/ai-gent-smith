@@ -227,6 +227,7 @@ impl FsmState for FSMChatState {
                 let mut tera_context = tera::Context::new();
                 tera_context.insert("context", &context);
                 tera_context.insert("summary", &summary);
+                tera_context.insert("context", &context);
                 tera_context.insert("task", &task);
                 tera_context.insert("tools", &tools);
 
