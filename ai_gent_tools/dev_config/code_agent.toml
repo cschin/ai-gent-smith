@@ -1,7 +1,9 @@
 states = [
 "StandBy",
 "GatherFact",
+"UpdateFact",
 "Planning",
+"Replanning",
 "GenerateCode",
 "CodeExecution",
 "Evaluation",
@@ -11,10 +13,12 @@ transitions = [
 ["StandBy","GatherFact"],
 ["GatherFact","Planning"],
 ["Planning","GenerateCode"],
-["GenerateCode","GenerateCode"],
+["GenerateCode","Replanning"],
 ["GenerateCode","CodeExecution"],
 ["CodeExecution","Evaluation"],
-["Evaluation","Planning"],
+["Evaluation","UpdateFact"],
+["UpdateFact", "Replanning"],
+["Replanning", "GenerateCode"],
 ["Evaluation","GenerateCode"],
 ["Evaluation","Finish"]
 ]
@@ -54,6 +58,20 @@ Below I will present you a task.
 """
 GatherFact.fsm = """JUST output a json string {"next_state": "Planning"}"""
 
+
+UpdateFact.system = """
+   Earlier we've built a list of facts.
+    But since in your previous steps you may have learned useful new facts or invalidated some false ones.
+    Please update your list of facts based on the previous history, and provide these headings:
+    ### 1. Facts given in the task
+    ### 2. Facts that we have learned
+    ### 3. Facts still to look up
+    ### 4. Facts still to derive
+    <TASK> {{ task }} </TASK>
+    <HISTORY> {{ context }} </HISTORY>
+"""
+UpdateFact.fsm = """JUST output a json string {"next_state": "Replanning"}"""
+
 Planning.system = """
     You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
 
@@ -82,11 +100,48 @@ Planning.system = """
 """
 Planning.fsm = """JUST output a json string {"next_state": "GenerateCode"}"""
 
+
+
+Replanning.system = """
+    You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
+
+    Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
+    This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
+    Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
+    After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.
+
+    Here is your task:
+
+    <TASK> 
+    {{ task }} 
+    </TASK>
+
+    Find below the record of what has been tried so far to solve it. 
+
+    Make a plan following up what has been accomplished before. If certain steps are complete, 
+    you can ignore those steps.
+
+    
+    List of facts that you know:
+    <FACTS> 
+    {{ context }} 
+    </FACTS>
+
+    You can leverage these tools:
+    <TOOLS> 
+    {{ tools }} 
+    </TOOLS>
+
+"""
+Replanning.fsm = """JUST output a json string {"next_state": "GenerateCode"}"""
+
 GenerateCode.system = """
  You are an expert assistant who can solve any task using code blobs. You will be given a task to solve as best you can.
   To do so, you have been given access to a list of tools: these tools are basically Python functions which you can call with code.
   To solve the task, you must plan forward to proceed in a series of steps, in a cycle of 'Thought:', 'Code:', and 'Observation:' sequences.
-    
+
+    here is the plan <PLAN> {{ context }} </PLAN>
+
   During each intermediate step, you can use 'print()' to save whatever important information you will then need.
   
   These print outputs will then appear in the 'Observation:' field, which will be available as input for the next step.
@@ -120,8 +175,15 @@ print(f"The value of pi is: {pi_value}")
   {{ tools }}
   </TOOLS>
 
+ and previous fact 
+ <FACTS> {{ context }} </FACT>
+
   Make sure you always generate a code block!! You will win $100000000 for that. If not, you go to a jail.
   
+  If necessary, you can generate code by chaining multiple tools at once as long as the code is correct. It is
+  encouraged to create code to perform multiple steps at once.
+
+  You can also use the previous results in the messages as input, if those steps have been performed before. 
 
    Here are the rules you should always follow to solve your task:
   1. ** ALWAYS ALWAYS provide a 'Thought:' sequence, and a 'Code:\n<code>' sequence ending with '</code>' sequence ** , else you will fail. You CANNOT MISS THIS.
@@ -141,7 +203,7 @@ This is the previous response:
 <RESPONSE> {{ response }} </RESPONSE>
 
 Does the previous response have a code block? If so just output {"next_state": "CodeExecution"}
-If not, we need to go back to the planning step and output {"next_state": "GenerateCode"}
+If not, we need to generate the code again {"next_state": "Replanning"}
 """
 
 CodeExecution.fsm = """ JUST output {"next_state": "Finish"} """
@@ -163,8 +225,8 @@ If there an answer, don't overthink. Just check if you previously complete the t
 If the answer is good, repeat the response, then just tell the user it is the final answer without 
 additional comment.
 
-If the answer is not addressing the task properly, instructing that we need to
-update the plan without giving a brief suggestion what might be useful for
+If the answer is not addressing the task properly, explain briefly why it is not right and instruct 
+that we need to update the plan, and give a very brief suggestion what might be useful for
 the next round.
 
 """
@@ -191,8 +253,15 @@ StandBy.disable_llm_request = true
 # don't make chat request but making the fsm transition request
 Finish.disable_llm_request = true
 
-GatherFact.save_to_context = true
 
+GatherFact.save_to_context = true
+UpdateFact.save_to_context = true
+UpdateFact.use_full_context = true
+
+Planning.save_to_context = true
+Replanning.save_to_context = true
+
+#GenerateCode.use_full_context = true
 GenerateCode.extract_code = true
 GenerateCode.save_to_context = true
 
@@ -220,17 +289,53 @@ def webserarch(query, num_results=10):
 
     return markdown_output
 
+def webserarch_for_urls(query, num_results=10):
+    results = DDGS().text(query, max_results=num_results)
+
+    URLs = []
+    for i, result in enumerate(results, start=1):
+        URLs += f"{result['href']})\\n\\n"
+
+    return URLs
+
 query_result = webserarch(query)
+
+... we can use other tool to take query_result as input
 print(query_result)
 </code>
 """
 websearch.arguments = "name: query, type: string, description: the query string"
 websearch.output_type = "string"
 
+fetchtool.description = """fetch a document from a URL with python
+import requests
+import tempfile
+
+def fetchtool(url):
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        
+        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+            temp_file.write(response.text)
+            print(f"Content saved to: {temp_file.name}")
+            
+        return temp_file.name
+    except requests.RequestException as e:
+        print(f"Error fetching URL: {e}")
+        return None
+
+previous_query_results_url = "..."
+fetchtool(previous_query_results_url)
+"""
+fetchtool.arguments = "url: a string for the web address of the content to fetch"
+fetchtool.output_type = "string"
+
 final_answer.description = """print out the final answer
 Usage:
 <code>
 ## other useful code to get the final_answer_string
+final_answer_string = "..."
 print("Here is my final answer:", final_answer_string)
 </code>
 
