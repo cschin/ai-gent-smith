@@ -222,8 +222,8 @@ need more response.
 
 If there an answer, don't overthink. Just check if you previously complete the task properly.
 
-If the answer is good, repeat the response, then just tell the user it is the final answer without 
-additional comment.
+If the answer is good, repeat the response but no more than the first 500 words / 3000 characters, then 
+just tell the user it is the final answer without additional comment.
 
 If the answer is not addressing the task properly, explain briefly why it is not right and instruct 
 that we need to update the plan, and give a very brief suggestion what might be useful for
@@ -243,7 +243,7 @@ If the response is telling you to generate code, JUST output {"next_step":"Gener
 
 If the response is a plan: JUST output {"next_step":"Planning"} 
 
-If the task is solved, JUST output {"next_step":"Finish"}. 
+If the task is solved or you get the final answer in the response, JUST output {"next_step":"Finish"}. 
 """
 
 [state_config]
