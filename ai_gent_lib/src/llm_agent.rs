@@ -41,10 +41,8 @@ pub struct StateConfig {
 pub struct Tool {
     pub description: String,
     pub arguments: String,
-    pub output_type: String
+    pub output_type: String,
 }
-
-
 
 pub trait LlmFsmStateInit {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self;
@@ -235,7 +233,7 @@ pub struct LlmFsmAgentConfig {
     pub system_prompt: String,
     pub summary_prompt: String,
     pub fsm_prompt: String,
-    pub tools: Option<HashMap<String, Tool>> 
+    pub tools: Option<HashMap<String, Tool>>,
 }
 
 impl LlmFsmAgentConfig {
@@ -262,7 +260,7 @@ pub struct LlmFsmAgentConfigBuilder {
     fsm_prompt: String,
     summary_prompt: String,
     system_prompt: String,
-    tools: Option<HashMap<String, Tool>> 
+    tools: Option<HashMap<String, Tool>>,
 }
 
 impl LlmFsmAgentConfigBuilder {
@@ -389,6 +387,7 @@ pub struct LlmFsmAgent {
     pub llm_req_settings: LlmReqSetting,
     pub fsm_prompt: String,
     pub summary_prompt: String,
+    pub total_state_transition_limit: u32,
 }
 
 #[async_trait]
@@ -414,11 +413,15 @@ pub struct AgentSettings {
     pub fsm_initial_state: String,
     pub model: String,
     pub api_key: String,
-    pub tools: Option<HashMap<String, Tool>>
+    pub tools: Option<HashMap<String, Tool>>,
+    pub total_state_transition_limit: Option<u32>,
 }
 
 impl LlmFsmAgent {
     pub fn new(fsm: FiniteStateMachine, agent_settings: AgentSettings) -> Self {
+        let total_state_transition_limit = agent_settings
+            .total_state_transition_limit
+            .unwrap_or(32_u32);
         let llm_req_setting = LlmReqSetting {
             messages: Vec::default(),
             temperature: None,
@@ -436,6 +439,7 @@ impl LlmFsmAgent {
             fsm_prompt: agent_settings.fsm_prompt,
             summary_prompt: agent_settings.summary_prompt,
             llm_req_settings: llm_req_setting,
+            total_state_transition_limit,
         }
     }
 
@@ -467,13 +471,15 @@ impl LlmFsmAgent {
         temperature: Option<f32>,
     ) -> Result<(), anyhow::Error> {
         self.llm_req_settings.temperature = temperature;
+        let total_state_transition_limit = self.total_state_transition_limit;
 
         while let Some((msg_type, msg)) = user_input.recv().await {
-
             match msg_type.as_str() {
                 // once a message is sent, we will start to process the message
                 "message" => {
-                    self.llm_req_settings.messages.push(("user".into(), msg.clone()));
+                    self.llm_req_settings
+                        .messages
+                        .push(("user".into(), msg.clone()));
                 }
                 // other comment from the 'client' side, it should be ended with continue or break
                 "task" => {
@@ -505,6 +511,7 @@ impl LlmFsmAgent {
                     .await;
             };
             let tx2 = tx.clone();
+            let mut state_transition_count = 0;
             loop {
                 let current_state_name = self
                     .fsm
@@ -530,7 +537,9 @@ impl LlmFsmAgent {
                 let (fsm_tx, fsm_rx) = mpsc::channel::<(String, String, String)>(16);
                 let tx = tx.clone();
                 let handle = get_fsm_state_communication_handle(tx, fsm_rx);
-                self.llm_req_settings.state_history.push(current_state_name.clone());
+                self.llm_req_settings
+                    .state_history
+                    .push(current_state_name.clone());
                 if let Some(next_state_name) =
                     current_state.start_service(fsm_tx, None, next_states).await
                 {
@@ -554,7 +563,10 @@ impl LlmFsmAgent {
                                 .send((
                                     current_state_name,
                                     "error".into(),
-                                    format!(r#"next state "{}" not available,\n error: "{}""#, next_state_name, e),
+                                    format!(
+                                        r#"next state "{}" not available,\n error: "{}""#,
+                                        next_state_name, e
+                                    ),
                                 ))
                                 .await;
 
@@ -566,10 +578,25 @@ impl LlmFsmAgent {
                     self.update_message_and_memory(llm_output, new_memory);
                     break;
                 }
+                state_transition_count += 1; 
+                if state_transition_count > total_state_transition_limit {
+                    let _ = tx2
+                        .send((
+                            "".into(),
+                            format!(
+                                "max_total_states({}), reached",
+                                total_state_transition_limit
+                            ),
+                            "".into(),
+                        ))
+                        .await;
+                    break
+                }
             }
             let _ = tx
                 .send(("".into(), "message_processed".into(), "".into()))
                 .await;
+           
         }
         Ok(())
     }
@@ -745,6 +772,7 @@ mod tests {
             model: "".into(),
             api_key: "".into(),
             fsm_initial_state: "Initial".into(),
+            total_state_transition_limit: None,
         };
 
         let _agent = LlmFsmAgent::new(fsm, agent_settings);

@@ -56,6 +56,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         api_key,
         fsm_initial_state: fsm_config.initial_state,
         tools: fsm_config.tools,
+        total_state_transition_limit: None,
     };
     let mut agent = LlmFsmAgent::new(fsm, llm_req_setting);
 
