@@ -16,7 +16,16 @@ use crate::{
     GenaiLlmclient,
 };
 
-// use futures::StreamExt;
+type Messages = Vec<(String, String)>;
+#[derive(Default, Debug)]
+struct FSMChatStateData {
+    messages: Messages,
+    summary: String,
+    task: String,
+    context: String,
+    tools: String,
+}
+
 #[derive(Default)]
 pub struct FSMChatState {
     name: String,
@@ -24,6 +33,7 @@ pub struct FSMChatState {
     prompts: StatePrompts,
     config: StateConfig,
     handle: Option<JoinHandle<String>>,
+    state_data: FSMChatStateData,
 }
 
 impl LlmFsmStateInit for FSMChatState {
@@ -164,14 +174,53 @@ impl FsmState for FSMChatState {
         _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>,
     ) -> Option<String> {
-        let llm_req_settings: llm_agent::LlmReqSetting =
-            serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
-
-        let state_name = self.name.clone();
+        let llm_req_settings = self.get_llm_req_settings().await;
         let _ = tx
-            .send((state_name.clone(), "state".into(), state_name.clone()))
+            .send((self.name.clone(), "state".into(), self.name.clone()))
             .await;
 
+        self.state_data = self.prepare_context(&llm_req_settings).await;
+
+        let llm_output = self.handle_llm_output(&llm_req_settings, &tx).await;
+
+        let (stdout, stderr) = self.execute_code(&llm_req_settings, &tx).await;
+
+        self.save_execution_output(&tx, &stdout, &stderr).await;
+
+        self.determine_next_state(&llm_req_settings, &tx, &next_states, &llm_output)
+            .await
+    }
+
+    async fn set_attribute(&mut self, k: &str, v: String) {
+        self.attributes.insert(k.to_string(), v);
+    }
+
+    async fn get_attribute(&self, k: &str) -> Option<String> {
+        self.attributes.get(k).cloned()
+    }
+
+    async fn remove_attribute(&mut self, k: &str) -> Option<String> {
+        self.attributes.remove(k)
+    }
+
+    async fn clone_attribute(&self, k: &str) -> Option<String> {
+        self.attributes.get(k).cloned()
+    }
+
+    fn name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+impl FSMChatState {
+    async fn get_llm_req_settings(&self) -> llm_agent::LlmReqSetting {
+        serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap()
+    }
+
+    async fn prepare_context(
+        &self,
+        llm_req_settings: &llm_agent::LlmReqSetting,
+    ) -> FSMChatStateData {
         let messages = if self.config.use_only_last_message.unwrap_or(false) {
             vec![llm_req_settings
                 .messages
@@ -206,37 +255,42 @@ impl FsmState for FSMChatState {
             "".into()
         };
 
-        let tools = if let Some(tools) = llm_req_settings.tools {
-            tools.iter().map( |(tool_name, tool) | {
+        let tools = if let Some(ref tools) = llm_req_settings.tools {
+            tools.iter().map(|(tool_name, tool)| {
                 format!("\n<tool>\nName:: {}\nDescription:: {}\nTake input:: {}\nReturn an output of type:: {}\n<tool>\n", 
-                tool_name,
-                tool.description,
-                tool.arguments,
-                tool.output_type)
+                tool_name, tool.description, tool.arguments, tool.output_type)
             }).collect::<Vec<_>>().join("\n")
         } else {
             "".into()
-        }; 
+        };
 
+        FSMChatStateData {
+            messages,
+            summary,
+            task,
+            context,
+            tools,
+        }
+    }
+
+    async fn handle_llm_output(
+        &mut self,
+        llm_req_settings: &llm_agent::LlmReqSetting,
+        tx: &Sender<(String, String, String)>,
+    ) -> String {
         let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
             let system_prompt = self.prompts.system.clone().unwrap_or("".into());
-
             let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
 
-            let llm_output = if system_prompt.len() + chat_prompt.len() > 0 {
+            if system_prompt.len() + chat_prompt.len() > 0 {
                 let mut tera_context = tera::Context::new();
-                tera_context.insert("context", &context);
-                tera_context.insert("summary", &summary);
-                tera_context.insert("context", &context);
-                tera_context.insert("task", &task);
-                tera_context.insert("tools", &tools);
+                tera_context.insert("context", &self.state_data.context);
+                tera_context.insert("summary", &self.state_data.summary);
+                tera_context.insert("task", &self.state_data.task);
+                tera_context.insert("tools", &self.state_data.tools);
 
                 let full_prompt = [system_prompt, chat_prompt].join("\n");
-
                 let full_prompt = Tera::one_off(&full_prompt, &tera_context, false).unwrap();
-
-                // println!("\nfull_prompt: {}\n", full_prompt);
-                // println!("\nmessage length: {}\n", messages.len());
 
                 let model = llm_req_settings.model.clone();
                 let api_key = llm_req_settings.api_key.clone();
@@ -245,9 +299,9 @@ impl FsmState for FSMChatState {
 
                 self.handle = Some(
                     get_llm_req_process_handle(
-                        state_name.clone(),
+                        self.name.clone(),
                         tx.clone(),
-                        messages.clone(),
+                        self.state_data.messages.clone(),
                         full_prompt,
                         temperature,
                         ignore_llm_output,
@@ -267,41 +321,47 @@ impl FsmState for FSMChatState {
                 }
             } else {
                 String::new()
-            };
-
-            if self.config.save_to_summary.unwrap_or(false) {
-                let _ = tx
-                    .send((self.name.clone(), "summary".into(), llm_output.clone()))
-                    .await;
             }
-
-            if self.config.save_to_context.unwrap_or(false) {
-                let _ = tx
-                    .send((self.name.clone(), "context".into(), llm_output.clone()))
-                    .await;
-            }
-
-            if self.config.extract_code.unwrap_or(false) {
-                let code = extract_code(&llm_output);
-                let _ = tx.send((self.name.clone(), "code".into(), code)).await;
-            }
-            llm_output
         } else {
             "".into()
         };
 
+        if self.config.save_to_summary.unwrap_or(false) {
+            let _ = tx
+                .send((self.name.clone(), "summary".into(), llm_output.clone()))
+                .await;
+        }
+
+        if self.config.save_to_context.unwrap_or(false) {
+            let _ = tx
+                .send((self.name.clone(), "context".into(), llm_output.clone()))
+                .await;
+        }
+
+        if self.config.extract_code.unwrap_or(false) {
+            let code = extract_code(&llm_output);
+            let _ = tx.send((self.name.clone(), "code".into(), code)).await;
+        }
+        llm_output
+    }
+
+    async fn execute_code(
+        &self,
+        llm_req_settings: &llm_agent::LlmReqSetting,
+        tx: &Sender<(String, String, String)>,
+    ) -> (String, String) {
         #[derive(Deserialize, Debug)]
         struct ExecuteCode {
             run: bool,
         }
 
-        let (stdout, stderr) = if self.config.execute_code.unwrap_or(false) {
+        if self.config.execute_code.unwrap_or(false) {
             let code = if let Some(code) = self.config.code.clone() {
                 let mut tera_context = tera::Context::new();
-                let messages = escape_json_string(&json!(&messages).to_string());
-                let context = escape_json_string(&json!(&context).to_string());
-                let summary = escape_json_string(&json!(&summary).to_string());
-                let state_name = escape_json_string(&json!(&state_name).to_string());
+                let messages = escape_json_string(&json!(&self.state_data.messages).to_string());
+                let context = escape_json_string(&json!(&self.state_data.context).to_string());
+                let summary = escape_json_string(&json!(&self.state_data.summary).to_string());
+                let state_name = escape_json_string(&json!(&self.name).to_string());
                 let state_history =
                     escape_json_string(&json!(llm_req_settings.state_history).to_string());
                 tera_context.insert("messages", &messages);
@@ -320,8 +380,9 @@ impl FsmState for FSMChatState {
                 serde_json::from_value::<String>(code).unwrap_or("".into())
             };
 
+            println!("XXXX code: {}", code);
+
             if self.config.wait_for_msg.unwrap_or(false) {
-                // execute code depending on the LLM's response
                 let llm_output = self
                     .get_attribute("llm_output")
                     .await
@@ -344,7 +405,6 @@ impl FsmState for FSMChatState {
                             format!("stdout:\n {}\n", stdout),
                         ))
                         .await;
-
                     let _ = tx
                         .send((
                             self.name.clone(),
@@ -364,7 +424,6 @@ impl FsmState for FSMChatState {
                     ("".into(), "".into())
                 }
             } else {
-                // execute code without confirmation
                 let (stdout, stderr) = run_code_in_docker(&code);
                 let _ = tx
                     .send((
@@ -373,7 +432,6 @@ impl FsmState for FSMChatState {
                         format!("stdout:\n{}\n", stdout),
                     ))
                     .await;
-
                 let _ = tx
                     .send((
                         self.name.clone(),
@@ -385,20 +443,29 @@ impl FsmState for FSMChatState {
             }
         } else {
             ("".into(), "".into())
-        };
+        }
+    }
 
+    async fn save_execution_output(
+        &self,
+        tx: &Sender<(String, String, String)>,
+        stdout: &str,
+        stderr: &str,
+    ) {
         if self.config.execute_code.unwrap_or(false) {
             if self.config.save_to_context.unwrap_or(false) {
                 let _ = tx
-                    .send((self.name.clone(), "context".into(), stdout.clone()))
+                    .send((self.name.clone(), "context".into(), stdout.into()))
                     .await;
             }
 
             if self.config.save_execution_output.unwrap_or(false) {
-                let execution_output = serde_json::to_value(ExecutionOutput { stdout, stderr })
-                    .unwrap()
-                    .to_string();
-
+                let execution_output = serde_json::to_value(ExecutionOutput {
+                    stdout: stdout.into(),
+                    stderr: stderr.into(),
+                })
+                .unwrap()
+                .to_string();
                 let _ = tx
                     .send((
                         self.name.clone(),
@@ -408,13 +475,21 @@ impl FsmState for FSMChatState {
                     .await;
             }
         }
+    }
 
+    async fn determine_next_state(
+        &self,
+        llm_req_settings: &llm_agent::LlmReqSetting,
+        tx: &Sender<(String, String, String)>,
+        next_states: &Option<Vec<String>>,
+        llm_output: &String,
+    ) -> Option<String> {
         if let Some(fsm_code) = self.config.fsm_code.clone() {
             let mut tera_context = tera::Context::new();
-            let messages = escape_json_string(&json!(&messages).to_string());
-            let context = escape_json_string(&json!(&context).to_string());
-            let summary = escape_json_string(&json!(&summary).to_string());
-            let state_name = escape_json_string(&json!(&state_name).to_string());
+            let messages = escape_json_string(&json!(&self.state_data.messages).to_string());
+            let context = escape_json_string(&json!(&self.state_data.context).to_string());
+            let summary = escape_json_string(&json!(&self.state_data.summary).to_string());
+            let state_name = escape_json_string(&json!(&self.name).to_string());
             let next_states = if let Some(next_states) = next_states {
                 escape_json_string(&json!(&next_states).to_string())
             } else {
@@ -438,7 +513,6 @@ impl FsmState for FSMChatState {
                     format!("stdout:\n{}\n", stdout),
                 ))
                 .await;
-
             let _ = tx
                 .send((
                     self.name.clone(),
@@ -446,18 +520,14 @@ impl FsmState for FSMChatState {
                     format!("stderr:\n{}\n", stderr),
                 ))
                 .await;
-            // TODO: check if the stdout is a single string contained in the next_states
             Some(stdout.trim().into())
-        } else {
-            // get the the FSM state
-            if let Some(next_states) = next_states {
-                if next_states.len() == 1 {
-                    Some(next_states.first().unwrap().clone())
-                } else if let Some(fsm_prompt) = self.prompts.fsm.clone() {
-                    let available_transitions = next_states.join(", ");
-
-                    let msg = format!(
-                        r#"
+        } else if let Some(next_states) = next_states {
+            if next_states.len() == 1 {
+                Some(next_states.first().unwrap().clone())
+            } else if let Some(fsm_prompt) = self.prompts.fsm.clone() {
+                let available_transitions = next_states.join(", ");
+                let msg = format!(
+                    r#"
 Given these information, you need to determine the next state following the instructions below:
 
 Current State: {}
@@ -468,70 +538,46 @@ Make sure the output is just a simple valid JSON string in
 the format following the instruction above: `{{"next_state": SOME_NEXT_STATE}}`. 
 The "SOME_NEXT_STATE" is one of the Available Next States.
 "#,
-                        self.name, available_transitions
-                    );
-                    let fsm_prompt = [msg, fsm_prompt].join("\n");
-                    let mut tera_context = tera::Context::new();
-                    tera_context.insert("task", &task);
-                    tera_context.insert("messages", &messages); 
-                    tera_context.insert("summary", &summary);
-                    tera_context.insert("context", &context);
-                    tera_context.insert("summary", &summary);
-                    tera_context.insert("response", &llm_output);
-                    let fsm_prompt = Tera::one_off(&fsm_prompt, &tera_context, true).unwrap();
+                    self.name, available_transitions
+                );
+                let fsm_prompt = [msg, fsm_prompt].join("\n");
+                let mut tera_context = tera::Context::new();
+                tera_context.insert("task", &self.state_data.task);
+                tera_context.insert("messages", &self.state_data.messages);
+                tera_context.insert("summary", &self.state_data.summary);
+                tera_context.insert("context", &self.state_data.context);
+                tera_context.insert("summary", &self.state_data.summary);
+                tera_context.insert("response", &llm_output);
+                let fsm_prompt = Tera::one_off(&fsm_prompt, &tera_context, true).unwrap();
 
-                    let llm_client = GenaiLlmclient {
-                        model: llm_req_settings.model.clone(),
-                        api_key: llm_req_settings.api_key.clone(),
-                    };
+                let llm_client = GenaiLlmclient {
+                    model: llm_req_settings.model.clone(),
+                    api_key: llm_req_settings.api_key.clone(),
+                };
 
-                    // println!("for debug: \n<FSM> {} </FSM>\n", fsm_prompt);
-                    let next_state = llm_client
-                        .generate(
-                            &fsm_prompt,
-                            &[("user".into(), "determine the next state".into())],
-                            llm_req_settings.temperature,
-                        )
-                        .await
-                        .unwrap();
-
-                    let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state);
-                    
-                    //println!("res: {:?}", next_fsm_state_response);
-                    
-                    match next_fsm_state_response {
-                        Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
-                        Err(e) => {
-                            eprintln!("fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}", e, next_state);
-                            None
-                        }
+                let next_state = llm_client
+                    .generate(
+                        &fsm_prompt,
+                        &[("user".into(), "determine the next state".into())],
+                        llm_req_settings.temperature,
+                    )
+                    .await
+                    .unwrap();
+                let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state);
+                match next_fsm_state_response {
+                    Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
+                    Err(e) => {
+                        eprintln!("fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}", e, next_state);
+                        None
                     }
-                } else {
-                    None
                 }
             } else {
                 None
             }
+        } else {
+            None
         }
+        
     }
-
-    async fn set_attribute(&mut self, k: &str, v: String) {
-        self.attributes.insert(k.to_string(), v);
-    }
-
-    async fn get_attribute(&self, k: &str) -> Option<String> {
-        self.attributes.get(k).cloned()
-    }
-
-    async fn remove_attribute(&mut self, k: &str) -> Option<String> {
-        self.attributes.remove(k)
-    }
-
-    async fn clone_attribute(&self, k: &str) -> Option<String> {
-        self.attributes.get(k).cloned()
-    }
-
-    fn name(&self) -> String {
-        self.name.clone()
-    }
+    
 }
