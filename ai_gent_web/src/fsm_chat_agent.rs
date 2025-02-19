@@ -1,18 +1,8 @@
 use std::collections::HashMap;
+use std::ops::Deref;
+use std::ops::DerefMut;
 
-use ai_gent_lib::fsm::FiniteStateMachine;
-use ai_gent_lib::fsm::FsmState;
-use ai_gent_lib::llm_agent;
-use ai_gent_lib::llm_agent::AgentSettings;
-use ai_gent_lib::llm_agent::LlmClient;
-use ai_gent_lib::llm_agent::LlmFsmAgent;
-use ai_gent_lib::llm_agent::LlmFsmAgentConfig;
-use ai_gent_lib::llm_agent::LlmFsmAgentConfigBuilder;
-use ai_gent_lib::llm_agent::LlmFsmStateInit;
-use ai_gent_lib::llm_agent::LlmResponse;
-use ai_gent_lib::llm_agent::StateConfig;
-use ai_gent_lib::llm_agent::StatePrompts;
-use ai_gent_lib::GenaiLlmclient;
+use ai_gent_lib::{fsm::FsmState, llm_agent::* , GenaiLlmclient};
 use async_trait::async_trait;
 use futures::StreamExt;
 use tokio::sync::mpsc::Receiver;
@@ -64,7 +54,7 @@ impl FsmState for ChatState {
         _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>,
     ) -> Option<String> {
-        let llm_req_setting: llm_agent::LlmReqSetting =
+        let llm_req_setting: LlmReqSetting =
             serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap();
         let prompt = self.prompts.chat.clone();
         let system_prompt = self.prompts.system.clone().unwrap_or("".into());
@@ -188,6 +178,19 @@ pub struct ChatAgent<LLMAgent> {
     pub base: LLMAgent,
 }
 
+impl<LLMAgent> Deref for ChatAgent<LLMAgent> {
+    type Target = LLMAgent;
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
+}
+
+impl<LLMAgent> DerefMut for ChatAgent<LLMAgent> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.base
+    }
+}
+
 impl ChatAgent<LlmFsmAgent> {
     pub async fn process_message(
         &mut self,
@@ -195,18 +198,18 @@ impl ChatAgent<LlmFsmAgent> {
         tx: Option<Sender<(String, String, String)>>,
         temperature: Option<f32>,
     ) -> Result<String, anyhow::Error> {
-        let agent = &mut self.base;
-        agent.llm_req_settings.temperature = temperature;
+
+        self.llm_req_settings.temperature = temperature;
+        
         let mut last_message = Vec::<(String, String)>::new();
 
-        agent
-            .llm_req_settings
+        self.llm_req_settings
             .messages
             .push(("user".into(), user_input.into()));
         last_message.push(("user".into(), user_input.into()));
 
         // Handle FSM state transition
-        let current_state_name = agent
+        let current_state_name = self
             .fsm
             .get_current_state_name()
             .ok_or(anyhow::anyhow!("No current state"))?;
@@ -222,7 +225,7 @@ impl ChatAgent<LlmFsmAgent> {
                 .await;
         };
 
-        let available_transitions = agent
+        let available_transitions = self
             .fsm
             .available_transitions()
             .unwrap()
@@ -230,7 +233,7 @@ impl ChatAgent<LlmFsmAgent> {
             .cloned()
             .collect::<Vec<String>>()
             .join("/");
-        let summary = agent
+        let summary = self
             .llm_req_settings
             .memory
             .get("summary")
@@ -242,16 +245,16 @@ impl ChatAgent<LlmFsmAgent> {
             current_state_name, available_transitions, summary
         );
 
-        let fsm_prompt = [agent.fsm_prompt.as_str(), msg.as_str()].join("\n");
+        let fsm_prompt = [self.fsm_prompt.as_str(), msg.as_str()].join("\n");
         let llm_client = GenaiLlmclient {
-            model: agent.llm_req_settings.model.clone(),
-            api_key: agent.llm_req_settings.api_key.clone(),
+            model: self.llm_req_settings.model.clone(),
+            api_key: self.llm_req_settings.api_key.clone(),
         };
         let next_state = llm_client
             .generate(
                 &fsm_prompt,
-                &agent.llm_req_settings.messages,
-                agent.llm_req_settings.temperature,
+                &self.llm_req_settings.messages,
+                self.llm_req_settings.temperature,
             )
             .await?;
 
@@ -259,15 +262,15 @@ impl ChatAgent<LlmFsmAgent> {
             .map_err(|e| anyhow::anyhow!("Failed to parse LLM output: {e}, {}", next_state))?;
 
         if let Some(next_state) = &next_fsm_step_response.next_state {
-            agent.transition_state(next_state).await?;
+            self.transition_state(next_state).await?;
         }
 
-        let new_state_name = agent
+        let new_state_name = self
             .fsm
             .get_current_state_name()
             .ok_or(anyhow::anyhow!("No current state"))?;
 
-        let next_states = agent
+        let next_states = self
             .fsm
             .available_transitions()
             .unwrap()
@@ -275,14 +278,12 @@ impl ChatAgent<LlmFsmAgent> {
             .cloned()
             .collect::<Vec<_>>();
 
+        let llm_req_setting: String = serde_json::to_string(&self.llm_req_settings).unwrap();
         let (llm_output, next_state_name) = {
-            let new_state = agent.fsm.states.get_mut(&new_state_name).unwrap();
-
-            let llm_req_setting = serde_json::to_string(&agent.llm_req_settings).unwrap();
+            let new_state = self.fsm.states.get_mut(&new_state_name).unwrap();
             new_state
                 .set_attribute("llm_req_setting", llm_req_setting)
                 .await;
-
             let next_state = if let Some(tx) = tx.clone() {
                 // call LLM through the next_state.serve()
                 new_state.start_service(tx, None, Some(next_states)).await
@@ -294,14 +295,13 @@ impl ChatAgent<LlmFsmAgent> {
         };
 
         let next_state_name = if let Some(next_state_name) = next_state_name {
-            agent.transition_state(&next_state_name).await?;
+            self.transition_state(&next_state_name).await?;
             next_state_name
         } else {
             "NoTransition".into()
         };
 
-        agent
-            .llm_req_settings
+        self.llm_req_settings
             .messages
             .push(("assistant".into(), llm_output.clone()));
         last_message.push(("assistant".into(), llm_output.clone()));
@@ -317,29 +317,29 @@ impl ChatAgent<LlmFsmAgent> {
                 .await;
         };
 
-        let summary = agent
-            .llm_req_settings
-            .memory
-            .entry("summary".into())
-            .or_default();
-        let summary_value = summary.last().cloned().unwrap_or_default();
-        let summary_str = &serde_json::from_value::<String>(summary_value.clone()).unwrap_or_default();
-        let summary_prompt = [
-            agent.summary_prompt.as_str(),
-            "<summary>",
-            summary_str,
-            "</summary>",
-        ]
-        .join("\n");
-        let updated_summary = llm_client
-            .generate(
-                &summary_prompt,
-                &last_message,
-                agent.llm_req_settings.temperature,
-            )
-            .await?;
-        summary.push(serde_json::from_str(&updated_summary).unwrap_or_default());
-
+        let summary_prompt = self.summary_prompt.clone();
+        let temperature = self.llm_req_settings.temperature;
+        {
+            let summary = self
+                .llm_req_settings
+                .memory
+                .entry("summary".into())
+                .or_default();
+            let summary_value = summary.last().cloned().unwrap_or_default();
+            let summary_str =
+                &serde_json::from_value::<String>(summary_value.clone()).unwrap_or_default();
+            let summary_prompt = [
+                summary_prompt.as_str(),
+                "<summary>",
+                summary_str,
+                "</summary>",
+            ]
+            .join("\n");
+            let updated_summary = llm_client
+                .generate(&summary_prompt, &last_message, temperature)
+                .await?;
+            summary.push(serde_json::from_str(&updated_summary).unwrap_or_default());
+        }
         if let Some(tx) = tx {
             let _ = tx
                 .send((

@@ -680,7 +680,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             model: llm_name.clone(),
             tools: None,
             api_key,
-            fsm_initial_state: fsm_config.initial_state
+            fsm_initial_state: fsm_config.initial_state,
+            total_state_transition_limit: None
         };
 
         let mut agent = ChatAgent { base: LlmFsmAgent::new(fsm, agent_settings) }; // we start a new agent every query now, we may want to implement session/static agent
