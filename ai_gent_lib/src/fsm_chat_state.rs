@@ -9,6 +9,7 @@ use tokio::{
     sync::mpsc::{Receiver, Sender},
     task::JoinHandle,
 };
+use serde_json::Value;
 
 use crate::{
     fsm::FsmState,
@@ -35,6 +36,7 @@ pub struct FSMChatState {
     config: StateConfig,
     handle: Option<JoinHandle<String>>,
     state_data: FSMChatStateData,
+    llm_req_setting: LlmReqSetting
 }
 
 impl LlmFsmStateInit for FSMChatState {
@@ -175,21 +177,25 @@ impl FsmState for FSMChatState {
         _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>,
     ) -> Option<String> {
-        let llm_req_settings = self.get_llm_req_settings().await;
+        let llm_req_setting = self.llm_req_setting.clone();
         let _ = tx
             .send((self.name.clone(), "state".into(), self.name.clone()))
             .await;
 
-        self.state_data = self.prepare_context(&llm_req_settings).await;
+        self.state_data = self.prepare_context(&llm_req_setting).await;
 
-        let llm_output = self.handle_llm_output(&llm_req_settings, &tx).await;
+        let llm_output = self.handle_llm_output(&llm_req_setting, &tx).await;
 
-        let (stdout, stderr) = self.execute_code(&llm_req_settings, &tx).await;
+        let (stdout, stderr) = self.execute_code(&llm_req_setting, &tx).await;
 
         self.save_execution_output(&tx, &stdout, &stderr).await;
 
-        self.determine_next_state(&llm_req_settings, &tx, &next_states, &llm_output)
+        self.determine_next_state(&llm_req_setting, &tx, &next_states, &llm_output)
             .await
+    }
+
+    async fn set_service_context(&mut self, context: Value) {
+        self.llm_req_setting = serde_json::from_value(context).unwrap();
     }
 
     async fn set_attribute(&mut self, k: &str, v: String) {
@@ -214,10 +220,6 @@ impl FsmState for FSMChatState {
 }
 
 impl FSMChatState {
-    async fn get_llm_req_settings(&self) -> llm_agent::LlmReqSetting {
-        serde_json::from_str(&self.get_attribute("llm_req_setting").await.unwrap()).unwrap()
-    }
-
     async fn prepare_context(
         &self,
         llm_req_settings: &llm_agent::LlmReqSetting,

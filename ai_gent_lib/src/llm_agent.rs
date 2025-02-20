@@ -50,7 +50,7 @@ pub trait LlmFsmStateInit {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self;
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default, Clone)]
 pub struct LlmReqSetting {
     pub memory: HashMap<String, Vec<Value>>,
     pub state_history: Vec<String>, // maybe add time stamp in the future
@@ -531,9 +531,11 @@ impl LlmFsmAgent {
 
                 let current_state = self.fsm.states.get_mut(&current_state_name).unwrap();
 
-                let llm_req_setting = serde_json::to_string(&self.llm_req_settings).unwrap();
                 current_state
-                    .set_attribute("llm_req_setting", llm_req_setting)
+                    .set_service_context(
+                        serde_json::to_value::<LlmReqSetting>(self.llm_req_settings.clone())
+                            .unwrap(),
+                    )
                     .await;
 
                 let (fsm_tx, fsm_rx) = mpsc::channel::<(String, String, String)>(16);

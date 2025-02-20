@@ -1,6 +1,7 @@
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use tokio::sync::mpsc::{Receiver, Sender};
+use serde_json::Value;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TransitionResult {
@@ -23,6 +24,9 @@ pub trait FsmState: Send + Sync {
         _rx: Option<Receiver<(String, String, String)>>,
         _next_states: Option<Vec<String>>
     ) -> Option<String> {
+        unimplemented!()
+    }
+    async fn set_service_context(&mut self, _context: Value) {
         unimplemented!()
     }
     async fn set_attribute(&mut self, _k: &str, _v: String) {}
