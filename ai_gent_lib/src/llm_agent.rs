@@ -35,6 +35,8 @@ pub struct StateConfig {
     pub code: Option<String>,
     pub fsm_code: Option<String>,
     pub wait_for_msg: Option<bool>,
+    pub save_to: Option<String>,
+    pub use_memory: Option<Vec<(String, usize)>>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]
@@ -578,8 +580,8 @@ impl LlmFsmAgent {
                     self.update_message_and_memory(llm_output, new_memory);
                     break;
                 }
-                state_transition_count += 1; 
-                if state_transition_count > total_state_transition_limit {
+                state_transition_count += 1;
+                if state_transition_count >= total_state_transition_limit {
                     let _ = tx2
                         .send((
                             "".into(),
@@ -590,13 +592,12 @@ impl LlmFsmAgent {
                             "".into(),
                         ))
                         .await;
-                    break
+                    break;
                 }
             }
             let _ = tx
                 .send(("".into(), "message_processed".into(), "".into()))
                 .await;
-           
         }
         Ok(())
     }
@@ -643,23 +644,33 @@ fn get_fsm_state_communication_handle(
         let mut llm_output = None;
         let mut memory = HashMap::<String, Vec<Value>>::default();
         while let Some((a, t, r)) = fsm_rx.recv().await {
-            match t.as_str() {
-                "llm_output" => {
-                    llm_output = Some(r.clone());
-                }
-                "code" | "summary" | "context" => {
+            if t.starts_with("save_to:") {
+                let parts: Vec<&str> = t.split(':').collect();
+                if parts.len() > 1 {
+                    let slot_name = parts[1].trim();
                     let value: Value = Value::String(r.clone());
-                    let e = memory.entry(t.clone()).or_default();
+                    let e = memory.entry(slot_name.to_string()).or_default();
                     e.push(value);
                 }
-                "execution_output" => {
-                    let value: Value = serde_json::from_str(&r).unwrap();
-                    let e = memory.entry(t.clone()).or_default();
-                    e.push(value);
+            } else {
+                match t.as_str() {
+                    "llm_output" => {
+                        llm_output = Some(r.clone());
+                    }
+                    "code" | "summary" | "context" => {
+                        let value: Value = Value::String(r.clone());
+                        let e = memory.entry(t.clone()).or_default();
+                        e.push(value);
+                    }
+                    "execution_output" => {
+                        let value: Value = serde_json::from_str(&r).unwrap();
+                        let e = memory.entry(t.clone()).or_default();
+                        e.push(value);
+                    }
+                    _ => {}
                 }
-                _ => {}
+                let _ = tx.send((a, t, r)).await;
             }
-            let _ = tx.send((a, t, r)).await;
         }
         (llm_output, memory)
     })

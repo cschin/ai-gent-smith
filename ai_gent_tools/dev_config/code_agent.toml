@@ -88,7 +88,7 @@ Planning.system = """
 
     List of facts that you know:
     <FACTS> 
-    {{ context }} 
+    {{ facts }} 
     </FACTS>
 
 
@@ -250,7 +250,9 @@ If the task is solved or you get the final answer in the response, JUST output {
 StandBy.disable_llm_request = true
 
 GatherFact.save_to_context = true
+GatherFact.save_to = "facts"
 Planning.save_to_context = true
+Planning.use_memory = [["facts", 1]]
 
 #GenerateCode.use_full_context = true
 GenerateCode.extract_code = true
