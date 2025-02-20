@@ -27,6 +27,7 @@ pub struct StateConfig {
     pub use_full_context: Option<bool>,
     pub use_only_last_message: Option<bool>,
     pub ignore_llm_output: Option<bool>,
+    pub ignore_messages: Option<bool>,
     pub save_to_summary: Option<bool>,
     pub save_to_context: Option<bool>,
     pub save_execution_output: Option<bool>,

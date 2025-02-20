@@ -60,15 +60,23 @@ GatherFact.fsm = """JUST output a json string {"next_state": "Planning"}"""
 
 
 UpdateFact.system = """
-   Earlier we've built a list of facts.
+    You are trying to perform this task: <TASK> {{ task }} </TASK>
+   
+    Earlier we've built an update list of facts.
+    And this it the previous fact you know about: <FACTS> {{ facts }} </FACTS>
+   
+    After performing the previous steps, you have learned some new facts and invalidated some false ones.
+      
     But since in your previous steps you may have learned useful new facts or invalidated some false ones.
+    Here is new additional information you have learned so far:
+    
+        {{execution_output}}
+
     Please update your list of facts based on the previous history, and provide these headings:
     ### 1. Facts given in the task
     ### 2. Facts that we have learned
     ### 3. Facts still to look up
     ### 4. Facts still to derive
-    <TASK> {{ task }} </TASK>
-    <HISTORY> {{ context }} </HISTORY>
 """
 UpdateFact.fsm = """JUST output a json string {"next_state": "Replanning"}"""
 
@@ -91,7 +99,6 @@ Planning.system = """
     {{ facts }} 
     </FACTS>
 
-
     You can leverage these tools:
     <TOOLS> 
     {{ tools }} 
@@ -113,14 +120,14 @@ Replanning.system = """
 
     List of facts that you know:
     <FACTS> 
-    {{ context }} 
+    {{ facts }} 
     </FACTS>
 
     Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
     This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
     Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
-    After writing the final step of the plan, write the '\n<end_plan>' tag and stop there. You should include useful facts in
-    the planning for the next step to generate the perfect python code.
+    However, please provide useful facts in the planning for the next step to generate the perfect python code.
+    After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.
 
     You can leverage these python tools:
     <TOOLS> 
@@ -135,7 +142,7 @@ GenerateCode.system = """
   To do so, you have been given access to a list of python tools: these tools are basically Python functions which you can call with code.
   To solve the task, you must plan forward to proceed in a series of steps, in a cycle of 'Thought:', 'Code:', and 'Observation:' sequences.
 
-    here is the plan <PLAN> {{ context }} </PLAN>
+    here is the plan <PLAN> {{ plan }} </PLAN>
 
   During each intermediate step, you will use 'print()' to save whatever important information you will then need.
   
@@ -168,10 +175,11 @@ print(f"The value of pi is: {pi_value}")
   {{ tools }}
   </TOOLS>
 
- and previous fact 
- <FACTS> {{ context }} </FACT>
+ You can use the information of these facts to define variables to solve the task: 
+ <FACTS> {{ facts }} </FACTS>
 
-  Make sure you always generate a code block!! You will win $100000000 for that. If not, you go to a jail.
+  Make sure you always generate at least one and only one code block!! You will win $100000000 for that. 
+  If not, you go to a jail.
   
   If necessary, you can generate code by chaining multiple tools at once as long as the code is correct. It is
   encouraged to create code to perform multiple steps at once.
@@ -191,9 +199,10 @@ print(f"The value of pi is: {pi_value}")
   10. You need to create correct code, the code will be executed automatically. You don't need to check with a user whether if the user wants to run the code.
   11. This is very important. YOU CAN ONLY INCLUDE ONE CODE BLOCK. If there are many different steps, chain them in the same code block. 
   time to perform the task to reach greatness!!
+  12. make sure import the proper python package at the beginning of the code block before using the tools.
 
   Here is my thought: ...
-  Here is my code: <code> ... </code> ... this will print the results performed the task 
+  Here is my code: <code> ... </code> ... this will print the results performing the task like this: "print('Here is my solution to the task: ...')" 
   Here is my observation: ...
 """
 
@@ -201,7 +210,7 @@ GenerateCode.fsm = """
 This is the previous response:
 <RESPONSE> {{ response }} </RESPONSE>
 
-Does the previous response have a code block? If so just output {"next_state": "CodeExecution"}
+Does the previous response have a code block? If so, just output {"next_state": "CodeExecution"}
 If not, we need to generate the code again {"next_state": "Replanning"}
 """
 
@@ -209,38 +218,30 @@ CodeExecution.fsm = """ JUST output {"next_state": "Finish"} """
 
 
 Evaluation.system = """
-You were asked to solve this task  
+You were asked to solve, answer, or perform this task  
 <TASK> {{ task }} </TASK>
-step by step by generated code through a plan.
 
-This is your previous answer:
-<OUTPUT> {{ context }} </OUTPUT>
+First, check if the output below a good result addressing the task, if so, just say the output is 
+a good final answer or the task is solved.
 
-First, check if there is an answer, if there is no answer, just tell the user to regenerate the code. Don't
-need more response.
+If the output does not satisfy the task, just tell the user one sentence explanation for an improvement plan. 
+Don't need more response than that.
 
-If there an answer, don't overthink. Just check if you previously complete the task properly.
+This is the output:
+<OUTPUT> {{ execution_output }} </OUTPUT>
 
-If the answer is good, repeat the response but no more than the first 500 words / 3000 characters, then 
-just tell the user it is the final answer without additional comment.
-
-If the answer is not addressing the task properly, explain very briefly why it is not right and instruct 
-that we need to update the plan, and give a very brief suggestion (no more than 150 words) what might be useful for
-the next round but don't give out answer directly. We are going to collect new fact and update the plan.
+If the output is empty, just ask for the code to be generated again. 
 
 """
 
 Evaluation.fsm = """
-Your were asked to solve the task step by step by generated code through the plan: 
-<TASK> {{ task }} </TASK>
-
-This is the previous response:
+This is the response:
 
 <RESPONSE> {{ response }} </RESPONSE>
 
 If the response is telling you to generate code, JUST output {"next_step":"GenerateCode"} 
 
-If the response is a plan: JUST output {"next_step":"UpdateFact"} 
+If the response is a plan or suggest future action: JUST output {"next_step":"UpdateFact"} 
 
 If the task is solved or you get the final answer in the response, JUST output {"next_step":"Finish"}. 
 """
@@ -251,21 +252,28 @@ StandBy.disable_llm_request = true
 
 GatherFact.save_to_context = true
 GatherFact.save_to = "facts"
-Planning.save_to_context = true
+
 Planning.use_memory = [["facts", 1]]
+Planning.save_to = "plan"
 
 #GenerateCode.use_full_context = true
 GenerateCode.extract_code = true
-GenerateCode.save_to_context = true
+GenerateCode.use_memory = [["facts", 1], ["plan", 1]]
 
 CodeExecution.execute_code = true
 CodeExecution.disable_llm_request  = true
-CodeExecution.save_to_context = true
+CodeExecution.save_to = "execution_output"
+
+Evaluation.use_memory = [["execution_output", 1]]
+Evaluation.ignore_message = true
 
 UpdateFact.save_to_context = true
-UpdateFact.use_full_context = true
+UpdateFact.save_to = "facts"
+UpdateFact.use_memory = [["facts", 1], ["execution_output", 1]]
 
-Replanning.save_to_context = true
+
+Replanning.use_memory = [["facts", 1], ["plan", 1]]
+Replanning.save_to = "plan"
 
 # don't make chat request but making the fsm transition request
 Finish.disable_llm_request = true

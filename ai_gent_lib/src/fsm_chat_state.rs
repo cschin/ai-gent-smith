@@ -323,12 +323,16 @@ impl FSMChatState {
                 let api_key = llm_req_settings.api_key.clone();
                 let temperature = llm_req_settings.temperature;
                 let ignore_llm_output = self.config.ignore_llm_output.unwrap_or(false);
-
+                let messages = if self.config.ignore_messages.unwrap_or(false) {
+                    vec![]
+                } else {
+                    self.state_data.messages.clone() 
+                };
                 self.handle = Some(
                     get_llm_req_process_handle(
                         self.name.clone(),
                         tx.clone(),
-                        self.state_data.messages.clone(),
+                        messages,
                         full_prompt,
                         temperature,
                         ignore_llm_output,
@@ -499,6 +503,16 @@ impl FSMChatState {
                         self.name.clone(),
                         "execution_output".into(),
                         execution_output,
+                    ))
+                    .await;
+            }
+
+            if let Some(ref memory_slot) = self.config.save_to {
+                let _ = tx
+                    .send((
+                        self.name.clone(),
+                        format!("save_to:{}", memory_slot),
+                        stdout.to_string(),
                     ))
                     .await;
             }
