@@ -19,7 +19,7 @@ transitions = [
 ["Evaluation","UpdateFact"],
 ["UpdateFact", "Replanning"],
 ["Replanning", "GenerateCode"],
-["Evaluation","GenerateCode"],
+["Evaluation","UpdateFact"],
 ["Evaluation","Finish"]
 ]
 
@@ -105,29 +105,24 @@ Planning.fsm = """JUST output a json string {"next_state": "GenerateCode"}"""
 Replanning.system = """
     You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
 
-    Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
-    This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
-    Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
-    After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.
-
     Here is your task:
 
     <TASK> 
     {{ task }} 
     </TASK>
 
-    Find below the record of what has been tried so far to solve it. 
-
-    Make a plan following up what has been accomplished before. If certain steps are complete, 
-    you can ignore those steps.
-
-    
     List of facts that you know:
     <FACTS> 
     {{ context }} 
     </FACTS>
 
-    You can leverage these tools:
+    Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
+    This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
+    Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
+    After writing the final step of the plan, write the '\n<end_plan>' tag and stop there. You should include useful facts in
+    the planning for the next step to generate the perfect python code.
+
+    You can leverage these python tools:
     <TOOLS> 
     {{ tools }} 
     </TOOLS>
@@ -137,12 +132,12 @@ Replanning.fsm = """JUST output a json string {"next_state": "GenerateCode"}"""
 
 GenerateCode.system = """
  You are an expert assistant who can solve any task using code blobs. You will be given a task to solve as best you can.
-  To do so, you have been given access to a list of tools: these tools are basically Python functions which you can call with code.
+  To do so, you have been given access to a list of python tools: these tools are basically Python functions which you can call with code.
   To solve the task, you must plan forward to proceed in a series of steps, in a cycle of 'Thought:', 'Code:', and 'Observation:' sequences.
 
     here is the plan <PLAN> {{ context }} </PLAN>
 
-  During each intermediate step, you can use 'print()' to save whatever important information you will then need.
+  During each intermediate step, you will use 'print()' to save whatever important information you will then need.
   
   These print outputs will then appear in the 'Observation:' field, which will be available as input for the next step.
   
@@ -151,9 +146,7 @@ GenerateCode.system = """
 
 The code should be enclosed in <code>...</code>
 
-Generate python code according to the instruction and wrap the code in <code> </code> block (don't use markdown) 
-and make sure ask if the user wants to execute the code. The code should also generate explanation how it gets to
-the results. 
+
 
 This is an example output:
 
@@ -196,6 +189,12 @@ print(f"The value of pi is: {pi_value}")
   8. The state persists between code executions: so if in one step you've created variables or imported modules, these will all persist.
   9. Don't give up! You're in charge of solving the task, not providing directions to solve it.
   10. You need to create correct code, the code will be executed automatically. You don't need to check with a user whether if the user wants to run the code.
+  11. You can only generate on code block. If there are many different steps, chain them in the same code block. 
+  time to perform the task to reach greatness!!
+
+  Here is my thought: ...
+  Here is my code: <code> ... </code> ... this will print the results performed the task 
+  Here is my observation: ...
 """
 
 GenerateCode.fsm = """
@@ -225,9 +224,9 @@ If there an answer, don't overthink. Just check if you previously complete the t
 If the answer is good, repeat the response but no more than the first 500 words / 3000 characters, then 
 just tell the user it is the final answer without additional comment.
 
-If the answer is not addressing the task properly, explain briefly why it is not right and instruct 
-that we need to update the plan, and give a very brief suggestion what might be useful for
-the next round.
+If the answer is not addressing the task properly, explain very briefly why it is not right and instruct 
+that we need to update the plan, and give a very brief suggestion (no more than 150 words) what might be useful for
+the next round but don't give out answer directly. We are going to collect new fact and update the plan.
 
 """
 
@@ -241,7 +240,7 @@ This is the previous response:
 
 If the response is telling you to generate code, JUST output {"next_step":"GenerateCode"} 
 
-If the response is a plan: JUST output {"next_step":"Planning"} 
+If the response is a plan: JUST output {"next_step":"UpdateFact"} 
 
 If the task is solved or you get the final answer in the response, JUST output {"next_step":"Finish"}. 
 """
@@ -250,16 +249,8 @@ If the task is solved or you get the final answer in the response, JUST output {
 # don't make chat request but making the fsm transition request
 StandBy.disable_llm_request = true
 
-# don't make chat request but making the fsm transition request
-Finish.disable_llm_request = true
-
-
 GatherFact.save_to_context = true
-UpdateFact.save_to_context = true
-UpdateFact.use_full_context = true
-
 Planning.save_to_context = true
-Replanning.save_to_context = true
 
 #GenerateCode.use_full_context = true
 GenerateCode.extract_code = true
@@ -269,8 +260,17 @@ CodeExecution.execute_code = true
 CodeExecution.disable_llm_request  = true
 CodeExecution.save_to_context = true
 
+UpdateFact.save_to_context = true
+UpdateFact.use_full_context = true
+
+Replanning.save_to_context = true
+
+# don't make chat request but making the fsm transition request
+Finish.disable_llm_request = true
+
 [tools]
-websearch.description = """search web for information. 
+websearch.description = """webserarch: search web for information.
+in order to generate the proper code, you need to use the following code snippet and change according to the task. 
 Usage:
 <code>
 import duckduckgo_search
