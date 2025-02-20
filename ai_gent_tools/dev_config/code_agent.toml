@@ -199,7 +199,7 @@ print(f"The value of pi is: {pi_value}")
   10. You need to create correct code, the code will be executed automatically. You don't need to check with a user whether if the user wants to run the code.
   11. This is very important. YOU CAN ONLY INCLUDE ONE CODE BLOCK. If there are many different steps, chain them in the same code block. 
   time to perform the task to reach greatness!!
-  12. make sure import the proper python package at the beginning of the code block before using the tools.
+  12. make sure import proper python packages at the beginning of the code block before using the tools.
 
   Here is my thought: ...
   Here is my code: <code> ... </code> ... this will print the results performing the task like this: "print('Here is my solution to the task: ...')" 
