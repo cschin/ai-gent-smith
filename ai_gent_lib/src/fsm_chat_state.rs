@@ -357,19 +357,7 @@ impl FSMChatState {
 
         if self.config.execute_code.unwrap_or(false) {
             let code = if let Some(code) = self.config.code.clone() {
-                let mut tera_context = tera::Context::new();
-                let messages = escape_json_string(&json!(&self.state_data.messages).to_string());
-                let context = escape_json_string(&json!(&self.state_data.context).to_string());
-                let summary = escape_json_string(&json!(&self.state_data.summary).to_string());
-                let state_name = escape_json_string(&json!(&self.name).to_string());
-                let state_history =
-                    escape_json_string(&json!(llm_req_settings.state_history).to_string());
-                tera_context.insert("messages", &messages);
-                tera_context.insert("context", &context);
-                tera_context.insert("summary", &summary);
-                tera_context.insert("state_name", &state_name);
-                tera_context.insert("state_history", &state_history);
-                Tera::one_off(&code, &tera_context, false).unwrap()
+                self.wrap_code(llm_req_settings, None, None, code)
             } else {
                 let code = llm_req_settings
                     .memory
@@ -380,64 +368,69 @@ impl FSMChatState {
                 serde_json::from_value::<String>(code).unwrap_or("".into())
             };
 
-            if self.config.wait_for_msg.unwrap_or(false) {
-                let llm_output = self
-                    .get_attribute("llm_output")
-                    .await
-                    .unwrap_or(String::new());
-                let llm_output =
-                    serde_json::from_str(&llm_output).unwrap_or(ExecuteCode { run: false });
-                if llm_output.run {
-                    let _ = tx
-                        .send((
-                            self.name.clone(),
-                            "exec_output".into(),
-                            "\nconditionally, run code from the context:\n".into(),
-                        ))
-                        .await;
+            match self.config.wait_for_msg.unwrap_or(false) {
+                true => {
+                    // if wait for msg and let LLM infer if the user want to continue
+                    let llm_output = self
+                        .get_attribute("llm_output")
+                        .await
+                        .unwrap_or(String::new());
+                    let llm_output =
+                        serde_json::from_str(&llm_output).unwrap_or(ExecuteCode { run: false });
+                    if llm_output.run {
+                        let _ = tx
+                            .send((
+                                self.name.clone(),
+                                "exec_output".into(),
+                                "\nconditionally, run code from the context:\n".into(),
+                            ))
+                            .await;
+                        let (stdout, stderr) = run_code_in_docker(&code);
+                        let _ = tx
+                            .send((
+                                self.name.clone(),
+                                "exec_output".into(),
+                                format!("stdout:\n {}\n", stdout),
+                            ))
+                            .await;
+                        let _ = tx
+                            .send((
+                                self.name.clone(),
+                                "exec_output".into(),
+                                format!("stderr:\n {}\n", stderr),
+                            ))
+                            .await;
+                        (stdout, stderr)
+                    } else {
+                        let _ = tx
+                            .send((
+                                self.name.clone(),
+                                "exec_output".into(),
+                                "code execution rejected\n".into(),
+                            ))
+                            .await;
+                        ("".into(), "".into())
+                    }
+                }
+                false => {
+                    // just execute the code without a user input
                     let (stdout, stderr) = run_code_in_docker(&code);
                     let _ = tx
                         .send((
                             self.name.clone(),
                             "exec_output".into(),
-                            format!("stdout:\n {}\n", stdout),
+                            format!("stdout:\n{}\n", stdout),
                         ))
                         .await;
                     let _ = tx
                         .send((
                             self.name.clone(),
                             "exec_output".into(),
-                            format!("stderr:\n {}\n", stderr),
+                            format!("stderr:\n{}\n", stderr),
                         ))
                         .await;
                     (stdout, stderr)
-                } else {
-                    let _ = tx
-                        .send((
-                            self.name.clone(),
-                            "exec_output".into(),
-                            "code execution rejected\n".into(),
-                        ))
-                        .await;
-                    ("".into(), "".into())
                 }
-            } else {
-                let (stdout, stderr) = run_code_in_docker(&code);
-                let _ = tx
-                    .send((
-                        self.name.clone(),
-                        "exec_output".into(),
-                        format!("stdout:\n{}\n", stdout),
-                    ))
-                    .await;
-                let _ = tx
-                    .send((
-                        self.name.clone(),
-                        "exec_output".into(),
-                        format!("stderr:\n{}\n", stderr),
-                    ))
-                    .await;
-                (stdout, stderr)
             }
         } else {
             ("".into(), "".into())
@@ -483,26 +476,12 @@ impl FSMChatState {
         llm_output: &String,
     ) -> Option<String> {
         if let Some(fsm_code) = self.config.fsm_code.clone() {
-            let mut tera_context = tera::Context::new();
-            let messages = escape_json_string(&json!(&self.state_data.messages).to_string());
-            let context = escape_json_string(&json!(&self.state_data.context).to_string());
-            let summary = escape_json_string(&json!(&self.state_data.summary).to_string());
-            let state_name = escape_json_string(&json!(&self.name).to_string());
-            let next_states = if let Some(next_states) = next_states {
-                escape_json_string(&json!(&next_states).to_string())
-            } else {
-                "[]".into()
-            };
-            let state_history =
-                escape_json_string(&json!(llm_req_settings.state_history).to_string());
-            tera_context.insert("messages", &messages);
-            tera_context.insert("context", &context);
-            tera_context.insert("summary", &summary);
-            tera_context.insert("state_name", &state_name);
-            tera_context.insert("next_states", &next_states);
-            tera_context.insert("state_history", &state_history);
-            tera_context.insert("response", &llm_output);
-            let code = Tera::one_off(&fsm_code, &tera_context, true).unwrap();
+            let code = self.wrap_code(
+                llm_req_settings,
+                next_states.as_ref(),
+                Some(llm_output),
+                fsm_code,
+            );
             let (stdout, stderr) = run_code_in_docker(&code);
             let _ = tx
                 .send((
@@ -546,7 +525,7 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
                 tera_context.insert("context", &self.state_data.context);
                 tera_context.insert("summary", &self.state_data.summary);
                 tera_context.insert("response", &llm_output);
-                let fsm_prompt = Tera::one_off(&fsm_prompt, &tera_context, true).unwrap();
+                let fsm_prompt = Tera::one_off(&fsm_prompt, &tera_context, false).unwrap();
 
                 let llm_client = GenaiLlmclient {
                     model: llm_req_settings.model.clone(),
@@ -575,7 +554,33 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
         } else {
             None
         }
-        
     }
-    
+
+    fn wrap_code(
+        &self,
+        llm_req_settings: &LlmReqSetting,
+        next_states: Option<&Vec<String>>,
+        llm_output: Option<&String>,
+        fsm_code: String,
+    ) -> String {
+        let mut tera_context = tera::Context::new();
+        let messages = escape_json_string(&json!(&self.state_data.messages).to_string());
+        let context = escape_json_string(&json!(&self.state_data.context).to_string());
+        let summary = escape_json_string(&json!(&self.state_data.summary).to_string());
+        let state_name = escape_json_string(&json!(&self.name).to_string());
+        let next_states = if let Some(next_states) = next_states {
+            escape_json_string(&json!(&next_states).to_string())
+        } else {
+            "[]".into()
+        };
+        let state_history = escape_json_string(&json!(llm_req_settings.state_history).to_string());
+        tera_context.insert("messages", &messages);
+        tera_context.insert("context", &context);
+        tera_context.insert("summary", &summary);
+        tera_context.insert("state_name", &state_name);
+        tera_context.insert("next_states", &next_states);
+        tera_context.insert("state_history", &state_history);
+        tera_context.insert("response", &llm_output);
+        Tera::one_off(&fsm_code, &tera_context, false).unwrap()
+    }
 }
