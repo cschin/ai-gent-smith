@@ -4,6 +4,7 @@ states = [
 "UpdateFact",
 "Planning",
 "Replanning",
+"SummaryFact",
 "GenerateCode",
 "CodeExecution",
 "Evaluation",
@@ -19,6 +20,9 @@ transitions = [
 ["Evaluation","UpdateFact"],
 ["UpdateFact", "Replanning"],
 ["Replanning", "GenerateCode"],
+["Replanning", "SummaryFact"],
+["SummaryFact", "Evaluation"],
+["CodeExecution","Evaluation"],
 ["Evaluation","UpdateFact"],
 ["Evaluation","Finish"]
 ]
@@ -70,7 +74,7 @@ UpdateFact.system = """
     But since in your previous steps you may have learned useful new facts or invalidated some false ones.
     Here is new additional information you have learned so far:
     
-        {{execution_output}}
+        {{output_for_evaluation}}
 
     Please update your list of facts based on the previous history, and provide these headings:
     ### 1. Facts given in the task
@@ -118,15 +122,13 @@ Replanning.system = """
     {{ task }} 
     </TASK>
 
-    List of facts that you know:
-    <FACTS> 
-    {{ facts }} 
-    </FACTS>
-
     Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
-    This plan should involve individual tasks based on the available tools, that if executed correctly will yield the correct answer.
-    Do not skip steps, do not add any superfluous steps. Only write the high-level plan, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
-    However, please provide useful facts in the planning for the next step to generate the perfect python code.
+    This plan should involve individual tasks based on the available tools and known fact, that if executed correctly will yield the correct answer.
+    SKIP STEPS IF THE FACTS ALREADY PROVIDE USEFUL INFORMATION, for example, if the facts contains information you need
+    to fetch on the internet, you don't need to search again. Do not add any superfluous steps. Only write the high-level plan with know facts, DO NOT DETAIL INDIVIDUAL TOOL CALLS.
+    However, please use the provided facts in the planning as the input for the next step to generate the perfect 
+    python code.
+    
     After writing the final step of the plan, write the '\n<end_plan>' tag and stop there.
 
     You can leverage these python tools:
@@ -134,8 +136,23 @@ Replanning.system = """
     {{ tools }} 
     </TOOLS>
 
+    List of facts that you know:
+    <FACTS> 
+    {{ facts }} 
+    </FACTS>
+
+    First, think, if the facts are good enough to address the task, you just use the final_answer tool 
+    to generate the final answer. If not, generate ta plan to generate the code to address the task.
+
 """
-Replanning.fsm = """JUST output a json string {"next_state": "GenerateCode"}"""
+Replanning.fsm = """
+This is the previous response:
+<RESPONSE> {{ response }} </RESPONSE>
+and the task: <TASK> {{ task }} </TASK>
+Given the previous response, you can generate some code to solve task, if so just output {"next_state": "GenerateCode"}
+If not, and you think you need some summary of the current fact, just output {"next_state": "SummaryFact"}
+"""
+
 
 GenerateCode.system = """
  You are an expert assistant who can solve any task using code blobs. You will be given a task to solve as best you can.
@@ -152,7 +169,6 @@ GenerateCode.system = """
   string starting with ""Here is my final answer:"
 
 The code should be enclosed in <code>...</code>
-
 
 
 This is an example output:
@@ -174,9 +190,6 @@ print(f"The value of pi is: {pi_value}")
   <TOOLS>
   {{ tools }}
   </TOOLS>
-
- You can use the information of these facts to define variables to solve the task: 
- <FACTS> {{ facts }} </FACTS>
 
   Make sure you always generate at least one and only one code block!! You will win $100000000 for that. 
   If not, you go to a jail.
@@ -201,6 +214,9 @@ print(f"The value of pi is: {pi_value}")
   time to perform the task to reach greatness!!
   12. make sure import proper python packages at the beginning of the code block before using the tools.
 
+  Here is the fact that you use to generate the code:
+    <FACTS> {{ facts }} </FACTS>
+
   Here is my thought: ...
   Here is my code: <code> ... </code> ... this will print the results performing the task like this: "print('Here is my solution to the task: ...')" 
   Here is my observation: ...
@@ -217,6 +233,12 @@ If not, we need to generate the code again {"next_state": "Replanning"}
 CodeExecution.fsm = """ JUST output {"next_state": "Finish"} """
 
 
+SummaryFact.system = """ given the facts  <FACTS> {{ facts }} </FACTS> and the task <TASK> {{ task }} </TASK>,
+try to summarize the facts and see if the summary already address the task. 
+"""
+
+SummaryFact.fsm = """JUST output {"next_state": "Evaluation"}"""
+
 Evaluation.system = """
 You were asked to solve, answer, or perform this task  
 <TASK> {{ task }} </TASK>
@@ -228,7 +250,7 @@ If the output does not satisfy the task, just tell the user one sentence explana
 Don't need more response than that.
 
 This is the output:
-<OUTPUT> {{ execution_output }} </OUTPUT>
+<OUTPUT> {{ output_for_evaluation }} </OUTPUT>
 
 If the output is empty, just ask for the code to be generated again. 
 
@@ -262,14 +284,17 @@ GenerateCode.use_memory = [["facts", 1], ["plan", 1]]
 
 CodeExecution.execute_code = true
 CodeExecution.disable_llm_request  = true
-CodeExecution.save_to = "execution_output"
+CodeExecution.save_to = "output_for_evaluation"
 
-Evaluation.use_memory = [["execution_output", 1]]
+SummaryFact.use_memory = [["facts", 1]]
+SummaryFact.save_to = "output_for_evaluation"
+
+Evaluation.use_memory = [["output_for_evaluation", 1]]
 Evaluation.ignore_message = true
 
 UpdateFact.save_to_context = true
 UpdateFact.save_to = "facts"
-UpdateFact.use_memory = [["facts", 1], ["execution_output", 1]]
+UpdateFact.use_memory = [["facts", 1], ["output_for_evaluation", 1]]
 
 
 Replanning.use_memory = [["facts", 1], ["plan", 1]]
@@ -326,7 +351,7 @@ def fetchtool(url):
         response = requests.get(url, timeout=10)
         response.raise_for_status()
         
-        with tempfile.NamedTemporaryFile(delete=False, mode='w', encoding='utf-8') as temp_file:
+        with tempfile.NamedTemporaryFile(delete=False, mode='wb') as temp_file:
             temp_file.write(response.text)
             print(f"Content saved to: {temp_file.name}")
             
@@ -345,14 +370,48 @@ final_answer.description = """print out the final answer
 Usage:
 <code>
 ## other useful code to get the final_answer_string
+these_are_the_facts_I_know = "..."
 final_answer_string = "..."
+print("I think this information you need for the task:", these_are_the_facts_I_know)
 print("Here is my final answer:", final_answer_string)
 </code>
 
 """
+
+use_facts.arguments = "fact: some know facts that are useful for the task"
+use_facts.output_type = "string"
+use_facts.description = """print out the fact
+
+Usage:
+<code>
+## other useful code to get the final_answer_string
+these_are_the_facts_I_know = "..."
+print("I think this information you need for the task:", these_are_the_facts_I_know)
+</code>
+"""
+
+
 final_answer.arguments = "the tool does not need any input argument"
 final_answer.output_type = "string"
 
 python.description = "python: it can do anything"
 python.arguments = "any argument you need to complete the task"
 python.output_type = "string"
+
+
+pdf_file_2_text.description = """pdf_file_2_text: convert a pdf file to text
+Usage:
+<code>
+import openparse
+
+basic_doc_path = "./sample-docs/mobile-home-manual.pdf"
+parser = openparse.DocumentParser()
+parsed_basic_doc = parser.parse(basic_doc_path)
+parsed_dict = parsed_basic_doc.model_dump()
+
+for node in parsed_dict["nodes"]:
+    print(node["text"])
+</code>
+"""
+pdf_file_2_text.arguments = "path: the path to the pdf file"
+pdf_file_2_text.output_type = "string"
