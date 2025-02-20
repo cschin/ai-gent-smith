@@ -638,10 +638,14 @@ impl LlmFsmAgent {
     }
 }
 
+type AgentResult = (Option<String>, HashMap<String, Vec<Value>>);
+type AgentTask = tokio::task::JoinHandle<AgentResult>;
+
+
 fn get_fsm_state_communication_handle(
     tx: Sender<(String, String, String)>,
     mut fsm_rx: Receiver<(String, String, String)>,
-) -> tokio::task::JoinHandle<(Option<String>, HashMap<String, Vec<Value>>)> {
+) -> AgentTask {
     tokio::spawn(async move {
         let mut llm_output = None;
         let mut memory = HashMap::<String, Vec<Value>>::default();
