@@ -288,13 +288,13 @@ save_to = "facts"
 [state_config.Planning]
 use_memory = [["facts", 1]]
 save_to = "plan"
-ignore_message = true
+ignore_messages = true
 
 [state_config.GenerateCode]
 #GenerateCode.use_full_context = true
 extract_code = true
 use_memory = [["facts", 1], ["plan", 1]]
-ignore_message = true
+ignore_messages = true
 
 [state_config.CodeExecution]
 execute_code = true
