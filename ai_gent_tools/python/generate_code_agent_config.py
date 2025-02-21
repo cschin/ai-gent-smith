@@ -264,12 +264,15 @@ If not, we need to generate the code again {"next_state": "Replanning"}""")
     summary_fact = (StateBuilder()
                     .set_name("SummaryFact")
                     .set_prompts(StatePromptsBuilder()
-                                 .set_system(r"")
-                                    .set_fsm(r"""JUST output a json string {"next_state": "Evaluation"}""")
+                                 .set_system(r""" 
+Given the facts  <FACTS> {{ facts }} </FACTS> and the task <TASK> {{ task }} </TASK>,
+try to summarize the facts and see if the summary already address the task. 
+""")
+                                    .set_fsm(r"""JUST output {"next_state": "Evaluation"}""")
                                     .build())
                     .set_config(StateConfigBuilder()
                                 .set_use_memory([("facts", 1)])
-                                .set_save_to("summary")
+                                .set_save_to("output_for_evaluation")
                                 .build())
                     .build())   
     
