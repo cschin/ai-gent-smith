@@ -136,13 +136,13 @@ Replanning.system = """
     {{ tools }} 
     </TOOLS>
 
-    List of facts that you know:
+    List of facts that you already know:
     <FACTS> 
     {{ facts }} 
     </FACTS>
 
-    First, think, if the facts are good enough to address the task, you just use the final_answer tool 
-    to generate the final answer. If not, generate ta plan to generate the code to address the task.
+    First, think, if the facts are good enough to address some of the steps, do not use the tools but
+    just the fact. You only need to use the tools if the facts are not enough to address the task.
 
 """
 Replanning.fsm = """
