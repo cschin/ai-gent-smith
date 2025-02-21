@@ -307,7 +307,7 @@ save_to = ["output_for_evaluation"]
 
 [state_config.Evaluation]
 use_memory = [["output_for_evaluation", 1]]
-ignore_message = true
+ignore_messages = true
 
 [state_config.UpdateFact]
 save_to_context = true
