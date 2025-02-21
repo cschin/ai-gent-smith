@@ -24,6 +24,7 @@ transitions = [
 ["SummaryFact", "Evaluation"],
 ["CodeExecution","Evaluation"],
 ["Evaluation","UpdateFact"],
+["Evaluation","GenerateCode"],
 ["Evaluation","Finish"]
 ]
 
@@ -32,11 +33,12 @@ system_prompt = ""
 fsm_prompt = "" 
 summary_prompt = ""
 
-[state_prompts]
-StandBy.system = ""
-StandBy.fsm = """JUST output a json string {"next_state": "GatherFact"}"""
+[state_prompts.StandBy]
+system = ""
+fsm = """JUST output a json string {"next_state": "GatherFact"}"""
 
-GatherFact.system = """
+[state_prompts.GatherFact]
+system = """
 Below I will present you a task.
 
     You will now build a comprehensive preparatory survey of which facts we have at our disposal and which ones we still need.
@@ -60,10 +62,10 @@ Below I will present you a task.
     ### 3. Facts to derive
     Do not add anything else.
 """
-GatherFact.fsm = """JUST output a json string {"next_state": "Planning"}"""
+fsm = """JUST output a json string {"next_state": "Planning"}"""
 
-
-UpdateFact.system = """
+[state_prompts.UpdateFact]
+system = """
     You are trying to perform this task: <TASK> {{ task }} </TASK>
    
     Earlier we've built an update list of facts.
@@ -82,9 +84,10 @@ UpdateFact.system = """
     ### 3. Facts still to look up
     ### 4. Facts still to derive
 """
-UpdateFact.fsm = """JUST output a json string {"next_state": "Replanning"}"""
+fsm = """JUST output a json string {"next_state": "Replanning"}"""
 
-Planning.system = """
+[state_prompts.Planning]
+system = """
     You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
 
     Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
@@ -109,11 +112,11 @@ Planning.system = """
     </TOOLS>
 
 """
-Planning.fsm = """JUST output a json string {"next_state": "GenerateCode"}"""
+fsm = """JUST output a json string {"next_state": "GenerateCode"}"""
 
 
-
-Replanning.system = """
+[state_prompts.Replanning]
+system = """
     You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
 
     Here is your task:
@@ -145,7 +148,7 @@ Replanning.system = """
     just the fact. You only need to use the tools if the facts are not enough to address the task.
 
 """
-Replanning.fsm = """
+fsm = """
 This is the previous response:
 <RESPONSE> {{ response }} </RESPONSE>
 and the task: <TASK> {{ task }} </TASK>
@@ -153,8 +156,8 @@ Given the previous response, you can generate some code to solve task, if so jus
 If not, and you think you need some summary of the current fact, just output {"next_state": "SummaryFact"}
 """
 
-
-GenerateCode.system = """
+[state_prompts.GenerateCode]
+system = """
  You are an expert assistant who can solve any task using code blobs. You will be given a task to solve as best you can.
   To do so, you have been given access to a list of python tools: these tools are basically Python functions which you can call with code.
   To solve the task, you must plan forward to proceed in a series of steps, in a cycle of 'Thought:', 'Code:', and 'Observation:' sequences.
@@ -222,7 +225,7 @@ print(f"The value of pi is: {pi_value}")
   Here is my observation: ...
 """
 
-GenerateCode.fsm = """
+fsm = """
 This is the previous response:
 <RESPONSE> {{ response }} </RESPONSE>
 
@@ -230,16 +233,18 @@ Does the previous response have a code block? If so, just output {"next_state": 
 If not, we need to generate the code again {"next_state": "Replanning"}
 """
 
-CodeExecution.fsm = """ JUST output {"next_state": "Finish"} """
+[state_prompts.CodeExecution]
+fsm = """ JUST output {"next_state": "Finish"} """
 
-
-SummaryFact.system = """ given the facts  <FACTS> {{ facts }} </FACTS> and the task <TASK> {{ task }} </TASK>,
+[state_prompts.SummaryFact]
+system = """ given the facts  <FACTS> {{ facts }} </FACTS> and the task <TASK> {{ task }} </TASK>,
 try to summarize the facts and see if the summary already address the task. 
 """
 
-SummaryFact.fsm = """JUST output {"next_state": "Evaluation"}"""
+fsm = """JUST output {"next_state": "Evaluation"}"""
 
-Evaluation.system = """
+[state_prompts.Evaluation]
+system = """
 You were asked to solve, answer, or perform this task  
 <TASK> {{ task }} </TASK>
 
@@ -259,7 +264,7 @@ Make sure you always output the suggestion for the next step, generate code, upd
 
 """
 
-Evaluation.fsm = """
+fsm = """
 This is the response:
 
 <RESPONSE> {{ response }} </RESPONSE>
@@ -271,47 +276,56 @@ If the response is a plan or suggest future action: JUST output {"next_step":"Up
 If the task is solved or you get the final answer in the response, JUST output {"next_step":"Finish"}. 
 """
 
-[state_config]
+[state_config.StandBy]
 # don't make chat request but making the fsm transition request
-StandBy.disable_llm_request = true
+disable_llm_request = true
 
-GatherFact.save_to_context = true
-GatherFact.save_to = "facts"
+[state_config.GatherFact]
+save_to_context = true
+save_to = "facts"
 #GatherFact.ignore_message = true
 
-Planning.use_memory = [["facts", 1]]
-Planning.save_to = "plan"
-Planning.ignore_message = true
+[state_config.Planning]
+use_memory = [["facts", 1]]
+save_to = "plan"
+ignore_message = true
 
+[state_config.GenerateCode]
 #GenerateCode.use_full_context = true
-GenerateCode.extract_code = true
-GenerateCode.use_memory = [["facts", 1], ["plan", 1]]
-GenerateCode.ignore_message = true
+extract_code = true
+use_memory = [["facts", 1], ["plan", 1]]
+ignore_message = true
 
-CodeExecution.execute_code = true
-CodeExecution.disable_llm_request  = true
-CodeExecution.save_to = "output_for_evaluation"
+[state_config.CodeExecution]
+execute_code = true
+disable_llm_request  = true
+save_to = "output_for_evaluation"
 
-SummaryFact.use_memory = [["facts", 1]]
-SummaryFact.save_to = "output_for_evaluation"
+[state_config.SummaryFact]
+use_memory = [["facts", 1]]
+save_to = "output_for_evaluation"
 
-Evaluation.use_memory = [["output_for_evaluation", 1]]
-Evaluation.ignore_message = true
+[state_config.Evaluation]
+use_memory = [["output_for_evaluation", 1]]
+ignore_message = true
 
-UpdateFact.save_to_context = true
-UpdateFact.save_to = "facts"
-UpdateFact.use_memory = [["facts", 1], ["output_for_evaluation", 1]]
-#pdateFact.ignore_message = true
+[state_config.UpdateFact]
+save_to_context = true
+save_to = "facts"
+use_memory = [["facts", 1], ["output_for_evaluation", 1]]
+#ignore_message = true
 
-Replanning.use_memory = [["facts", 1], ["plan", 1]]
-Replanning.save_to = "plan"
-Replanning.ignore_message = true
+[state_config.Replanning]
+use_memory = [["facts", 1], ["plan", 1]]
+save_to = "plan"
+ignore_message = true
 
+[state_config.Finish]
 # don't make chat request but making the fsm transition request
-Finish.disable_llm_request = true
+disable_llm_request = true
 
-[tools]
-websearch.description = """webserarch: search web for information.
+[tools.websearch]
+description = """webserarch: search web for information.
 in order to generate the proper code, you need to use the following code snippet and change according to the task. 
 Usage:
 <code>
@@ -346,10 +360,11 @@ query_result = webserarch(query)
 print(query_result)
 </code>
 """
-websearch.arguments = "name: query, type: string, description: the query string"
-websearch.output_type = "string"
+arguments = "name: query, type: string, description: the query string"
+output_type = "string"
 
-fetchtool.description = """fetch a document from a URL with python
+[tools.fetchtool]
+description = """fetch a document from a URL with python
 import requests
 import tempfile
 
@@ -370,10 +385,11 @@ def fetchtool(url):
 previous_query_results_url = "..."
 fetchtool(previous_query_results_url)
 """
-fetchtool.arguments = "url: a string for the web address of the content to fetch"
-fetchtool.output_type = "a path to the fetched content, ready for other tools to use"
+arguments = "url: a string for the web address of the content to fetch"
+output_type = "a path to the fetched content, ready for other tools to use"
 
-final_answer.description = """print out the final answer
+[tools.final_answer]
+description = """print out the final answer
 Usage:
 <code>
 ## other useful code to get the final_answer_string
@@ -384,10 +400,13 @@ print("Here is my final answer:", final_answer_string)
 </code>
 
 """
+arguments = "the tool does not need any input argument"
+output_type = "string"
 
-use_facts.arguments = "fact: some know facts that are useful for the task"
-use_facts.output_type = "string"
-use_facts.description = """print out the fact
+[tools.use_facts]
+arguments = "fact: some know facts that are useful for the task"
+output_type = "string"
+description = """print out the fact
 
 Usage:
 <code>
@@ -398,15 +417,14 @@ print("I think this information you need for the task:", these_are_the_facts_I_k
 """
 
 
-final_answer.arguments = "the tool does not need any input argument"
-final_answer.output_type = "string"
-
-python.description = "python: it can do anything"
-python.arguments = "any argument you need to complete the task"
-python.output_type = "string"
+[tools.python]
+description = "python: it can do anything"
+arguments = "any argument you need to complete the task"
+output_type = "string"
 
 
-pdf_file_2_text.description = """pdf_file_2_text: convert a pdf file to text
+[tools.pdf_file_2_text]
+description = """pdf_file_2_text: convert a pdf file to text
 Usage:
 <code>
 import openparse
@@ -420,5 +438,5 @@ for node in parsed_dict["nodes"]:
     print(node["text"])
 </code>
 """
-pdf_file_2_text.arguments = "path: the path to the pdf file"
-pdf_file_2_text.output_type = "string"
+arguments = "path: the path to the pdf file"
+output_type = "string"

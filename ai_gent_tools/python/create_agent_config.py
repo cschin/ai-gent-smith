@@ -162,6 +162,19 @@ class LlmFsmAgentConfig(BaseModel):
     def to_toml(self) -> str:
         return toml.dumps(self.model_dump())
 
+    @classmethod
+    def from_toml(cls, file_path: str):
+        with open(file_path, 'r') as toml_file:
+            data = toml.load(toml_file)
+        return cls(**data)
+    
+    @classmethod
+    def from_json(cls, file_path: str):
+        with open(file_path, 'r') as json_file:
+            data = json.load(json_file)
+        return cls(**data)
+
+
 
 class LlmFsmAgentConfigBuilder:
     def __init__(self):
@@ -377,3 +390,6 @@ def create_example_llm_fsm_agent_config() -> None:
 
 if __name__ == "__main__":
     create_example_llm_fsm_agent_config()
+    test = LlmFsmAgentConfig.from_toml("../dev_config/code_agent.toml")
+    #print(test.to_json())
+    print(test.to_toml())
