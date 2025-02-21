@@ -36,7 +36,7 @@ pub struct StateConfig {
     pub code: Option<String>,
     pub fsm_code: Option<String>,
     pub wait_for_msg: Option<bool>,
-    pub save_to: Option<String>,
+    pub save_to: Option<Vec<String>>,
     pub use_memory: Option<Vec<(String, usize)>>,
 }
 

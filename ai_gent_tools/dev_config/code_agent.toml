@@ -282,12 +282,12 @@ disable_llm_request = true
 
 [state_config.GatherFact]
 save_to_context = true
-save_to = "facts"
+save_to = ["facts"]
 #GatherFact.ignore_message = true
 
 [state_config.Planning]
 use_memory = [["facts", 1]]
-save_to = "plan"
+save_to = ["plan"]
 ignore_messages = true
 
 [state_config.GenerateCode]
@@ -299,11 +299,11 @@ ignore_messages = true
 [state_config.CodeExecution]
 execute_code = true
 disable_llm_request  = true
-save_to = "output_for_evaluation"
+save_to = ["output_for_evaluation"]
 
 [state_config.SummaryFact]
 use_memory = [["facts", 1]]
-save_to = "output_for_evaluation"
+save_to = ["output_for_evaluation"]
 
 [state_config.Evaluation]
 use_memory = [["output_for_evaluation", 1]]
@@ -311,13 +311,13 @@ ignore_message = true
 
 [state_config.UpdateFact]
 save_to_context = true
-save_to = "facts"
+save_to = ["facts"]
 use_memory = [["facts", 1], ["output_for_evaluation", 1]]
 #ignore_message = true
 
 [state_config.Replanning]
 use_memory = [["facts", 1], ["plan", 1]]
-save_to = "plan"
+save_to = ["plan"]
 ignore_message = true
 
 [state_config.Finish]

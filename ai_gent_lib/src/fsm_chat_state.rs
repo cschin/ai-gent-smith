@@ -374,14 +374,18 @@ impl FSMChatState {
             let _ = tx.send((self.name.clone(), "code".into(), code)).await;
         }
 
-        if let Some(ref memory_slot) = self.config.save_to {
-            let _ = tx
+        if let Some(ref memory_slots) = self.config.save_to {
+            for slot in memory_slots.iter() {
+                let _ = tx
                 .send((
                     self.name.clone(),
-                    format!("save_to:{}", memory_slot),
+                    format!("save_to:{}", slot),
                     llm_output.clone(),
                 ))
                 .await;
+
+            };
+
         }
         llm_output
     }
@@ -507,14 +511,17 @@ impl FSMChatState {
                     .await;
             }
 
-            if let Some(ref memory_slot) = self.config.save_to {
-                let _ = tx
+            if let Some(ref memory_slots) = self.config.save_to {
+                for slot in memory_slots.iter() {
+                    let _ = tx
                     .send((
                         self.name.clone(),
-                        format!("save_to:{}", memory_slot),
+                        format!("save_to:{}", slot),
                         stdout.to_string(),
                     ))
                     .await;
+    
+                };
             }
         }
     }

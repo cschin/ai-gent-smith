@@ -17,7 +17,7 @@ class StateConfig(BaseModel):
     code: Optional[str] = None
     fsm_code: Optional[str] = None
     wait_for_msg: Optional[bool] = None
-    save_to: Optional[str] = None
+    save_to: Optional[List[str]] = None
     use_memory: Optional[List[Tuple[str, int]]] = None
 
 class StateConfigBuilder:
@@ -76,7 +76,7 @@ class StateConfigBuilder:
         self._config.wait_for_msg = value
         return self
     
-    def set_save_to(self, value: str):
+    def set_save_to(self, value: List[str]):
         self._config.save_to = value
         return self
     

@@ -52,7 +52,7 @@ Below I will present you a task.
                      .set_config(
                         StateConfigBuilder()
                         .set_save_to_context(True)
-                        .set_save_to("facts")
+                        .set_save_to(["facts"])
                         .build())
                      .build())
 
@@ -84,7 +84,7 @@ Below I will present you a task.
                      .set_config(
                         StateConfigBuilder()
                         .set_use_memory([("facts", 1), ("output_for_evaluation", 1)])
-                        .set_save_to("facts")
+                        .set_save_to(["facts"])
                         .build())
                      .build())
     
@@ -121,7 +121,7 @@ Below I will present you a task.
                 .set_config(
                     StateConfigBuilder()
                     .set_use_memory([("facts", 1)])
-                    .set_save_to("plan")
+                    .set_save_to(["plan"])
                     .set_ignore_messages(True)
                     .build())
                 .build())
@@ -170,7 +170,7 @@ If not, and you think you need some summary of the current fact, just output {"n
                   .set_config(
                     StateConfigBuilder()
                     .set_use_memory([("facts", 1)])
-                    .set_save_to("plan")
+                    .set_save_to(["plan"])
                     .set_ignore_messages(True)
                     .build())
                   .build())
@@ -272,7 +272,7 @@ try to summarize the facts and see if the summary already address the task.
                                     .build())
                     .set_config(StateConfigBuilder()
                                 .set_use_memory([("facts", 1)])
-                                .set_save_to("output_for_evaluation")
+                                .set_save_to(["output_for_evaluation"])
                                 .build())
                     .build())   
     
@@ -284,7 +284,7 @@ try to summarize the facts and see if the summary already address the task.
                       .set_config(StateConfigBuilder()
                                   .set_execute_code(True)
                                   .set_disable_llm_request(True)
-                                  .set_save_to("output_for_evaluation")
+                                  .set_save_to(["output_for_evaluation"])
                                   .build())
                       .build())
 
