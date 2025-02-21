@@ -1,7 +1,7 @@
 from typing import Optional, List, Dict, Tuple
 from pydantic import BaseModel
 import toml
-from ai_gent_tools.python.agent_config import *
+from agent_config import *
 
 
 def create_code_agent_config() -> LlmFsmAgentConfig:
