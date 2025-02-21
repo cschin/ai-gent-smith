@@ -580,6 +580,7 @@ impl LlmFsmAgent {
                     }
                 } else {
                     let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
+                    // println!("debug, llm_output: {}", llm_output.clone().unwrap_or_default());
                     self.update_message_and_memory(llm_output, new_memory);
                     break;
                 }

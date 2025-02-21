@@ -314,11 +314,11 @@ This is the response:
 
 <RESPONSE> {{ response }} </RESPONSE>
 
-If the response is telling you to generate code, JUST output {"next_step":"GenerateCode"} 
+If the response is telling you to generate code, JUST output {"next_state":"GenerateCode"} 
 
-If the response is a plan or suggest future action: JUST output {"next_step":"UpdateFact"} 
+If the response is a plan or suggest future action: JUST output {"next_state":"UpdateFact"} 
 
-If the task is solved or you get the final answer in the response, JUST output {"next_step":"Finish"}.
+If the task is solved or you get the final answer in the response, JUST output {"next_state":"Finish"}.
                                          """)
                                 .build())
                     .set_config(StateConfigBuilder()

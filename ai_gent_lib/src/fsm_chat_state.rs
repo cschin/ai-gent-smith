@@ -604,7 +604,9 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
                     )
                     .await
                     .unwrap();
-                let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state);
+                // println!("\nllm nextstep raw response: {}", next_state );
+                let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state.trim());
+                // println!("\nllm next_fsm_state_response: {:?}", next_fsm_state_response );
                 match next_fsm_state_response {
                     Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
                     Err(e) => {
