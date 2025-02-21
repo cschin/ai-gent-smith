@@ -83,6 +83,8 @@ Below I will present you a task.
                         .build())
                      .set_config(
                         StateConfigBuilder()
+                        .set_use_memory([("facts", 1), ("output_for_evaluation", 1)])
+                        .set_save_to("facts")
                         .build())
                      .build())
     
