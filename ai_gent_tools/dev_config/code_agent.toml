@@ -234,7 +234,7 @@ If not, we need to generate the code again {"next_state": "Replanning"}
 """
 
 [state_prompts.CodeExecution]
-fsm = """ JUST output {"next_state": "Finish"} """
+fsm = """ JUST output {"next_state": "Evaluation"} """
 
 [state_prompts.SummaryFact]
 system = """ given the facts  <FACTS> {{ facts }} </FACTS> and the task <TASK> {{ task }} </TASK>,
