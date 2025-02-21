@@ -277,13 +277,16 @@ StandBy.disable_llm_request = true
 
 GatherFact.save_to_context = true
 GatherFact.save_to = "facts"
+#GatherFact.ignore_message = true
 
 Planning.use_memory = [["facts", 1]]
 Planning.save_to = "plan"
+Planning.ignore_message = true
 
 #GenerateCode.use_full_context = true
 GenerateCode.extract_code = true
 GenerateCode.use_memory = [["facts", 1], ["plan", 1]]
+GenerateCode.ignore_message = true
 
 CodeExecution.execute_code = true
 CodeExecution.disable_llm_request  = true
@@ -298,10 +301,11 @@ Evaluation.ignore_message = true
 UpdateFact.save_to_context = true
 UpdateFact.save_to = "facts"
 UpdateFact.use_memory = [["facts", 1], ["output_for_evaluation", 1]]
-
+#pdateFact.ignore_message = true
 
 Replanning.use_memory = [["facts", 1], ["plan", 1]]
 Replanning.save_to = "plan"
+Replanning.ignore_message = true
 
 # don't make chat request but making the fsm transition request
 Finish.disable_llm_request = true
