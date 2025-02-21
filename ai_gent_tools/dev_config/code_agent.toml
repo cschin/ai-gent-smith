@@ -254,6 +254,8 @@ This is the output:
 
 If the output is empty, just ask for the code to be generated again. 
 
+Make sure you always output the suggestion for the next step, generate code, update fact, or finish the task.
+
 """
 
 Evaluation.fsm = """
@@ -364,7 +366,7 @@ previous_query_results_url = "..."
 fetchtool(previous_query_results_url)
 """
 fetchtool.arguments = "url: a string for the web address of the content to fetch"
-fetchtool.output_type = "string"
+fetchtool.output_type = "a path to the fetched content, ready for other tools to use"
 
 final_answer.description = """print out the final answer
 Usage:
@@ -404,7 +406,7 @@ Usage:
 <code>
 import openparse
 
-basic_doc_path = "./sample-docs/mobile-home-manual.pdf"
+basic_doc_path = "./sample-docs/mobile-home-manual.pdf" // the path to the pdf file from other tools
 parser = openparse.DocumentParser()
 parsed_basic_doc = parser.parse(basic_doc_path)
 parsed_dict = parsed_basic_doc.model_dump()
