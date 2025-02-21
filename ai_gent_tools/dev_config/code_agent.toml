@@ -243,16 +243,17 @@ Evaluation.system = """
 You were asked to solve, answer, or perform this task  
 <TASK> {{ task }} </TASK>
 
-First, check if the output below a good result addressing the task, if so, just say the output is 
-a good final answer or the task is solved.
+First, check if the previous output below a good result addressing the task, if so, just say the output is 
+a good final answer or the task is solved and we can finish the session.
 
-If the output does not satisfy the task, just tell the user one sentence explanation for an improvement plan. 
-Don't need more response than that.
-
-This is the output:
+This is the previous output:
 <OUTPUT> {{ output_for_evaluation }} </OUTPUT>
 
-If the output is empty, just ask for the code to be generated again. 
+If the output does not satisfy the task, just tell the user one sentence explanation for an improvement plan. We
+are moving into UpdateFact step. Don't need more response than that.
+
+
+Only if the output is empty, then you ask to generated code again. 
 
 Make sure you always output the suggestion for the next step, generate code, update fact, or finish the task.
 
