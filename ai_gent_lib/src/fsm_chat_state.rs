@@ -640,12 +640,14 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
             "[]".into()
         };
         let state_history = escape_json_string(&json!(llm_req_settings.state_history).to_string());
+        let task =  escape_json_string(&json!(llm_req_settings.task).to_string()); 
         tera_context.insert("messages", &messages);
         tera_context.insert("context", &context);
         tera_context.insert("summary", &summary);
         tera_context.insert("state_name", &state_name);
         tera_context.insert("next_states", &next_states);
         tera_context.insert("state_history", &state_history);
+        tera_context.insert("task", &task);
         tera_context.insert("response", &llm_output);
         self.state_data.memory.iter().for_each( |(slot_name, m)| {
             tera_context.insert(slot_name, &escape_json_string(&json!(m).to_string()));

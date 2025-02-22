@@ -457,7 +457,7 @@ impl PartialEq for ChunkPoint {
 
 impl Eq for ChunkPoint {}
 
-use sqlx::Row;
+use sqlx::{Decode, Row};
 
 pub async fn vector_query_and_sort_points(
     asset_id: i32,

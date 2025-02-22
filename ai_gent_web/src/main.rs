@@ -204,6 +204,10 @@ Huggingface, it may take a while depending on your network speed.
         .route(
             "/service/text_to_embedding",
             post(services::text_to_embedding),
+        )
+        .route(
+            "/service/query_for_chunks",
+            post(services::query_for_chunks),
         );
 
     let app_config = tron_app::AppConfigure {

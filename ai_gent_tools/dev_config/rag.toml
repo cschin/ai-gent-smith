@@ -19,14 +19,16 @@ system_prompt = ""
 fsm_prompt = "" 
 summary_prompt = ""
 
-[state_prompts]
-StandBy.system = ""
-StandBy.fsm = """JUST output a json string {"next_state": "Retrieval"}"""
+[state_prompts.StandBy]
+system = ""
+fsm = """JUST output a json string {"next_state": "Retrieval"}"""
 
-Retrieval.system = ""
-Retrieval.fsm = """JUST output a json string {"next_state": "Generate"}"""
+[state_prompts.Retrieval]
+system = ""
+fsm = """JUST output a json string {"next_state": "Generate"}"""
 
-Generate.system = """You are given a set of reference material in the <CONTEXT>...</CONTEXT>
+[state_prompts.Generate]
+system = """You are given a set of reference material in the <CONTEXT>...</CONTEXT>
 section, use those to construct an answer to the user's question. 
 
 Here is the context section
@@ -34,24 +36,25 @@ Here is the context section
  {{ context }} 
  </CONTEXT>"""
 
-Generate.fsm = """JUST output a json string {"next_state": "Finish"}"""
+fsm = """JUST output a json string {"next_state": "Finish"}"""
 
-[state_config]
+[state_config.StandBy]
+# show how to use code/tool to drive the state transition, you can change ti the output "Generate" state
+# to see the effect
+fsm_code = """
+print("Retrieval")"""
+
 # don't make chat request but making the fsm transition request
-StandBy.disable_llm_request = true
+disable_llm_request = true
 
-# don't make chat request but making the fsm transition request
-Finish.disable_llm_request = true
 
-Retrieval.execute_code = true
-Retrieval.disable_llm_request = true # pure code execution 
+[state_config.Retrieval]
+execute_code = true
+disable_llm_request = true # pure code execution 
 # Retrieval.save_execution_output = true 
-Retrieval.save_to_context = true # for RAG
-
-Generate.save_to_context = true
-
+save_to_context = true # for RAG
 # execute code from this content
-Retrieval.code = """
+code = """
 import json
 import duckduckgo_search
 from duckduckgo_search import DDGS
@@ -85,7 +88,9 @@ if __name__ == "__main__":
 
 """
 
-# show how to use code/tool to drive the state transition, you can change ti the output "Generate" state
-# to see the effect
-StandBy.fsm_code = """
-print("Retrieval")"""
+[state_config.Generate]
+save_to_context = true
+
+[state_config.Finish]
+# don't make chat request but making the fsm transition request
+disable_llm_request = true
