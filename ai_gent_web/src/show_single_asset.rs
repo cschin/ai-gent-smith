@@ -21,7 +21,7 @@ use tron_app::tron_components::*;
 use tron_app::tron_macro::*;
 
 use crate::{
-    embedding_service::{get_all_points, vector_query_and_sort_points, TwoDPoint},
+    embedding_service::{get_all_points, vector_query_and_sort_points, ChunkPoint},
     DB_POOL,
 };
 
@@ -276,7 +276,7 @@ where
     async fn post_render(&mut self, _ctx: &TnContextBase) {}
 }
 
-fn get_plot_data(all_points_sorted: &[TwoDPoint]) -> String {
+fn get_plot_data(all_points_sorted: &[ChunkPoint]) -> String {
     let mut color_scale = 1.0;
     let mut d_color = 8.0 * color_scale / (all_points_sorted.len() as f64);
 
@@ -304,8 +304,8 @@ fn get_plot_data(all_points_sorted: &[TwoDPoint]) -> String {
 
 async fn update_plot_and_top_k(
     context: TnContext,
-    all_points_sorted: Vec<TwoDPoint>,
-    top_k_points: Vec<TwoDPoint>,
+    all_points_sorted: Vec<ChunkPoint>,
+    top_k_points: Vec<ChunkPoint>,
 ) {
     let two_d_embeddding = get_plot_data(&all_points_sorted);
     // tracing::info!(target: "tron_app", "two_d_embeddding: {}", two_d_embeddding);
@@ -401,7 +401,7 @@ fn d3_plot_clicked(context: TnContext, _event: TnEvent, payload: Value) -> TnFut
             let x = two_d_embedding.0 as f64;
             let y = two_d_embedding.1 as f64;
             let d = OrderedFloat::from((evt_x - x).powi(2) + (evt_y - y).powi(2));
-            let point = TwoDPoint {
+            let point = ChunkPoint {
                 d,
                 point: (x, y),
                 chunk: c.clone(),
@@ -413,7 +413,7 @@ fn d3_plot_clicked(context: TnContext, _event: TnEvent, payload: Value) -> TnFut
 
         let ref_eb_vec = all_points.first().unwrap().chunk.embedding_vec.clone().unwrap();
         let all_points_sorted = vector_query_and_sort_points(asset_id, &ref_eb_vec, None, None).await;
-        let top_10: Vec<TwoDPoint> = all_points_sorted[..10].into();
+        let top_10: Vec<ChunkPoint> = all_points_sorted[..10].into();
 
         update_plot_and_top_k(context, all_points_sorted, top_10).await;
 

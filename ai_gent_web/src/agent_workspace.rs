@@ -50,7 +50,7 @@ use tron_app::TRON_APP;
 use super::DB_POOL;
 use crate::embedding_service::vector_query_and_sort_points;
 use crate::embedding_service::TextChunkingService;
-use crate::embedding_service::TwoDPoint;
+use crate::embedding_service::ChunkPoint;
 use crate::AgentSetting;
 use crate::SEARCH_AGENT_BTN;
 use serde::{Deserialize, Serialize};
@@ -60,7 +60,7 @@ use sqlx::Postgres;
 use sqlx::{any::AnyRow, prelude::FromRow, query as sqlx_query};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
-use crate::embedding_service::EMBEDDING_SERVICE;
+use crate::embedding_service::{EMBEDDING_SERVICE, search_asset};
 use crate::fsm_chat_agent::*;
 
 pub const AGENT_CHAT_TEXTAREA: &str = "agent_chat_textarea";
@@ -786,51 +786,8 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
     }
 }
 
-async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) -> Vec<TwoDPoint> {
-    if asset_id == 0 {
-        return vec![];
-    };
 
-    // use LLM to extend the context for simple question
-    // let query = &extend_query_with_llm(query).await;
-    // tracing::info!(target: TRON_APP, "extended query: {}", query);
-
-    let tk_service = TextChunkingService::new(None, 128, 0, 4096);
-
-    let mut chunks = tk_service.text_to_chunks(query);
-
-    // tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
-    EMBEDDING_SERVICE
-        .get()
-        .unwrap()
-        .get_embedding_for_chunks(&mut chunks)
-        .expect("Failed to get embeddings");
-    let mut min_d = OrderedFloat::from(f64::MAX);
-    let mut best_sorted_points = Vec::<TwoDPoint>::new();
-    for c in chunks.into_iter() {
-        let ev = c.embedding_vec.unwrap().clone();
-        let sorted_points =
-            vector_query_and_sort_points(asset_id, &ev, Some(top_k as i32), Some(threshold)).await;
-        if sorted_points.is_empty() {
-            break;
-        };
-        let d = sorted_points.first().unwrap().d;
-        if d < min_d {
-            min_d = d;
-            best_sorted_points = sorted_points;
-        }
-    }
-
-    let top_k = if top_k > best_sorted_points.len() {
-        best_sorted_points.len()
-    } else {
-        top_k
-    };
-    let top_hits: Vec<TwoDPoint> = best_sorted_points[..top_k].into();
-    top_hits
-}
-
-fn get_search_context_plain_text(top_hits: &[TwoDPoint]) -> String {
+fn get_search_context_plain_text(top_hits: &[ChunkPoint]) -> String {
     top_hits
         .iter()
         .map(|p| {
@@ -845,7 +802,7 @@ fn get_search_context_plain_text(top_hits: &[TwoDPoint]) -> String {
         .join("\n")
 }
 
-fn get_search_context_html(top_hits: &[TwoDPoint]) -> String {
+fn get_search_context_html(top_hits: &[ChunkPoint]) -> String {
     let mut comrak_options = Options::default();
     comrak_options.render.width = 20;
     let comrak_plugins = get_comrak_plugins();

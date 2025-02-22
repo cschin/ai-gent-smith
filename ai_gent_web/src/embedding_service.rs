@@ -427,13 +427,13 @@ use std::collections::BinaryHeap;
 use crate::DB_POOL;
 
 #[derive(Debug, Clone)]
-pub struct TwoDPoint {
+pub struct ChunkPoint {
     pub d: OrderedFloat<f64>,
     pub point: (f64, f64),
     pub chunk: DocumentChunk,
 }
 
-impl Ord for TwoDPoint {
+impl Ord for ChunkPoint {
     fn cmp(&self, other: &Self) -> Ordering {
         // Notice that the we flip the ordering on costs.
         // In case of a tie we compare positions - this step is necessary
@@ -443,19 +443,19 @@ impl Ord for TwoDPoint {
 }
 
 // `PartialOrd` needs to be implemented as well.
-impl PartialOrd for TwoDPoint {
+impl PartialOrd for ChunkPoint {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
     }
 }
 
-impl PartialEq for TwoDPoint {
+impl PartialEq for ChunkPoint {
     fn eq(&self, other: &Self) -> bool {
         self.d == other.d
     }
 }
 
-impl Eq for TwoDPoint {}
+impl Eq for ChunkPoint {}
 
 use sqlx::Row;
 
@@ -464,7 +464,7 @@ pub async fn vector_query_and_sort_points(
     ref_vec: &[f32],
     top_k: Option<i32>,
     threshold: Option<f32>
-) -> Vec<TwoDPoint> {
+) -> Vec<ChunkPoint> {
     //tracing::info!(target:"tron_app", "ref_vec:{:?}", ref_vec);
     let mut all_points = Vec::new();
 
@@ -526,7 +526,51 @@ pub async fn vector_query_and_sort_points(
     all_points
 }
 
-pub async fn get_all_points(asset_id: i32) -> Vec<TwoDPoint> {
+pub async fn search_asset(query: &str, asset_id: i32, top_k: usize, threshold: f32) -> Vec<ChunkPoint> {
+    if asset_id == 0 {
+        return vec![];
+    };
+
+    // use LLM to extend the context for simple question
+    // let query = &extend_query_with_llm(query).await;
+    // tracing::info!(target: TRON_APP, "extended query: {}", query);
+
+    let tk_service = TextChunkingService::new(None, 128, 0, 4096);
+
+    let mut chunks = tk_service.text_to_chunks(query);
+
+    // tracing::info!(target:"tron_app", "chunks: {:?}", chunks);
+    EMBEDDING_SERVICE
+        .get()
+        .unwrap()
+        .get_embedding_for_chunks(&mut chunks)
+        .expect("Failed to get embeddings");
+    let mut min_d = OrderedFloat::from(f64::MAX);
+    let mut best_sorted_points = Vec::<ChunkPoint>::new();
+    for c in chunks.into_iter() {
+        let ev = c.embedding_vec.unwrap().clone();
+        let sorted_points =
+            vector_query_and_sort_points(asset_id, &ev, Some(top_k as i32), Some(threshold)).await;
+        if sorted_points.is_empty() {
+            break;
+        };
+        let d = sorted_points.first().unwrap().d;
+        if d < min_d {
+            min_d = d;
+            best_sorted_points = sorted_points;
+        }
+    }
+
+    let top_k = if top_k > best_sorted_points.len() {
+        best_sorted_points.len()
+    } else {
+        top_k
+    };
+    let top_hits: Vec<ChunkPoint> = best_sorted_points[..top_k].into();
+    top_hits
+}
+
+pub async fn get_all_points(asset_id: i32) -> Vec<ChunkPoint> {
     //tracing::info!(target:"tron_app", "ref_vec:{:?}", ref_vec);
     let mut all_points = Vec::new();
 
@@ -555,7 +599,7 @@ pub async fn get_all_points(asset_id: i32) -> Vec<TwoDPoint> {
     all_points
 }
 
-fn pgrow_to_point(r: sqlx::postgres::PgRow) -> TwoDPoint {
+fn pgrow_to_point(r: sqlx::postgres::PgRow) -> ChunkPoint {
     let span = r.get::<PgRange<i32>, &str>("span");
     let span = (
         bound_to_usize(span.start).unwrap(),
@@ -575,5 +619,5 @@ fn pgrow_to_point(r: sqlx::postgres::PgRow) -> TwoDPoint {
     let d = OrderedFloat::from(1.0 - r.get::<f64, &str>("similarity"));
     let point = chunk.two_d_embedding.unwrap();
     let point = (point.0 as f64, point.1 as f64);
-    TwoDPoint { d, chunk, point }
+    ChunkPoint { d, chunk, point }
 }
