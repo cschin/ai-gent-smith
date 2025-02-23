@@ -4,12 +4,12 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use serde::Deserialize;
 use serde_json::json;
+use serde_json::Value;
 use tera::Tera;
 use tokio::{
     sync::mpsc::{Receiver, Sender},
     task::JoinHandle,
 };
-use serde_json::Value;
 
 use crate::{
     fsm::FsmState,
@@ -36,7 +36,7 @@ pub struct FSMChatState {
     config: StateConfig,
     handle: Option<JoinHandle<String>>,
     state_data: FSMChatStateData,
-    llm_req_setting: LlmReqSetting
+    llm_req_setting: LlmReqSetting,
 }
 
 impl LlmFsmStateInit for FSMChatState {
@@ -87,11 +87,24 @@ async fn get_llm_req_process_handle(
             .generate_stream(&full_prompt, &messages, temperature)
             .await;
         while let Some(result) = llm_stream.next().await {
-            if let Some(output) = result {
-                llm_output.push_str(&output);
-                if !ignore_llm_output {
-                    let _ = tx.send((state_name.clone(), "token".into(), output)).await;
-                };
+            match result {
+                Ok(output) => {
+                    if let Some(output) = output {
+                        llm_output.push_str(&output);
+                        if !ignore_llm_output {
+                            let _ = tx.send((state_name.clone(), "token".into(), output)).await;
+                        };
+                    }
+                }
+                Err(e) => {
+                    let _ = tx
+                        .send((
+                            state_name.clone(),
+                            "error".into(),
+                            format!("LLM API call error: {}", e),
+                        ))
+                        .await;
+                }
             };
         }
         if !ignore_llm_output {
@@ -267,21 +280,23 @@ impl FSMChatState {
             "".into()
         };
 
-        let memory: HashMap<String,String> =
-        if let Some(ref use_memory) = self.config.use_memory {
-            use_memory.iter().flat_map(|(slot_name, n)| {
-                if let Some(vec) = llm_req_settings.memory.get(slot_name) {
-                    let start = if vec.len() > *n { vec.len() - *n } else { 0 };
-                    let m = vec[start..]
-                        .iter()
-                        .map(|v| v.to_string())
-                        .collect::<Vec<String>>()
-                        .join("\n\n");
-                    Some((slot_name.clone(), m))
-                } else {
-                    None
-                }
-            }).collect::<_>()
+        let memory: HashMap<String, String> = if let Some(ref use_memory) = self.config.use_memory {
+            use_memory
+                .iter()
+                .flat_map(|(slot_name, n)| {
+                    if let Some(vec) = llm_req_settings.memory.get(slot_name) {
+                        let start = if vec.len() > *n { vec.len() - *n } else { 0 };
+                        let m = vec[start..]
+                            .iter()
+                            .map(|v| v.to_string())
+                            .collect::<Vec<String>>()
+                            .join("\n\n");
+                        Some((slot_name.clone(), m))
+                    } else {
+                        None
+                    }
+                })
+                .collect::<_>()
         } else {
             HashMap::default()
         };
@@ -292,7 +307,7 @@ impl FSMChatState {
             task,
             context,
             tools,
-            memory
+            memory,
         }
     }
 
@@ -312,9 +327,9 @@ impl FSMChatState {
                 tera_context.insert("task", &self.state_data.task);
                 tera_context.insert("tools", &self.state_data.tools);
 
-                self.state_data.memory.iter().for_each( |(slot_name, m)| {
+                self.state_data.memory.iter().for_each(|(slot_name, m)| {
                     tera_context.insert(slot_name, m);
-                } );
+                });
 
                 let full_prompt = [system_prompt, chat_prompt].join("\n");
                 let full_prompt = Tera::one_off(&full_prompt, &tera_context, false).unwrap();
@@ -326,7 +341,7 @@ impl FSMChatState {
                 let messages = if self.config.ignore_messages.unwrap_or(false) {
                     vec![]
                 } else {
-                    self.state_data.messages.clone() 
+                    self.state_data.messages.clone()
                 };
                 self.handle = Some(
                     get_llm_req_process_handle(
@@ -377,15 +392,13 @@ impl FSMChatState {
         if let Some(ref memory_slots) = self.config.save_to {
             for slot in memory_slots.iter() {
                 let _ = tx
-                .send((
-                    self.name.clone(),
-                    format!("save_to:{}", slot),
-                    llm_output.clone(),
-                ))
-                .await;
-
-            };
-
+                    .send((
+                        self.name.clone(),
+                        format!("save_to:{}", slot),
+                        llm_output.clone(),
+                    ))
+                    .await;
+            }
         }
         llm_output
     }
@@ -514,14 +527,13 @@ impl FSMChatState {
             if let Some(ref memory_slots) = self.config.save_to {
                 for slot in memory_slots.iter() {
                     let _ = tx
-                    .send((
-                        self.name.clone(),
-                        format!("save_to:{}", slot),
-                        stdout.to_string(),
-                    ))
-                    .await;
-    
-                };
+                        .send((
+                            self.name.clone(),
+                            format!("save_to:{}", slot),
+                            stdout.to_string(),
+                        ))
+                        .await;
+                }
             }
         }
     }
@@ -534,7 +546,6 @@ impl FSMChatState {
         llm_output: &String,
     ) -> Option<String> {
         if let Some(fsm_code) = self.config.fsm_code.clone() {
-            
             let code = self.wrap_code(
                 llm_req_settings,
                 next_states.as_ref(),
@@ -585,10 +596,10 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
                 tera_context.insert("summary", &self.state_data.summary);
                 tera_context.insert("response", &llm_output);
 
-                self.state_data.memory.iter().for_each( |(slot_name, m)| {
+                self.state_data.memory.iter().for_each(|(slot_name, m)| {
                     tera_context.insert(slot_name, m);
-                } );
-                
+                });
+
                 let fsm_prompt = Tera::one_off(&fsm_prompt, &tera_context, false).unwrap();
 
                 let llm_client = GenaiLlmclient {
@@ -605,7 +616,8 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
                     .await
                     .unwrap();
                 // println!("\nllm nextstep raw response: {}", next_state );
-                let next_fsm_state_response = serde_json::from_str::<LlmResponse>(&next_state.trim());
+                let next_fsm_state_response =
+                    serde_json::from_str::<LlmResponse>(&next_state.trim());
                 // println!("\nllm next_fsm_state_response: {:?}", next_fsm_state_response );
                 match next_fsm_state_response {
                     Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
@@ -640,7 +652,7 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
             "[]".into()
         };
         let state_history = escape_json_string(&json!(llm_req_settings.state_history).to_string());
-        let task =  escape_json_string(&json!(llm_req_settings.task).to_string()); 
+        let task = escape_json_string(&json!(llm_req_settings.task).to_string());
         tera_context.insert("messages", &messages);
         tera_context.insert("context", &context);
         tera_context.insert("summary", &summary);
@@ -649,7 +661,7 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
         tera_context.insert("state_history", &state_history);
         tera_context.insert("task", &task);
         tera_context.insert("response", &llm_output);
-        self.state_data.memory.iter().for_each( |(slot_name, m)| {
+        self.state_data.memory.iter().for_each(|(slot_name, m)| {
             tera_context.insert(slot_name, &escape_json_string(&json!(m).to_string()));
         });
         Tera::one_off(&fsm_code, &tera_context, false).unwrap()

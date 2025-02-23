@@ -9,7 +9,7 @@ use genai::{Client, ModelIden};
 
 use futures::{Stream, StreamExt};
 
-pub type LLMStreamOut = Pin<Box<dyn Stream<Item = Option<String>> + Send>>;
+pub type LLMStreamOut = Pin<Box<dyn Stream<Item = Result<Option<String>, anyhow::Error>> + Send>>;
 
 pub async fn genai_stream_service(
     prompt: &str,
@@ -58,25 +58,31 @@ pub async fn genai_stream_service(
         }
     };
 
-    let llm_stream = client
+    let llm_stream = match client
         .exec_chat_stream(model, chat_req.clone(), Some(&chat_option))
         .await
-        .unwrap()
-        .stream;
+    {
+        Ok(client) => client.stream,
+        Err(e) => {
+            return Box::pin(futures::stream::once(futures::future::err(
+                anyhow::anyhow!("LLM client API request error {}", e),
+            )))
+        }
+    };
 
     let llm_output = StreamExt::then(llm_stream, |result| async {
         match result {
             Ok(response) => match response {
-                ChatStreamEvent::Start => Some("".to_string()),
-                ChatStreamEvent::Chunk(StreamChunk { content }) => Some(content.to_string()),
-                ChatStreamEvent::End(_end_event) => None,
+                ChatStreamEvent::Start => Ok(Some("".to_string())),
+                ChatStreamEvent::Chunk(StreamChunk { content }) => Ok(Some(content.to_string())),
+                ChatStreamEvent::End(_end_event) => Ok(None),
                 ChatStreamEvent::ReasoningChunk(StreamChunk { content }) => {
-                    Some(content.to_string())
+                    Ok(Some(content.to_string()))
                 }
             },
-            Err(_err) => {
-                tracing::info!(target: "log", "LLM stream error");
-                None
+            Err(e) => {
+                tracing::info!(target: "log", "LLM stream error: {}", e);
+                Err(anyhow::anyhow!("LLM stream error {}", e))
             }
         }
     });

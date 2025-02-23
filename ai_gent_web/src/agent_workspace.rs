@@ -48,8 +48,8 @@ use tron_app::TRON_APP;
 
 use super::DB_POOL;
 use crate::embedding_service::vector_query_and_sort_points;
-use crate::embedding_service::TextChunkingService;
 use crate::embedding_service::ChunkPoint;
+use crate::embedding_service::TextChunkingService;
 use crate::AgentSetting;
 use crate::SEARCH_AGENT_BTN;
 use serde::{Deserialize, Serialize};
@@ -59,7 +59,7 @@ use sqlx::Postgres;
 use sqlx::{any::AnyRow, prelude::FromRow, query as sqlx_query};
 use sqlx::{Column, Row, TypeInfo, ValueRef};
 
-use crate::embedding_service::{EMBEDDING_SERVICE, search_asset};
+use crate::embedding_service::{search_asset, EMBEDDING_SERVICE};
 
 pub const AGENT_CHAT_TEXTAREA: &str = "agent_chat_textarea";
 pub const AGENT_STREAM_OUTPUT: &str = "agent_stream_output";
@@ -629,7 +629,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
           // TODO, handle parsing error here:
         let fsm = LlmFsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
-      
+
         let api_key = match llm_name.as_str() {
             "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => {
                 if let Ok(open_api_key) = std::env::var("OPENAI_API_KEY") {
@@ -689,7 +689,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 agent.set_current_state(fsm_state, true).await.expect("set current state fail");
             };
             let e = agent.llm_req_settings.memory.entry("summary".into()).or_default();
-            let summary = get_chat_summary(chat_id).await.unwrap_or_default(); 
+            let summary = get_chat_summary(chat_id).await.unwrap_or_default();
             e.clear();
             e.push(Value::String(summary));
             // we may want to load a couple of last message from the database for the agent providing some memory beyond the summary
@@ -723,7 +723,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             {
                 let context = agent.llm_req_settings.memory.entry("context".into()).or_default();
                 context.clear();
-                context.push(Value::String(query_context)); 
+                context.push(Value::String(query_context));
             }
 
             let query_context_html = get_search_context_html(&search_asset_results);
@@ -758,43 +758,52 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             let mut state_service_count = 0;
             while let Some(message) = fsm_rx.recv().await {
                 match (message.0.as_str(), message.1.as_str()) {
-                    (s, "state") => {
+                    (state_name, "state") => {
                         state_service_count += 1;
                         tracing::info!(target: TRON_APP, "\n\n-------{:02} Agent State: {}\n", state_service_count,  message.2);
-                        let _ = tx.send((s.into(), "message".into(), format!("Agent State: {}\n", message.2))).await;
+                        let _ = tx.send((state_name.into(), "message".into(), format!("Agent State: {}\n", message.2))).await;
                     }
-                    (s, "token") if s != "MakeSummary" => {
-                        tracing::info!(target: TRON_APP, "{}", message.2);
-                        let _ = tx.send((s.into(), "token".into(), message.2)).await;
+                    (state_name, "token") => {
+                        // tracing::info!(target: TRON_APP, "{}", message.2);
+                        let _ = tx.send((state_name.into(), "token".into(), message.2)).await;
                     }
-                    (s, "output") => {
-                        tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
-                        let _ = tx.send((s.into(), "llm_output".into(), message.2)).await;
+                    (state_name, "output") => {
+                        // tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
+                        let _ = tx.send((state_name.into(), "llm_output".into(), message.2)).await;
                     }
-                    (state_name, "exec_output") => {
-                        tracing::info!(target: TRON_APP, "exec_output received, state:{}, len={}", state_name, message.2.len());
-                        tracing::info!(target: TRON_APP, "{}", message.2);
+                    (_state_name, "exec_output") => {
+                        // tracing::info!(target: TRON_APP, "exec_output received, state:{}, len={}", state_name, message.2.len());
+                        // tracing::info!(target: TRON_APP, "{}", message.2);
                     }
                     (state_name, "llm_output") => {
-                        tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
+                        // tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
                         let _ = insert_message(chat_id, user_id, agent_id, &message.2, "bot", "text", Some(state_name.into())).await;
                         let _ = tx.send(("Generate".into(), "llm_output".into(), message.2)).await;
                         break;
                     }
                     (state_name, "error") => {
-                        eprintln!("Error received from state '{}': '{}'", state_name, message.2)
-                    }
-                    (_s, "message_processed") => {
+                        //eprintln!("Error received from state '{}': '{}'", state_name, message.2)
+                        tracing::info!(target: "tron_app", "LLM API call error: Agent stata {}, Error: {:?}", state_name, message.2);
+
+                         let mut h = HeaderMap::new();
+                         h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
+                         h.insert("Hx-Retarget", "#env_var_setting_notification_msg".parse().unwrap());
+                         h.insert("HX-Trigger-After-Swap", "show_env_var_setting_notification".parse().unwrap());
+
+                         return Some(
+                             (h, Html::from(format!(r#"LLM (state: {}) API Call fail. Check the server log for details."#, llm_name))));
+                        }
+                    (_state_name, "message_processed") => {
                         //let _ = tx.send((s.into(), "clear".into(), message.2)).await;
                         tracing::info!(target: TRON_APP, "message_processed, wait for the next user input"); // clear rustyline's buffer
                     }
                     _ => {}
                 }
             }
-            
+
             let _ = send_msg.send(("terminate".into(), "".into())).await;
             let _ = tokio::join!(handler).0.unwrap();
-            
+
             // match agent.process_message(&query_text, Some(tx), temperature_value).await {
             //     Ok(res) => {
             //         let current_state = agent.base.get_current_state().await;
@@ -821,7 +830,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
 
         let _ = tx.send(("".into(), "terminate".into(), "".into())).await;
         tokio::join!(handle).0.unwrap();
-            
+
         tracing::info!(target: TRON_APP, "query processing finish");
         // {
         //     let asset = context.get_asset_ref().await;
@@ -833,7 +842,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         None
     }
 }
-
 
 fn get_search_context_plain_text(top_hits: &[ChunkPoint]) -> String {
     top_hits
