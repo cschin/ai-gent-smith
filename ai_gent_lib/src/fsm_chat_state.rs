@@ -265,6 +265,7 @@ impl FsmState for FSMChatState {
                 None
             }
         };
+        #[allow(clippy::let_and_return)]
         next_state
     }
 
