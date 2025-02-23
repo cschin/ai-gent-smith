@@ -953,12 +953,6 @@ use uuid::{timestamp::context, Uuid};
 #[template(path = "simple_agent_config.toml.template", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct SimpleAgentConfigTemplate {
     system_prompt: String,
-    follow_up: String,
-}
-
-#[derive(Serialize)]
-struct SysPromptInConfig {
-    sys_prompt: String,
 }
 
 #[allow(non_snake_case)]
@@ -967,28 +961,16 @@ struct FollowUpPromptInConfig {
     FollowUp: String,
 }
 
-fn get_basic_fsm_agent_config_toml_string(sys_prompt: String, follow_up: Option<String>) -> String {
-    let system_prompt = toml::to_string(&SysPromptInConfig { sys_prompt }).unwrap();
-    //toml::ser::ValueSerializer::new(&mut prompt);
-    tracing::info!(target: TRON_APP, "debug toml string: {}", system_prompt);
-    let follow_up = if let Some(follow_up) = follow_up {
-        toml::to_string(&FollowUpPromptInConfig {
-            FollowUp: follow_up,
-        })
-        .unwrap()
-    } else {
-        let follow_up_prompt = r#"
-        Your goal to see if you have enough information to address the user's question,
-        if not, please ask more questions for the information you need."#
-            .to_string();
-        toml::to_string(&FollowUpPromptInConfig {
-            FollowUp: follow_up_prompt,
-        })
-        .unwrap()
-    };
+fn get_basic_fsm_agent_config_toml_string(sys_prompt: String) -> String {
+    let mut value = String::new();
+    serde::Serialize::serialize(
+        &sys_prompt,
+    toml::ser::ValueSerializer::new(&mut value)).unwrap();
+    // tracing::info!(target: TRON_APP, "debug toml string: {}", sys_prompt);
+    // tracing::info!(target: TRON_APP, "debug toml string: {}", value);
+   
     let simple_agent_config = SimpleAgentConfigTemplate {
-        system_prompt,
-        follow_up,
+        system_prompt: value.trim_matches('"').into()
     }
     .render()
     .unwrap();
@@ -1016,8 +998,7 @@ async fn create_basic_agent(
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
     let prompt = agent_setting_form.prompt;
-    let follow_up = agent_setting_form.follow_up_prompt;
-    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up);
+    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt);
 
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {
@@ -1198,8 +1179,7 @@ async fn update_basic_agent(
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
     let prompt = agent_setting_form.prompt;
-    let follow_up = agent_setting_form.follow_up_prompt;
-    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up);
+    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt);
 
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {

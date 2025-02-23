@@ -1,60 +1,85 @@
-states = ["StandBy", "InitialResponse", "FollowUp"]
+states = [
+"StandBy",
+"Generate",
+"MakeSummary",
+"Finish"]
 
-transitions = [["StandBy", "StandBy"], 
-               ["StandBy", "InitialResponse"], 
-               ["StandBy", "FollowUp"], 
-               ["InitialResponse", "FollowUp"], 
-               ["InitialResponse", "StandBy"], 
-               ["FollowUp", "FollowUp"], 
-               ["FollowUp", "StandBy"]]
+transitions = [
+["StandBy",
+"Generate"],
+["Generate",
+"MakeSummary"],
+["MakeSummary", "Finish"]
+]
 
 initial_state = "StandBy"
+## the following system_prompt is actually not use but it helps to save the prompt in the database now
+system_prompt = "{{ system_prompt }}" 
+fsm_prompt = "" 
+summary_prompt = ""
 
-## sys_prompt
-system_prompt = """ {{ system_prompt }} """
+[state_prompts.StandBy]
+system = ""
+#fsm = """JUST output a json string {"next_state": "Retrieval"}"""
 
-summary_prompt = """
-Your task is to take a current summary of the conversation and new user and assistant messages to create new summary weighed in more on the last couple of messages. If there is no current summary, just use the last massage to summarize. Generate the summary no more than 500 words.
- Here is the current summary:"""
 
-fsm_prompt = '''
-Please determine the next state from the message and the current state.
+[state_prompts.Generate]
+system = """
 
-There are three possible states:
-1. InitialResponse
-2. FollowUp
-3. StandBy
+Here is a question or a task from a user:  {% raw %} {{ task }} {% endraw %} 
 
-The possible transitions are
+Here is a set context or fact
+ <CONTEXT> 
+ {% raw %} {{ context }} {% endraw %} 
+ </CONTEXT>
 
-Standby -> Standby
-Standby -> InitialResponse
-Standby -> FollowUp
-InitialResponse -> FollowUp
-InitialResponse -> StandBy
-FollowUp -> FollowUp
-FollowUp -> StandBy
+Here is a summary of the previous conversation
+<SUMMARY>
+ {% raw %} {{ summary }} {% endraw %}  
+</SUMMARY>
 
-You should output your results in a JSON format. 
+Please answer the user's question or solve the task according to the following instructions:
 
-The JSON format should be like 
-{"next_state": suggested next state}
+{{ system_prompt }} 
 
-The "suggested next state" should be a single string with quote properly escaped. 
+Generate response starting with "To address your question/task, here is what I think...."
 
-The suggested next state should be one of the "InitialResponse", "FollowUp", and "StandBy", and it can NOT be empty. This is very important.
+"""
 
-THe OUTPUT SHOULD BE JUST VALID JSON STRING WITHOUT any quote string or markdown formatting string. Please check it is a valid and pure json string. This is extremely important. Make sure using the right escape for control characters when it is necessary. For example, the output should be just
 
-{"next_step": STATE}, where the STATE can be "Standby", "InitialResponse", "FollowUp"
+fsm = """JUST output a json string {"next_state": "MakeSummary"}"""
 
-NEVER output markdown format like
-```json
-{"next_step": STATE}
-```
-'''
 
-[state_prompts]
-FollowUp.chat = """{{ follow_up }}"""
-InitialResponse.chat = "Your goal to start to response to the user and determine if the question from the conversation is clear or you need to ask some follow up questions to gain additional information."
-StandBy.chat = "Your goal to let the user know that you are ready to take a new question. You should welcome the user and encourage the user to ask new question. If the user has asked a question, welcome and answer the question."
+[state_prompts.MakeSummary]
+
+system = """
+You are an expert taking note and making summary for conversation. 
+You are given a summary from earlier conversation:
+<SUMMARY>
+ {% raw %}  summary  {% endraw %} 
+</SUMMARY>
+Update the summary with new conversation.
+No more than 300 words.
+Generate response starting with "This is the current summary: ..."
+
+"""
+
+
+
+[state_config.StandBy]
+# don't make chat request but making the fsm transition request
+disable_llm_request = true
+
+
+[state_config.Generate]
+use_task = true
+use_context = true
+use_summary = true
+# ignore_messages = true
+
+[state_config.MakeSummary]
+save_to_summary = true
+ignore_llm_output = true
+
+[state_config.Finish]
+disable_llm_request = true        
