@@ -8,7 +8,6 @@ mod embedding_service;
 mod services;
 mod session_cards;
 mod show_single_asset;
-mod fsm_chat_agent;
 
 use agent_cards::{LibraryCards, LibraryCardsBuilder};
 use agent_workspace::*;
@@ -1300,28 +1299,30 @@ async fn update_adv_agent(
         None
     };
 
-    if toml::from_str::<LlmFsmAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
+    
+    if let Err(e) = toml::from_str::<LlmFsmAgentConfig>(&agent_setting_form.fsm_agent_config) {
+        tracing::info!(target: TRON_APP, "toml parsing error: {}", e);
         let html = Html::from(
-            r##"
-        <div id="update_agent_notification_msg">
-            <div>
-                <p class="py-4">FSM Agent Config Parsing Failure, check the format!!</p>
-            </div>
-            <div class="modal-action">
-                <form method="dialog">
-                    <!-- if there is a button in form, it will close the modal -->
-                    <button class="btn btn-sm">Close</button>
-                </form>
-            </div>
-        </div>"##
-                .to_string(),
-        );
+                r##"
+    <div id="update_agent_notification_msg">
+        <div>
+            <p class="py-4">FSM Agent Config Parsing Failure, check the format!!</p>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm">Close</button>
+            </form>
+        </div>
+    </div>"##
+                    .to_string(),
+            );
         return (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-            html,
-        )
-            .into_response();
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                html,
+            )
+                .into_response();
     }
 
     let agent_setting = AgentSetting {
@@ -1492,7 +1493,7 @@ async fn show_chat(
     let agent_name;
     let user_data;
     let configuration;
-    let last_fsm_state;
+    let _last_fsm_state;
     {
         let ctx_guard = ctx.read().await;
         user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
@@ -1524,7 +1525,7 @@ async fn show_chat(
         } else {
             0_u32
         };
-        last_fsm_state = row.last_fsm_state;
+        _last_fsm_state = row.last_fsm_state;
     }
     {
         let ctx_guard = ctx.read().await;
@@ -1534,11 +1535,11 @@ async fn show_chat(
         assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
         assets_guard.insert("chat_id".into(), TnAsset::U32(chat_id as u32));
         assets_guard.insert("asset_id".into(), TnAsset::U32(asset_id));
-        if let Some(last_fsm_state) = last_fsm_state {
-            assets_guard.insert("fsm_state".into(), TnAsset::String(last_fsm_state));
-        } else {
-            assets_guard.remove("fsm_state");
-        };
+        // if let Some(last_fsm_state) = last_fsm_state {
+        //     assets_guard.insert("fsm_state".into(), TnAsset::String(last_fsm_state));
+        // } else {
+        //     assets_guard.remove("fsm_state");
+        // };
         assets_guard.insert("agent_configuration".into(), TnAsset::String(configuration));
     }
     let mut h = HeaderMap::new();
