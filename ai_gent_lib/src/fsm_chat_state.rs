@@ -219,7 +219,6 @@ impl FsmState for FSMChatState {
 
         self.state_data = self.prepare_context(&llm_req_setting).await;
 
-        println!("XXXXX1 {}", self.name);
         let llm_output = match self.handle_llm_output(&llm_req_setting, &fsm_tx).await {
             Ok(llm_output) => llm_output,
             Err(e) => {
@@ -234,7 +233,6 @@ impl FsmState for FSMChatState {
             }
         };
 
-        println!("XXXXX2");
         let (stdout, stderr) = match self.execute_code(&llm_req_setting, &fsm_tx).await {
             Ok((stdout, stderr)) => (stdout, stderr),
             Err(e) => {
@@ -251,7 +249,6 @@ impl FsmState for FSMChatState {
 
         self.save_execution_output(&fsm_tx, &stdout, &stderr).await;
 
-        println!("XXXXX3");
         let next_state = match self
             .determine_next_state(&llm_req_setting, &fsm_tx, &next_states, &llm_output)
             .await
