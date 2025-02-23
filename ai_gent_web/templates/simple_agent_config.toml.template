@@ -40,9 +40,10 @@ Here is a summary of the previous conversation
 
 Please answer the user's question or solve the task according to the following instructions:
 
+you can start with "Here is what I think...." or "I am here to help you ..." but it is not necessary.
+
 {{ system_prompt }} 
 
-Generate response starting with "To address your question/task, here is what I think...."
 
 """
 
@@ -60,7 +61,7 @@ You are given a summary from earlier conversation:
 </SUMMARY>
 Update the summary with new conversation.
 No more than 300 words.
-Generate response starting with "This is the current summary: ..."
+Generate the response starting with "This is the current summary: ..."
 
 """
 
