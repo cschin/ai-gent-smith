@@ -197,14 +197,47 @@ impl FsmState for FSMChatState {
 
         self.state_data = self.prepare_context(&llm_req_setting).await;
 
-        let llm_output = self.handle_llm_output(&llm_req_setting, &tx).await;
+        let llm_output = match self.handle_llm_output(&llm_req_setting, &tx).await {
+            Ok(llm_output) => llm_output,
+            Err(e) => {
+                let _ = tx.send((
+                    self.name.clone(),
+                    "error".into(),
+                    format!("error in generate LLM output: {}", e),
+                ))
+                .await;
+                return None;
+            }
+        };
 
-        let (stdout, stderr) = self.execute_code(&llm_req_setting, &tx).await;
+        let (stdout, stderr) = match self.execute_code(&llm_req_setting, &tx).await {
+            Ok((stdout, stderr)) => (stdout, stderr),
+            Err(e) => {
+                let _ = tx.send((
+                    self.name.clone(),
+                    "error".into(),
+                    format!("error in generate LLM output: execute_code {}", e),
+                ))
+                .await;
+                return None;
+            }
+        };
 
         self.save_execution_output(&tx, &stdout, &stderr).await;
 
-        self.determine_next_state(&llm_req_setting, &tx, &next_states, &llm_output)
-            .await
+        match self.determine_next_state(&llm_req_setting, &tx, &next_states, &llm_output)
+            .await {
+                Ok(next_state) => next_state,
+                Err(e) => {
+                    let _ = tx.send((
+                        self.name.clone(),
+                        "error".into(),
+                        format!("error in generate LLM output: execute_code {}", e),
+                    ))
+                    .await;
+                    None
+                }
+            }
     }
 
     async fn set_service_context(&mut self, context: Value) {
@@ -315,7 +348,7 @@ impl FSMChatState {
         &mut self,
         llm_req_settings: &llm_agent::LlmReqSetting,
         tx: &Sender<(String, String, String)>,
-    ) -> String {
+    ) -> Result<String, anyhow::Error> {
         let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
             let system_prompt = self.prompts.system.clone().unwrap_or("".into());
             let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
@@ -332,7 +365,7 @@ impl FSMChatState {
                 });
 
                 let full_prompt = [system_prompt, chat_prompt].join("\n");
-                let full_prompt = Tera::one_off(&full_prompt, &tera_context, false).unwrap();
+                let full_prompt = Tera::one_off(&full_prompt, &tera_context, false)?;
 
                 let model = llm_req_settings.model.clone();
                 let api_key = llm_req_settings.api_key.clone();
@@ -400,14 +433,14 @@ impl FSMChatState {
                     .await;
             }
         }
-        llm_output
+        Ok(llm_output)
     }
 
     async fn execute_code(
         &self,
         llm_req_settings: &llm_agent::LlmReqSetting,
         tx: &Sender<(String, String, String)>,
-    ) -> (String, String) {
+    ) -> Result<(String, String), anyhow::Error> {
         #[derive(Deserialize, Debug)]
         struct ExecuteCode {
             run: bool,
@@ -415,7 +448,7 @@ impl FSMChatState {
 
         if self.config.execute_code.unwrap_or(false) {
             let code = if let Some(code) = self.config.code.clone() {
-                self.wrap_code(llm_req_settings, None, None, code)
+                self.wrap_code(llm_req_settings, None, None, code)?
             } else {
                 let code = llm_req_settings
                     .memory
@@ -458,7 +491,7 @@ impl FSMChatState {
                                 format!("stderr:\n {}\n", stderr),
                             ))
                             .await;
-                        (stdout, stderr)
+                        Ok((stdout, stderr))
                     } else {
                         let _ = tx
                             .send((
@@ -467,7 +500,7 @@ impl FSMChatState {
                                 "code execution rejected\n".into(),
                             ))
                             .await;
-                        ("".into(), "".into())
+                        Ok(("".into(), "".into()))
                     }
                 }
                 false => {
@@ -487,11 +520,11 @@ impl FSMChatState {
                             format!("stderr:\n{}\n", stderr),
                         ))
                         .await;
-                    (stdout, stderr)
+                    Ok((stdout, stderr))
                 }
             }
         } else {
-            ("".into(), "".into())
+            Ok(("".into(), "".into()))
         }
     }
 
@@ -544,14 +577,14 @@ impl FSMChatState {
         tx: &Sender<(String, String, String)>,
         next_states: &Option<Vec<String>>,
         llm_output: &String,
-    ) -> Option<String> {
+    ) -> Result<Option<String>, anyhow::Error> {
         if let Some(fsm_code) = self.config.fsm_code.clone() {
             let code = self.wrap_code(
                 llm_req_settings,
                 next_states.as_ref(),
                 Some(llm_output),
                 fsm_code,
-            );
+            )?;
             let (stdout, stderr) = run_code_in_docker(&code);
             let _ = tx
                 .send((
@@ -567,10 +600,10 @@ impl FSMChatState {
                     format!("stderr:\n{}\n", stderr),
                 ))
                 .await;
-            Some(stdout.trim().into())
+            Ok(Some(stdout.trim().into()))
         } else if let Some(next_states) = next_states {
             if next_states.len() == 1 {
-                Some(next_states.first().unwrap().clone())
+                Ok(Some(next_states.first().unwrap().clone()))
             } else if let Some(fsm_prompt) = self.prompts.fsm.clone() {
                 let available_transitions = next_states.join(", ");
                 let msg = format!(
@@ -600,7 +633,7 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
                     tera_context.insert(slot_name, m);
                 });
 
-                let fsm_prompt = Tera::one_off(&fsm_prompt, &tera_context, false).unwrap();
+                let fsm_prompt = Tera::one_off(&fsm_prompt, &tera_context, false)?;
 
                 let llm_client = GenaiLlmclient {
                     model: llm_req_settings.model.clone(),
@@ -613,24 +646,24 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
                         &[("user".into(), "determine the next state".into())],
                         llm_req_settings.temperature,
                     )
-                    .await
-                    .unwrap();
+                    .await?;
                 // println!("\nllm nextstep raw response: {}", next_state );
                 let next_fsm_state_response =
                     serde_json::from_str::<LlmResponse>(next_state.trim());
                 // println!("\nllm next_fsm_state_response: {:?}", next_fsm_state_response );
                 match next_fsm_state_response {
-                    Ok(next_fsm_state_response) => next_fsm_state_response.next_state,
-                    Err(e) => {
-                        eprintln!("fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}", e, next_state);
-                        None
-                    }
+                    Ok(next_fsm_state_response) => Ok(next_fsm_state_response.next_state),
+                    Err(e) => Err(anyhow::anyhow!(
+                        "fail to parse LLM json output for next fsm state: {:?} \n LLM output: {}",
+                        e,
+                        next_state
+                    )),
                 }
             } else {
-                None
+                Ok(None)
             }
         } else {
-            None
+            Ok(None)
         }
     }
 
@@ -640,7 +673,7 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
         next_states: Option<&Vec<String>>,
         llm_output: Option<&String>,
         fsm_code: String,
-    ) -> String {
+    ) -> Result<String, anyhow::Error> {
         let mut tera_context = tera::Context::new();
         let messages = escape_json_string(&json!(&self.state_data.messages).to_string());
         let context = escape_json_string(&json!(&self.state_data.context).to_string());
@@ -664,6 +697,7 @@ The "SOME_NEXT_STATE" is one of the Available Next States.
         self.state_data.memory.iter().for_each(|(slot_name, m)| {
             tera_context.insert(slot_name, &escape_json_string(&json!(m).to_string()));
         });
-        Tera::one_off(&fsm_code, &tera_context, false).unwrap()
+        let output = Tera::one_off(&fsm_code, &tera_context, false)?;
+        Ok(output)
     }
 }
