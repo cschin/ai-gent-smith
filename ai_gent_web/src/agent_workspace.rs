@@ -514,13 +514,13 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         };
 
         // spawn a handler for processing the output of the stream service
-        let (tx, mut rx) = mpsc::channel::<(String, String, String)>(8);
+        let (ui_relay_tx, mut ui_relay_rx) = mpsc::channel::<(String, String, String)>(8);
         let context_cloned = context.clone();
         let handle = tokio::spawn(async move {
 
             let comrak_options = Options::default();
             let comrak_plugins = get_comrak_plugins();
-            while let Some((_, t, r)) = rx.recv().await {
+            while let Some((_, t, r)) = ui_relay_rx.recv().await {
                 match t.as_str() {
                     "token" =>  {
                     // tracing::info!(target: "tron_app", "streaming token: {}", r);
@@ -746,41 +746,41 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             context.set_ready_for(AGENT_CHAT_TEXTAREA).await;
             let _ = insert_message(chat_id, user_id, agent_id, &query_text, "user", "text", None).await;
 
-            let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String, String)>(8);
-            let (send_msg, rcv_msg) = mpsc::channel::<(String, String)>(8);
+            let (agent_service_tx, mut agent_service_rx) = mpsc::channel::<(String, String, String)>(8);
+            let (agent_command_tx, agent_command_rx) = mpsc::channel::<(String, String)>(8);
 
-            let handler = tokio::spawn(async move { agent.fsm_message_service(rcv_msg, fsm_tx, temperature_value).await});
+            let handler = tokio::spawn(async move { agent.agent_message_service(agent_command_rx, agent_service_tx, temperature_value).await});
 
-            let _ = send_msg.send(("task".into(), query_text.clone())).await;
-            let _ = send_msg.send(("message".into(), query_text)).await;
+            let _ = agent_command_tx.send(("task".into(), query_text.clone())).await;
+            let _ = agent_command_tx.send(("message".into(), query_text)).await;
 
             let mut state_service_count = 0;
-            while let Some(message) = fsm_rx.recv().await {
+            while let Some(message) = agent_service_rx.recv().await {
                 match (message.0.as_str(), message.1.as_str()) {
                     (state_name, "state") => {
                         state_service_count += 1;
                         tracing::info!(target: TRON_APP, "\n\n-------{:02} Agent State: {}\n", state_service_count,  message.2);
-                        let _ = tx.send((state_name.into(), "message".into(), format!("Agent State: {}\n", message.2))).await;
+                        let _ = ui_relay_tx.send((state_name.into(), "message".into(), format!("Agent State: {}\n", message.2))).await;
                     }
                     (state_name, "token") => {
                         // tracing::info!(target: TRON_APP, "{}", message.2);
-                        let _ = tx.send((state_name.into(), "token".into(), message.2)).await;
+                        let _ = ui_relay_tx.send((state_name.into(), "token".into(), message.2)).await;
                     }
                     (state_name, "output") => {
                         // tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
-                        let _ = tx.send((state_name.into(), "llm_output".into(), message.2)).await;
+                        let _ = ui_relay_tx.send((state_name.into(), "llm_output".into(), message.2)).await;
                     }
                     (_state_name, "exec_output") => {
                         // tracing::info!(target: TRON_APP, "exec_output received, state:{}, len={}", state_name, message.2.len());
                         // tracing::info!(target: TRON_APP, "{}", message.2);
                     }
-                    (_, "summary") => {
+                    (_state_name, "summary") => {
                         let _ = update_chat_summary(chat_id, &message.2).await;
                     }
                     (state_name, "llm_output") => {
                         // tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
                         let _ = insert_message(chat_id, user_id, agent_id, &message.2, "bot", "text", Some(state_name.into())).await;
-                        let _ = tx.send(("Generate".into(), "llm_output".into(), message.2)).await;
+                        let _ = ui_relay_tx.send((state_name.into(), "llm_output".into(), message.2)).await;
                         break;
                     },
 
@@ -804,12 +804,13 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                 }
                
             }
+            agent_service_rx.close();
 
-            let _ = send_msg.send(("terminate".into(), "".into())).await;
+            let _ = agent_command_tx.send(("terminate".into(), "".into())).await;
             let _ = tokio::join!(handler).0.unwrap();
         }
 
-        let _ = tx.send(("".into(), "terminate".into(), "".into())).await;
+        let _ = ui_relay_tx.send(("".into(), "terminate".into(), "".into())).await;
         tokio::join!(handle).0.unwrap();
 
         tracing::info!(target: TRON_APP, "query processing finish");

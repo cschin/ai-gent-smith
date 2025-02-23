@@ -52,11 +52,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         sys_prompt: fsm_config.system_prompt,
         fsm_prompt: fsm_config.fsm_prompt,
         summary_prompt: fsm_config.summary_prompt,
-        model: "gpt-4o".into(),
+        model: "gpt-4o-mini".into(),
         api_key,
         fsm_initial_state: fsm_config.initial_state,
         tools: fsm_config.tools,
-        total_state_transition_limit: None,
+        total_state_transition_limit: Some(32),
     };
     let mut agent = LlmFsmAgent::new(fsm, llm_req_setting);
 
@@ -71,7 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (send_msg, rcv_msg) = mpsc::channel::<(String, String)>(8);
     let agent_handler = tokio::spawn(async move {
         agent
-            .fsm_message_service(rcv_msg, fsm_tx.clone(), None)
+            .agent_message_service(rcv_msg, fsm_tx.clone(), None)
             .await
     });
 
@@ -93,11 +93,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let _ = send_msg.send(("message".into(), user_input)).await;
 
                 let mut llm_output = Vec::<String>::new();
-
+                let mut state_service_count = 0;
                 while let Some(message) = fsm_rx.recv().await {
                     match (message.0.as_str(), message.1.as_str()) {
                         (_, "state") => {
-                            println!("\n\n--------- Agent State: {}\n", message.2);
+                            state_service_count += 1;
+                            println!("\n\n-------{:02}/32 Agent State: {}\n", state_service_count,  message.2);
                         }
                         (s, "token") if s != "MakeSummary" => {
                             print!("{}", message.2);

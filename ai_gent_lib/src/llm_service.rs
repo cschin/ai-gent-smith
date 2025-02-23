@@ -24,7 +24,7 @@ pub async fn genai_stream_service(
         "user" => {
             messages.push(ChatMessage::user(msg.clone()));
         }
-        "assistant" => {
+        "bot" => {
             messages.push(ChatMessage::assistant(msg.clone()));
         }
         _ => {}
@@ -103,7 +103,7 @@ pub async fn genai_service(
         "user" => {
             messages.push(ChatMessage::user(msg.clone()));
         }
-        "assistant" => {
+        "bot" => {
             messages.push(ChatMessage::assistant(msg.clone()));
         }
         _ => {}

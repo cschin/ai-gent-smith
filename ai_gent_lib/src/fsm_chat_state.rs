@@ -59,7 +59,7 @@ impl LlmFsmStateInit for FSMChatState {
 
 async fn get_llm_req_process_handle(
     state_name: String,
-    tx: Sender<(String, String, String)>,
+    fsm_tx: Sender<(String, String, String)>,
     messages: Vec<(String, String)>,
     full_prompt: String,
     temperature: Option<f32>,
@@ -74,7 +74,7 @@ async fn get_llm_req_process_handle(
         api_key: model_api_key.1,
     };
     tokio::spawn(async move {
-        let _ = tx
+        let _ = fsm_tx
             .send((
                 state_name.clone(),
                 "message".into(),
@@ -92,23 +92,45 @@ async fn get_llm_req_process_handle(
                     if let Some(output) = output {
                         llm_output.push_str(&output);
                         if !ignore_llm_output {
-                            let _ = tx.send((state_name.clone(), "token".into(), output)).await;
+                            if !fsm_tx.is_closed() {
+                                match fsm_tx
+                                    .send((state_name.clone(), "token".into(), output))
+                                    .await
+                                {
+                                    Ok(_) => {}
+                                    Err(_) => {
+                                        break;
+                                    }
+                                }
+                            } else {
+                                break;
+                            }
                         };
                     }
                 }
                 Err(e) => {
-                    let _ = tx
-                        .send((
-                            state_name.clone(),
-                            "error".into(),
-                            format!("LLM API call error: {}", e),
-                        ))
-                        .await;
+                    if !fsm_tx.is_closed() {
+                        match fsm_tx
+                            .send((
+                                state_name.clone(),
+                                "error".into(),
+                                format!("LLM API call error: {}", e),
+                            ))
+                            .await
+                        {
+                            Ok(_) => {}
+                            Err(_) => {
+                                break;
+                            }
+                        };
+                    } else {
+                        break;
+                    }
                 }
             };
         }
-        if !ignore_llm_output {
-            let _ = tx
+        if !ignore_llm_output && !fsm_tx.is_closed() {
+            let _ = fsm_tx
                 .send((state_name.clone(), "llm_output".into(), llm_output.clone()))
                 .await;
         };
@@ -186,58 +208,67 @@ fn _format_messages(messages: &[(String, String)]) -> String {
 impl FsmState for FSMChatState {
     async fn start_service(
         &mut self,
-        tx: Sender<(String, String, String)>,
+        fsm_tx: Sender<(String, String, String)>,
         _rx: Option<Receiver<(String, String, String)>>,
         next_states: Option<Vec<String>>,
     ) -> Option<String> {
         let llm_req_setting = self.llm_req_setting.clone();
-        let _ = tx
+        let _ = fsm_tx
             .send((self.name.clone(), "state".into(), self.name.clone()))
             .await;
 
         self.state_data = self.prepare_context(&llm_req_setting).await;
 
-        let llm_output = match self.handle_llm_output(&llm_req_setting, &tx).await {
+        println!("XXXXX1 {}", self.name);
+        let llm_output = match self.handle_llm_output(&llm_req_setting, &fsm_tx).await {
             Ok(llm_output) => llm_output,
             Err(e) => {
-                let _ = tx.send((
-                    self.name.clone(),
-                    "error".into(),
-                    format!("error in generate LLM output: {:?}", e),
-                ))
-                .await;
+                let _ = fsm_tx
+                    .send((
+                        self.name.clone(),
+                        "error".into(),
+                        format!("error in generate LLM output: {:?}", e),
+                    ))
+                    .await;
                 return None;
             }
         };
 
-        let (stdout, stderr) = match self.execute_code(&llm_req_setting, &tx).await {
+        println!("XXXXX2");
+        let (stdout, stderr) = match self.execute_code(&llm_req_setting, &fsm_tx).await {
             Ok((stdout, stderr)) => (stdout, stderr),
             Err(e) => {
-                let _ = tx.send((
-                    self.name.clone(),
-                    "error".into(),
-                    format!("error in execute_code {:?}", e),
-                ))
-                .await;
+                let _ = fsm_tx
+                    .send((
+                        self.name.clone(),
+                        "error".into(),
+                        format!("error in execute_code {:?}", e),
+                    ))
+                    .await;
                 return None;
             }
         };
 
-        self.save_execution_output(&tx, &stdout, &stderr).await;
+        self.save_execution_output(&fsm_tx, &stdout, &stderr).await;
 
-        match self.determine_next_state(&llm_req_setting, &tx, &next_states, &llm_output)
-            .await {
-                Ok(next_state) => next_state,
-                Err(e) => {
-                    let _ = tx.send((
+        println!("XXXXX3");
+        let next_state = match self
+            .determine_next_state(&llm_req_setting, &fsm_tx, &next_states, &llm_output)
+            .await
+        {
+            Ok(next_state) => next_state,
+            Err(e) => {
+                let _ = fsm_tx
+                    .send((
                         self.name.clone(),
                         "error".into(),
                         format!("error in determining the next step {:?}", e),
                     ))
                     .await;
-                    None
-                }
+                None
             }
+        };
+        next_state
     }
 
     async fn set_service_context(&mut self, context: Value) {
@@ -347,7 +378,7 @@ impl FSMChatState {
     async fn handle_llm_output(
         &mut self,
         llm_req_settings: &llm_agent::LlmReqSetting,
-        tx: &Sender<(String, String, String)>,
+        fsm_tx: &Sender<(String, String, String)>,
     ) -> Result<String, anyhow::Error> {
         let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
             let system_prompt = self.prompts.system.clone().unwrap_or("".into());
@@ -379,7 +410,7 @@ impl FSMChatState {
                 self.handle = Some(
                     get_llm_req_process_handle(
                         self.name.clone(),
-                        tx.clone(),
+                        fsm_tx.clone(),
                         messages,
                         full_prompt,
                         temperature,
@@ -406,25 +437,25 @@ impl FSMChatState {
         };
 
         if self.config.save_to_summary.unwrap_or(false) {
-            let _ = tx
+            let _ = fsm_tx
                 .send((self.name.clone(), "summary".into(), llm_output.clone()))
                 .await;
         }
 
         if self.config.save_to_context.unwrap_or(false) {
-            let _ = tx
+            let _ = fsm_tx
                 .send((self.name.clone(), "context".into(), llm_output.clone()))
                 .await;
         }
 
         if self.config.extract_code.unwrap_or(false) {
             let code = extract_code(&llm_output);
-            let _ = tx.send((self.name.clone(), "code".into(), code)).await;
+            let _ = fsm_tx.send((self.name.clone(), "code".into(), code)).await;
         }
 
         if let Some(ref memory_slots) = self.config.save_to {
             for slot in memory_slots.iter() {
-                let _ = tx
+                let _ = fsm_tx
                     .send((
                         self.name.clone(),
                         format!("save_to:{}", slot),

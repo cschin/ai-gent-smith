@@ -467,16 +467,16 @@ impl LlmFsmAgent {
         self.fsm.get_current_state_name()
     }
 
-    pub async fn fsm_message_service(
+    pub async fn agent_message_service(
         &mut self,
-        mut user_input: Receiver<(String, String)>,
-        tx: Sender<(String, String, String)>,
+        mut agent_command_rx: Receiver<(String, String)>,
+        agent_service_tx: Sender<(String, String, String)>,
         temperature: Option<f32>,
     ) -> Result<(), anyhow::Error> {
         self.llm_req_settings.temperature = temperature;
         let total_state_transition_limit = self.total_state_transition_limit;
 
-        while let Some((msg_type, msg)) = user_input.recv().await {
+        while let Some((msg_type, msg)) = agent_command_rx.recv().await {
             match msg_type.as_str() {
                 // once a message is sent, we will start to process the message
                 "message" => {
@@ -513,7 +513,7 @@ impl LlmFsmAgent {
                     .set_initial_state(self.llm_req_settings.fsm_initial_state.clone(), true)
                     .await;
             };
-            let tx2 = tx.clone();
+            let agent_service_tx2 = agent_service_tx.clone();
             let mut state_transition_count = 0;
             loop {
                 let current_state_name = self
@@ -540,15 +540,16 @@ impl LlmFsmAgent {
                     .await;
 
                 let (fsm_tx, fsm_rx) = mpsc::channel::<(String, String, String)>(16);
-                let tx = tx.clone();
-                let handle = get_fsm_state_communication_handle(tx, fsm_rx);
+                let agent_service_tx = agent_service_tx.clone();
+                let handle = get_fsm_state_communication_handle(agent_service_tx, fsm_rx);
                 self.llm_req_settings
                     .state_history
                     .push(current_state_name.clone());
                 if let Some(next_state_name) =
                     current_state.start_service(fsm_tx, None, next_states).await
                 {
-                    let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
+                    let j = tokio::join!(handle).0;
+                    let (llm_output, new_memory) = j.unwrap();
                     self.update_message_and_memory(llm_output, new_memory);
                     match self.transition_state(&next_state_name).await {
                         Ok(()) => {
@@ -564,7 +565,7 @@ impl LlmFsmAgent {
                             }
                         }
                         Err(e) => {
-                            let _ = tx2
+                            let _ = agent_service_tx2
                                 .send((
                                     current_state_name,
                                     "error".into(),
@@ -586,7 +587,7 @@ impl LlmFsmAgent {
                 }
                 state_transition_count += 1;
                 if state_transition_count >= total_state_transition_limit {
-                    let _ = tx2
+                    let _ = agent_service_tx2
                         .send((
                             "".into(),
                             format!(
@@ -599,7 +600,7 @@ impl LlmFsmAgent {
                     break;
                 }
             }
-            let _ = tx
+            let _ = agent_service_tx
                 .send(("".into(), "message_processed".into(), "".into()))
                 .await;
         }
@@ -643,9 +644,8 @@ impl LlmFsmAgent {
 type AgentResult = (Option<String>, HashMap<String, Vec<Value>>);
 type AgentTask = tokio::task::JoinHandle<AgentResult>;
 
-
 fn get_fsm_state_communication_handle(
-    tx: Sender<(String, String, String)>,
+    agent_service_tx: Sender<(String, String, String)>,
     mut fsm_rx: Receiver<(String, String, String)>,
 ) -> AgentTask {
     tokio::spawn(async move {
@@ -677,9 +677,20 @@ fn get_fsm_state_communication_handle(
                     }
                     _ => {}
                 }
-                let _ = tx.send((a, t, r)).await;
+                if !agent_service_tx.is_closed() {
+                    let res = agent_service_tx.send((a, t, r)).await;
+                    if let Err(e) = res {
+                        // Handle send error (e.g., log it)
+                        eprintln!("Failed to send: {}", e);
+                    }
+                } else {
+                    eprintln!("Receiver is closed, cannot send");
+                    break;
+                    // Handle case where receiver is closed
+                }
             }
         }
+        fsm_rx.close();
         (llm_output, memory)
     })
 }
