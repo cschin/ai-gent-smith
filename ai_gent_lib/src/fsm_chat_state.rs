@@ -203,7 +203,7 @@ impl FsmState for FSMChatState {
                 let _ = tx.send((
                     self.name.clone(),
                     "error".into(),
-                    format!("error in generate LLM output: {}", e),
+                    format!("error in generate LLM output: {:?}", e),
                 ))
                 .await;
                 return None;
@@ -216,7 +216,7 @@ impl FsmState for FSMChatState {
                 let _ = tx.send((
                     self.name.clone(),
                     "error".into(),
-                    format!("error in generate LLM output: execute_code {}", e),
+                    format!("error in execute_code {:?}", e),
                 ))
                 .await;
                 return None;
@@ -232,7 +232,7 @@ impl FsmState for FSMChatState {
                     let _ = tx.send((
                         self.name.clone(),
                         "error".into(),
-                        format!("error in generate LLM output: execute_code {}", e),
+                        format!("error in determining the next step {:?}", e),
                     ))
                     .await;
                     None

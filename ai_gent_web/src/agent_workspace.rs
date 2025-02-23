@@ -783,7 +783,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     }
                     (state_name, "error") => {
                         //eprintln!("Error received from state '{}': '{}'", state_name, message.2)
-                        tracing::info!(target: "tron_app", "LLM API call error: Agent stata {}, Error: {:?}", state_name, message.2);
+                        tracing::info!(target: "tron_app", "LLM API call error: Agent state {:?}, Error: {:?}", state_name, message.2);
 
                          let mut h = HeaderMap::new();
                          h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
@@ -791,7 +791,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                          h.insert("HX-Trigger-After-Swap", "show_env_var_setting_notification".parse().unwrap());
 
                          return Some(
-                             (h, Html::from(format!(r#"LLM (state: {}) API Call fail. Check the server log for details."#, llm_name))));
+                             (h, Html::from(format!(r#"LLM (model: {}, state: {}) API Call fail. There could be some errors in the agent configuration file or some network problem. Check the server log for details. "#, llm_name, state_name))));
                         }
                     (_state_name, "message_processed") => {
                         //let _ = tx.send((s.into(), "clear".into(), message.2)).await;
