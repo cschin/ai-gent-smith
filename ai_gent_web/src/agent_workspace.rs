@@ -509,10 +509,10 @@ async fn update_chat_summary(chat_id: i32, summary: &str) -> Result<i32, sqlx::E
 fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLResponse {
     // TODO: this event handler needs significant refactoring
     tn_future! {
+
         if event.e_trigger != AGENT_QUERY_BUTTON {
             return None;
         };
-
         // spawn a handler for processing the output of the stream service
         let (ui_relay_tx, mut ui_relay_rx) = mpsc::channel::<(String, String, String)>(8);
         let context_cloned = context.clone();
@@ -565,7 +565,17 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             }
         });
 
-        let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
+        let query_text = {
+            context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
+            let query_text = context.get_value_from_component(AGENT_QUERY_TEXT_INPUT).await;
+            context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
+            clean_textarea_with_context(
+                &context,
+                AGENT_QUERY_TEXT_INPUT,
+            )
+            .await;
+            query_text
+        };
 
         let query_text = if let TnComponentValue::String(query_text) = query_text {
             query_text
@@ -734,12 +744,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             ).await;
             update_and_send_div_with_context(&context, ASSET_SEARCH_OUTPUT, &query_context_html).await;
 
-            context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
-            clean_textarea_with_context(
-                &context,
-                AGENT_QUERY_TEXT_INPUT,
-            )
-            .await;
+
 
             let query_result_area = context.get_component(AGENT_CHAT_TEXTAREA).await;
             chatbox::append_chatbox_value(query_result_area.clone(), ("user".into(), ammonia::clean_text(&query_text))).await;
@@ -781,7 +786,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         // tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
                         let _ = insert_message(chat_id, user_id, agent_id, &message.2, "bot", "text", Some(state_name.into())).await;
                         let _ = ui_relay_tx.send((state_name.into(), "llm_output".into(), message.2)).await;
-                        break;
                     },
 
                     (state_name, "error") => {
@@ -792,6 +796,10 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                          h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
                          h.insert("Hx-Retarget", "#env_var_setting_notification_msg".parse().unwrap());
                          h.insert("HX-Trigger-After-Swap", "show_env_var_setting_notification".parse().unwrap());
+                         agent_service_rx.close();
+
+                         let _ = agent_command_tx.send(("terminate".into(), "".into())).await;
+                         let _ = tokio::join!(handler).0.unwrap();
 
                          return Some(
                              (h, Html::from(format!(r#"LLM (model: {}, state: {}) API Call fail. There could be some errors in the agent configuration file or some network problem. Check the server log for details. "#, llm_name, state_name))));
@@ -799,10 +807,11 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     (_state_name, "message_processed") => {
                         //let _ = tx.send((s.into(), "clear".into(), message.2)).await;
                         tracing::info!(target: TRON_APP, "message_processed, wait for the next user input"); // clear rustyline's buffer
+                        break
                     }
-                    _ => {}
+                    other => {tracing::info!(target: TRON_APP, "agent_service_rx: {:?} / {}", other, message.2); }
                 }
-               
+
             }
             agent_service_rx.close();
 
@@ -819,6 +828,14 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         //     let mut asset_guard = asset.write().await;
         //     asset_guard.insert("fsm_state".into(), TnAsset::String(agent.base.fsm.get_current_state_name().unwrap()) );
         // }
+
+        // just to clean it again
+        context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
+        clean_textarea_with_context(
+            &context,
+            AGENT_QUERY_TEXT_INPUT,
+        )
+        .await;
 
 
         None
