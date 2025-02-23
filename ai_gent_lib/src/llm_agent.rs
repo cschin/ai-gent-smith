@@ -424,7 +424,7 @@ impl LlmFsmAgent {
     pub fn new(fsm: FiniteStateMachine, agent_settings: AgentSettings) -> Self {
         let total_state_transition_limit = agent_settings
             .total_state_transition_limit
-            .unwrap_or(32_u32);
+            .unwrap_or(24_u32);
         let llm_req_setting = LlmReqSetting {
             messages: Vec::default(),
             temperature: None,
@@ -587,20 +587,20 @@ impl LlmFsmAgent {
                 }
                 state_transition_count += 1;
                 if state_transition_count >= total_state_transition_limit {
-                    let _ = agent_service_tx2
+                    let _res = agent_service_tx2
                         .send((
                             "".into(),
+                            "max_total_states reached".into(),
                             format!(
-                                "max_total_states({}), reached",
-                                total_state_transition_limit
+                                "number of transitions: {}/{}",
+                                state_transition_count, total_state_transition_limit
                             ),
-                            "".into(),
                         ))
                         .await;
                     break;
                 }
             }
-            let _ = agent_service_tx
+            let _res = agent_service_tx
                 .send(("".into(), "message_processed".into(), "".into()))
                 .await;
         }
