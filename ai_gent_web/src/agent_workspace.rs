@@ -749,7 +749,6 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
             let (fsm_tx, mut fsm_rx) = mpsc::channel::<(String, String, String)>(8);
             let (send_msg, rcv_msg) = mpsc::channel::<(String, String)>(8);
 
-            // TODO: handle LLM API call error,
             let handler = tokio::spawn(async move { agent.fsm_message_service(rcv_msg, fsm_tx, temperature_value).await});
 
             let _ = send_msg.send(("task".into(), query_text.clone())).await;
@@ -775,12 +774,16 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         // tracing::info!(target: TRON_APP, "exec_output received, state:{}, len={}", state_name, message.2.len());
                         // tracing::info!(target: TRON_APP, "{}", message.2);
                     }
+                    (_, "summary") => {
+                        let _ = update_chat_summary(chat_id, &message.2).await;
+                    }
                     (state_name, "llm_output") => {
                         // tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
                         let _ = insert_message(chat_id, user_id, agent_id, &message.2, "bot", "text", Some(state_name.into())).await;
                         let _ = tx.send(("Generate".into(), "llm_output".into(), message.2)).await;
                         break;
-                    }
+                    },
+
                     (state_name, "error") => {
                         //eprintln!("Error received from state '{}': '{}'", state_name, message.2)
                         tracing::info!(target: "tron_app", "LLM API call error: Agent state {:?}, Error: {:?}", state_name, message.2);
@@ -799,33 +802,11 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                     }
                     _ => {}
                 }
+               
             }
 
             let _ = send_msg.send(("terminate".into(), "".into())).await;
             let _ = tokio::join!(handler).0.unwrap();
-
-            // match agent.process_message(&query_text, Some(tx), temperature_value).await {
-            //     Ok(res) => {
-            //         let current_state = agent.base.get_current_state().await;
-            //         let _ = insert_message(chat_id, user_id, agent_id, &res, "bot", "text", current_state).await;
-            //         let summary = agent.base.llm_req_settings.memory.get("summary").cloned().unwrap_or_default();
-            //         let summary = summary.last().cloned().unwrap_or_default();
-            //         let summary = serde_json::from_value::<String>(summary.clone()).unwrap_or("".into());
-            //         let _ = update_chat_summary(chat_id, &summary).await;
-            //     },
-            //     Err(err) => {
-            //         tracing::info!(target: "tron_app", "LLM API call error: {:?}", err);
-
-            //         let mut h = HeaderMap::new();
-            //         h.insert("Hx-Reswap", "innerHTML".parse().unwrap());
-            //         h.insert("Hx-Retarget", "#env_var_setting_notification_msg".parse().unwrap());
-            //         h.insert("HX-Trigger-After-Swap", "show_env_var_setting_notification".parse().unwrap());
-
-            //         return Some(
-            //             (h, Html::from(format!(r#"LLM ({}) API Call fail, please check the API key is set and correct. You may need to restart the server and reload the app with the correct API key(s)."#, llm_name))));
-
-            //     }
-            // };
         }
 
         let _ = tx.send(("".into(), "terminate".into(), "".into())).await;
