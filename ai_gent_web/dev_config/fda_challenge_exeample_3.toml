@@ -124,11 +124,6 @@ always provide a one-sentence explanation of why it is relevant to the question.
 fsm = """JUST output a json string {"next_state": "Finish"}"""
 
 [state_config.StandBy]
-# show how to use code/tool to drive the state transition, you can change ti the output "Generate" state
-# to see the effect
-fsm_code = """
-print("Triage")"""
-
 # don't make chat request but making the fsm transition request
 disable_llm_request = true
 
