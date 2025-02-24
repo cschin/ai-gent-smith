@@ -535,12 +535,24 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         let html_output = [
                             r#"<article class="markdown-body bg-blue-900 text-gray-200 p-3">"#.to_string(),
                             markdown_to_html_with_plugins(&r, &comrak_options, comrak_plugins),
-                            r#"<article>"#.to_string(),
+                            r#"</article>"#.to_string(),
                         ]
                         .join("\n");
                         chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
                         context_cloned.set_ready_for(AGENT_CHAT_TEXTAREA).await;
                     },
+                    "exec_output" => {
+                        let query_result_area = context_cloned.get_component(AGENT_CHAT_TEXTAREA).await;
+                        let html_output = [
+                            r#"<article class="markdown-body bg-blue-900 text-gray-200 p-3 min-w-[480px]">"#.to_string(),
+                            markdown_to_html_with_plugins(&r, &comrak_options, comrak_plugins),
+                            r#"</article>"#.to_string(),
+                        ]
+                        .join("\n");
+                        tracing::info!(target: TRON_APP, "ui relay rx: {} {}", t, html_output);
+                        chatbox::append_chatbox_value(query_result_area.clone(), ("bot".into(), html_output)).await;
+                        context_cloned.set_ready_for(AGENT_CHAT_TEXTAREA).await;
+                    }
                     "clear" => {
                         text::clean_stream_textarea_with_context(
                             &context_cloned,
@@ -771,13 +783,10 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
                         // tracing::info!(target: TRON_APP, "{}", message.2);
                         let _ = ui_relay_tx.send((state_name.into(), "token".into(), message.2)).await;
                     }
-                    (state_name, "output") => {
-                        // tracing::info!(target: TRON_APP, "llm_output: {}", message.2);
-                        let _ = ui_relay_tx.send((state_name.into(), "llm_output".into(), message.2)).await;
-                    }
-                    (_state_name, "exec_output") => {
-                        // tracing::info!(target: TRON_APP, "exec_output received, state:{}, len={}", state_name, message.2.len());
-                        // tracing::info!(target: TRON_APP, "{}", message.2);
+                    (state_name, "exec_output") => {
+                        let message = ["```", &message.2, "```"].join("\n");
+                        let _ = insert_message(chat_id, user_id, agent_id, &message, "bot", "text", Some(state_name.into())).await;
+                        let _ = ui_relay_tx.send((state_name.into(), "exec_output".into(), message)).await;
                     }
                     (_state_name, "summary") => {
                         let _ = update_chat_summary(chat_id, &message.2).await;

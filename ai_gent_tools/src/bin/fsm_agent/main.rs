@@ -103,10 +103,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         (s, "token") if s != "MakeSummary" => {
                             print!("{}", message.2);
                         }
-                        (_, "output") => {
-                            print!("{}", message.2);
-                            llm_output.push(message.2);
-                        }
                         (state_name, "exec_output") => {
                             println!("exec_output received, state:{}, len={}", state_name, message.2.len());
                             println!("{}", message.2);
