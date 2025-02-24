@@ -1699,7 +1699,7 @@ async fn get_chat_message_markdown_blocks(messages: &[SingleChatMessage]) -> Vec
 
             let when: String = if let Ok(utc_dt) = time_stamp {
                 let local_dt = utc_dt.with_timezone(&chrono::Local); // Convert to local timezone
-                let formatted_time = local_dt.format("%m-%d-%y %H-%M-%S %Z").to_string();
+                let formatted_time = local_dt.format("%m-%d-%y %H:%M:%S %Z").to_string();
                 formatted_time
             } else {
                 "".into()
