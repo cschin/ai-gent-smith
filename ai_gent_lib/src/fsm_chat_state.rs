@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use async_trait::async_trait;
 use futures::StreamExt;
 use serde::Deserialize;
+use serde::Serialize;
 use serde_json::json;
 use serde_json::Value;
 use tera::Tera;
@@ -161,12 +162,17 @@ fn extract_code(input: &str) -> String {
             break;
         }
     }
-    println!("\n\nXXX results: {}", result);
-
     result
 }
 
-fn run_code_in_docker(code: &str) -> (String, String) {
+#[allow(dead_code)]
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub enum ExecuteMode {
+    Docker,
+    Local,
+}
+
+fn run_code(code: &str, mode: ExecuteMode) -> (String, String) {
     use std::io::Write;
     use std::process::Command;
     use tempfile::NamedTempFile;
@@ -177,23 +183,38 @@ fn run_code_in_docker(code: &str) -> (String, String) {
     let temp_file_path = temp_file.path().to_str().unwrap();
 
     // Run the Docker command
-    let output = Command::new("docker")
-        .args([
-            "run",
-            "--rm",
-            "-v",
-            &format!("{}:/tmp/code.py", temp_file_path),
-            "python-ext",
-            "/tmp/code.py",
-        ])
-        .output()
-        .expect("Failed to execute Docker command");
+    match mode {
+        ExecuteMode::Docker => {
+            let output = Command::new("docker")
+                .args([
+                    "run",
+                    "--rm",
+                    "-v",
+                    &format!("{}:/tmp/code.py", temp_file_path),
+                    "python-ext",
+                    "/tmp/code.py",
+                ])
+                .output()
+                .expect("Failed to execute Docker command");
 
-    // Capture stdin and stdout
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            // Capture stdin and stdout
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
 
-    (stdout, stderr)
+            (stdout, stderr)
+        }
+        ExecuteMode::Local => {
+            let output = Command::new("python")
+                .args([&temp_file_path])
+                .output()
+                .expect("Failed to execute Docker command");
+
+            // Capture stdin and stdout
+            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+            (stdout, stderr)
+        }
+    }
 }
 
 fn escape_json_string(input: &str) -> String {
@@ -521,7 +542,12 @@ impl FsmAgentState {
                                 "\nconditionally, run code from the context:\n".into(),
                             ))
                             .await;
-                        let (stdout, stderr) = run_code_in_docker(&code);
+                        let exec_mode = self
+                            .config
+                            .execute_mode
+                            .clone()
+                            .unwrap_or(ExecuteMode::Docker);
+                        let (stdout, stderr) = run_code(&code, exec_mode);
                         let _ = tx
                             .send((
                                 self.name.clone(),
@@ -543,7 +569,12 @@ impl FsmAgentState {
                 }
                 false => {
                     // just execute the code without a user input
-                    let (stdout, stderr) = run_code_in_docker(&code);
+                    let exec_mode = self
+                        .config
+                        .execute_mode
+                        .clone()
+                        .unwrap_or(ExecuteMode::Docker);
+                    let (stdout, stderr) = run_code(&code, exec_mode);
                     let _ = tx
                         .send((
                             self.name.clone(),
@@ -617,7 +648,12 @@ impl FsmAgentState {
                 Some(llm_output),
                 fsm_code,
             )?;
-            let (stdout, stderr) = run_code_in_docker(&code);
+            let exec_mode = self
+                .config
+                .execute_mode
+                .clone()
+                .unwrap_or(ExecuteMode::Docker);
+            let (stdout, stderr) = run_code(&code, exec_mode);
             let _ = tx
                 .send((
                     self.name.clone(),

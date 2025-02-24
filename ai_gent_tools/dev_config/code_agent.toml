@@ -303,6 +303,7 @@ ignore_messages = true
 
 [state_config.CodeExecution]
 execute_code = true
+execute_mode = "Docker"
 disable_llm_request  = true
 save_to = ["output_for_evaluation"]
 

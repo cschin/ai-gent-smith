@@ -1,6 +1,5 @@
 use crate::{
-    fsm::{FiniteStateMachine, FsmState, TransitionResult},
-    llm_service::LLMStreamOut,
+    fsm::{FiniteStateMachine, FsmState, TransitionResult}, fsm_chat_state::ExecuteMode, llm_service::LLMStreamOut
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -33,6 +32,7 @@ pub struct StateConfig {
     pub save_execution_output: Option<bool>,
     pub extract_code: Option<bool>,
     pub execute_code: Option<bool>,
+    pub execute_mode: Option<ExecuteMode>, 
     pub code: Option<String>,
     pub fsm_code: Option<String>,
     pub wait_for_msg: Option<bool>,
