@@ -1,4 +1,4 @@
-use ai_gent_lib::fsm_chat_state::FSMChatState;
+use ai_gent_lib::fsm_chat_state::FsmAgentState;
 use rustyline::error::ReadlineError;
 use rustyline::DefaultEditor;
 
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let fsm_config = LlmFsmAgentConfigBuilder::from_toml(&content)?.build()?;
 
     let fsm =
-        LlmFsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default())?.build()?;
+        LlmFsmBuilder::from_config::<FsmAgentState>(&fsm_config, HashMap::default())?.build()?;
 
     let api_key = std::env::var("OPENAI_API_KEY")
         .map_err(|_| genai::resolver::Error::ApiKeyEnvNotFound {

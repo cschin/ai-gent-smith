@@ -47,7 +47,7 @@ pub struct Tool {
     pub output_type: String,
 }
 
-pub trait LlmFsmStateInit {
+pub trait FsmAgentStateInit {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self;
 }
 
@@ -65,16 +65,16 @@ pub struct LlmReqSetting {
 }
 
 #[derive(Clone, Default)]
-pub struct DefaultLlmChatState {
+pub struct DefaultFsmAgentState {
     name: String,
     attributes: HashMap<String, String>,
     _prompts: StatePrompts,
     _config: StateConfig,
 }
 
-impl LlmFsmStateInit for DefaultLlmChatState {
+impl FsmAgentStateInit for DefaultFsmAgentState {
     fn new(name: &str, _prompts: StatePrompts, _config: StateConfig) -> Self {
-        DefaultLlmChatState {
+        DefaultFsmAgentState {
             name: name.to_string(),
             _prompts,
             _config,
@@ -84,7 +84,7 @@ impl LlmFsmStateInit for DefaultLlmChatState {
 }
 
 #[async_trait]
-impl FsmState for DefaultLlmChatState {
+impl FsmState for DefaultFsmAgentState {
     async fn set_attribute(&mut self, k: &str, v: String) {
         self.attributes.insert(k.to_string(), v);
     }
@@ -138,7 +138,7 @@ impl LlmFsmBuilder {
         self
     }
 
-    pub fn from_config<S: LlmFsmStateInit + FsmState + 'static>(
+    pub fn from_config<S: FsmAgentStateInit + FsmState + 'static>(
         config: &LlmFsmAgentConfig,
         mut state_map: HashMap<String, S>,
     ) -> Result<Self, anyhow::Error> {
@@ -782,7 +782,7 @@ mod tests {
             .unwrap();
 
         let fsm =
-            LlmFsmBuilder::from_config::<DefaultLlmChatState>(&fsm_config, HashMap::default())
+            LlmFsmBuilder::from_config::<DefaultFsmAgentState>(&fsm_config, HashMap::default())
                 .unwrap()
                 .build()
                 .unwrap();

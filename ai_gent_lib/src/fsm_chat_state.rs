@@ -29,7 +29,7 @@ struct FSMChatStateData {
 }
 
 #[derive(Default)]
-pub struct FSMChatState {
+pub struct FsmAgentState {
     name: String,
     attributes: HashMap<String, String>,
     prompts: StatePrompts,
@@ -39,7 +39,7 @@ pub struct FSMChatState {
     llm_req_setting: LlmReqSetting,
 }
 
-impl LlmFsmStateInit for FSMChatState {
+impl FsmAgentStateInit for FsmAgentState {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self {
         let mut attributes = HashMap::<String, String>::default();
         if let Some(wait_for_msg) = config.wait_for_msg {
@@ -47,7 +47,7 @@ impl LlmFsmStateInit for FSMChatState {
                 attributes.insert("wait_for_msg".into(), "true".into());
             }
         }
-        FSMChatState {
+        FsmAgentState {
             name: name.to_string(),
             attributes,
             prompts,
@@ -139,8 +139,8 @@ async fn get_llm_req_process_handle(
 }
 
 fn extract_code(input: &str) -> String {
-    let start_tag = "<code>";
-    let end_tag = "</code>";
+    let start_tag = "```py";
+    let end_tag = "```";
 
     match (input.find(start_tag), input.rfind(end_tag)) {
         (Some(start), Some(end)) if start < end => {
@@ -205,7 +205,7 @@ fn _format_messages(messages: &[(String, String)]) -> String {
 }
 
 #[async_trait]
-impl FsmState for FSMChatState {
+impl FsmState for FsmAgentState {
     async fn start_service(
         &mut self,
         fsm_tx: Sender<(String, String, String)>,
@@ -294,7 +294,7 @@ impl FsmState for FSMChatState {
     }
 }
 
-impl FSMChatState {
+impl FsmAgentState {
     async fn prepare_context(
         &self,
         llm_req_settings: &llm_agent::LlmReqSetting,

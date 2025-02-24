@@ -1,6 +1,6 @@
 use ai_gent_lib::fsm::FiniteStateMachine;
 use ai_gent_lib::fsm::FsmState;
-use ai_gent_lib::fsm_chat_state::FSMChatState;
+use ai_gent_lib::fsm_chat_state::FsmAgentState;
 use ai_gent_lib::llm_agent;
 use ai_gent_lib::llm_agent::AgentSettings;
 use ai_gent_lib::llm_agent::LlmClient;
@@ -8,7 +8,7 @@ use ai_gent_lib::llm_agent::LlmFsmAgent;
 use ai_gent_lib::llm_agent::LlmFsmAgentConfig;
 use ai_gent_lib::llm_agent::LlmFsmAgentConfigBuilder;
 use ai_gent_lib::llm_agent::LlmFsmBuilder;
-use ai_gent_lib::llm_agent::LlmFsmStateInit;
+use ai_gent_lib::llm_agent::FsmAgentStateInit;
 use ai_gent_lib::llm_agent::LlmResponse;
 use ai_gent_lib::llm_agent::StateConfig;
 use ai_gent_lib::llm_agent::StatePrompts;
@@ -638,7 +638,7 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         let fsm_config = LlmFsmAgentConfigBuilder::from_toml(&fsm_agent_config).unwrap().build().unwrap();
 
           // TODO, handle parsing error here:
-        let fsm = LlmFsmBuilder::from_config::<FSMChatState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
+        let fsm = LlmFsmBuilder::from_config::<FsmAgentState>(&fsm_config, HashMap::default()).unwrap().build().unwrap();
 
         let api_key = match llm_name.as_str() {
             "gpt-4o" | "gpt-4o-mini" | "gpt-3.5-turbo" | "o3-mini" => {
