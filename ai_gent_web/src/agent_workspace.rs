@@ -839,12 +839,12 @@ fn query(context: TnContext, event: TnEvent, _payload: Value) -> TnFutureHTMLRes
         // }
 
         // just to clean it again
-        context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
-        clean_textarea_with_context(
-            &context,
-            AGENT_QUERY_TEXT_INPUT,
-        )
-        .await;
+        // context.set_ready_for(AGENT_QUERY_TEXT_INPUT).await;
+        // clean_textarea_with_context(
+        //     &context,
+        //     AGENT_QUERY_TEXT_INPUT,
+        // )
+        // .await;
 
 
         None
