@@ -141,14 +141,29 @@ async fn get_llm_req_process_handle(
 fn extract_code(input: &str) -> String {
     let start_tag = "```py";
     let end_tag = "```";
+    let mut result = String::new();
+    let mut start = 0;
 
-    match (input.find(start_tag), input.rfind(end_tag)) {
-        (Some(start), Some(end)) if start < end => {
-            let start_index = start + start_tag.len();
-            input[start_index..end].trim().to_string()
+    while let Some(block_start) = input[start..].find(start_tag) {
+        if let Some(block_end) = input[start + block_start + start_tag.len()..].find(end_tag) {
+            let start_index = start + block_start + start_tag.len();
+            let end_index = start + block_start + start_tag.len() + block_end;
+
+            if start_index < end_index {
+                let code_block = input[start_index..end_index].trim();
+                if !result.is_empty() {
+                    result.push('\n');
+                }
+                result.push_str(code_block);
+            }
+            start = end_index + end_tag.len();
+        } else {
+            break;
         }
-        _ => String::new(),
     }
+    println!("\n\nXXX results: {}", result);
+
+    result
 }
 
 fn run_code_in_docker(code: &str) -> (String, String) {
@@ -498,6 +513,7 @@ impl FsmAgentState {
                     let llm_output =
                         serde_json::from_str(&llm_output).unwrap_or(ExecuteCode { run: false });
                     if llm_output.run {
+                        // note: 'exec_output' is for UI message, this is different from execution_output which is for saving to the memory
                         let _ = tx
                             .send((
                                 self.name.clone(),
@@ -510,14 +526,7 @@ impl FsmAgentState {
                             .send((
                                 self.name.clone(),
                                 "exec_output".into(),
-                                format!("stdout:\n {}\n", stdout),
-                            ))
-                            .await;
-                        let _ = tx
-                            .send((
-                                self.name.clone(),
-                                "exec_output".into(),
-                                format!("stderr:\n {}\n", stderr),
+                                format!("stdout:\n {}\nstderr\n {}\n", stdout, stderr),
                             ))
                             .await;
                         Ok((stdout, stderr))
@@ -539,14 +548,7 @@ impl FsmAgentState {
                         .send((
                             self.name.clone(),
                             "exec_output".into(),
-                            format!("stdout:\n{}\n", stdout),
-                        ))
-                        .await;
-                    let _ = tx
-                        .send((
-                            self.name.clone(),
-                            "exec_output".into(),
-                            format!("stderr:\n{}\n", stderr),
+                            format!("stdout:\n {}\nstderr\n {}\n", stdout, stderr),
                         ))
                         .await;
                     Ok((stdout, stderr))
@@ -559,13 +561,13 @@ impl FsmAgentState {
 
     async fn save_execution_output(
         &self,
-        tx: &Sender<(String, String, String)>,
+        fsm_tx: &Sender<(String, String, String)>,
         stdout: &str,
         stderr: &str,
     ) {
         if self.config.execute_code.unwrap_or(false) {
             if self.config.save_to_context.unwrap_or(false) {
-                let _ = tx
+                let _ = fsm_tx
                     .send((self.name.clone(), "context".into(), stdout.into()))
                     .await;
             }
@@ -577,7 +579,8 @@ impl FsmAgentState {
                 })
                 .unwrap()
                 .to_string();
-                let _ = tx
+                // note: 'exec_output' is for UI message, this is different from execution_output which is for saving to the memory
+                let _ = fsm_tx
                     .send((
                         self.name.clone(),
                         "execution_output".into(),
@@ -588,7 +591,7 @@ impl FsmAgentState {
 
             if let Some(ref memory_slots) = self.config.save_to {
                 for slot in memory_slots.iter() {
-                    let _ = tx
+                    let _ = fsm_tx
                         .send((
                             self.name.clone(),
                             format!("save_to:{}", slot),
@@ -619,14 +622,7 @@ impl FsmAgentState {
                 .send((
                     self.name.clone(),
                     "fsm_exec_output".into(),
-                    format!("stdout:\n{}\n", stdout),
-                ))
-                .await;
-            let _ = tx
-                .send((
-                    self.name.clone(),
-                    "fsm_exec_output".into(),
-                    format!("stderr:\n{}\n", stderr),
+                    format!("stdout:\n {}\nstderr\n {}\n", stdout, stderr),
                 ))
                 .await;
             Ok(Some(stdout.trim().into()))
