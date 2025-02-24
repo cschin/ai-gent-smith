@@ -671,7 +671,7 @@ fn get_fsm_state_communication_handle(
                         e.push(value);
                     }
                     "execution_output" => {
-                        let value: Value = serde_json::from_str(&r).unwrap();
+                        let value: Value = Value::String(r.clone());
                         let e = memory.entry(t.clone()).or_default();
                         e.push(value);
                     }
