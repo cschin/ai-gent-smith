@@ -172,7 +172,7 @@ pub enum ExecuteMode {
     Local,
 }
 
-fn run_code(code: &str, mode: ExecuteMode) -> (String, String) {
+async fn run_code(code: &str, mode: ExecuteMode) -> (String, String) {
     use std::io::Write;
     use std::process::Command;
     use tempfile::NamedTempFile;
@@ -547,7 +547,7 @@ impl FsmAgentState {
                             .execute_mode
                             .clone()
                             .unwrap_or(ExecuteMode::Docker);
-                        let (stdout, stderr) = run_code(&code, exec_mode);
+                        let (stdout, stderr) = run_code(&code, exec_mode).await;
                         let _ = tx
                             .send((
                                 self.name.clone(),
@@ -574,7 +574,7 @@ impl FsmAgentState {
                         .execute_mode
                         .clone()
                         .unwrap_or(ExecuteMode::Docker);
-                    let (stdout, stderr) = run_code(&code, exec_mode);
+                    let (stdout, stderr) = run_code(&code, exec_mode).await;
                     let _ = tx
                         .send((
                             self.name.clone(),
@@ -653,7 +653,7 @@ impl FsmAgentState {
                 .execute_mode
                 .clone()
                 .unwrap_or(ExecuteMode::Docker);
-            let (stdout, stderr) = run_code(&code, exec_mode);
+            let (stdout, stderr) = run_code(&code, exec_mode).await;
             let _ = tx
                 .send((
                     self.name.clone(),
