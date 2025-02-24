@@ -285,6 +285,7 @@ try to summarize the facts and see if the summary already address the task.
                                   .set_execute_code(True)
                                   .set_disable_llm_request(True)
                                   .set_save_to(["output_for_evaluation"])
+                                  .set_execute_mode("Docker")
                                   .build())
                       .build())
 

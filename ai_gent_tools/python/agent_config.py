@@ -14,6 +14,7 @@ class StateConfig(BaseModel):
     save_execution_output: Optional[bool] = None
     extract_code: Optional[bool] = None
     execute_code: Optional[bool] = None
+    execute_mode: Optional[str] = None
     code: Optional[str] = None
     fsm_code: Optional[str] = None
     wait_for_msg: Optional[bool] = None
@@ -63,7 +64,13 @@ class StateConfigBuilder:
     def set_execute_code(self, value: bool):
         self._config.execute_code = value
         return self
-    
+
+    def set_execute_mode(self, value: str):
+        if value not in ["Docker", "Local"]:
+            raise ValueError("Invalid execute mode. Must be one of 'Docker' or 'Local'")
+        self._config.execute_mode = value
+        return self
+
     def set_code(self, value: str):
         self._config.code = value
         return self
