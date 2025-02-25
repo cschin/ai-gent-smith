@@ -26,6 +26,8 @@ struct Cli {
     config_file: String,
     #[arg(short, long)]
     input: Option<String>,
+    #[arg(short, long, default_value = "gpt-4o-mini")]
+    model: String,
 }
 
 use std::collections::HashMap;
@@ -54,7 +56,7 @@ async fn main() -> Result<(), anyhow::Error> {
         sys_prompt: fsm_config.system_prompt,
         fsm_prompt: fsm_config.fsm_prompt,
         summary_prompt: fsm_config.summary_prompt,
-        model: "gpt-4o-mini".into(),
+        model: cli.model,
         api_key,
         fsm_initial_state: fsm_config.initial_state,
         tools: fsm_config.tools,
