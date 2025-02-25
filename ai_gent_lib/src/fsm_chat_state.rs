@@ -255,35 +255,42 @@ impl FsmState for FsmAgentState {
 
         self.state_data = self.prepare_context(&llm_req_setting).await;
 
-        let llm_output = match self.handle_llm_output(&llm_req_setting, &fsm_tx).await {
-            Ok(llm_output) => llm_output,
-            Err(e) => {
-                let _ = fsm_tx
-                    .send((
-                        self.name.clone(),
-                        "error".into(),
-                        format!("error in generate LLM output: {:?}", e),
-                    ))
-                    .await;
-                return None;
+        let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
+            match self.handle_llm_output(&llm_req_setting, &fsm_tx).await {
+                Ok(llm_output) => llm_output,
+                Err(e) => {
+                    let _ = fsm_tx
+                        .send((
+                            self.name.clone(),
+                            "error".into(),
+                            format!("error in generate LLM output: {:?}", e),
+                        ))
+                        .await;
+                    return None;
+                }
             }
+        } else {
+            String::new()
         };
 
-        let (stdout, stderr) = match self.execute_code(&llm_req_setting, &fsm_tx).await {
-            Ok((stdout, stderr)) => (stdout, stderr),
-            Err(e) => {
-                let _ = fsm_tx
-                    .send((
-                        self.name.clone(),
-                        "error".into(),
-                        format!("error in execute_code {:?}", e),
-                    ))
-                    .await;
-                return None;
-            }
-        };
-
-        self.save_execution_output(&fsm_tx, &stdout, &stderr).await;
+        if self.config.execute_code.unwrap_or(false) {
+            let (stdout, stderr) = {
+                match self.execute_code(&llm_req_setting, &fsm_tx).await {
+                    Ok((stdout, stderr)) => (stdout, stderr),
+                    Err(e) => {
+                        let _ = fsm_tx
+                            .send((
+                                self.name.clone(),
+                                "error".into(),
+                                format!("error in execute_code {:?}", e),
+                            ))
+                            .await;
+                        return None;
+                    }
+                }
+            };
+            self.save_execution_output(&fsm_tx, &stdout, &stderr).await;
+        }
 
         let next_state = match self
             .determine_next_state(&llm_req_setting, &fsm_tx, &next_states, &llm_output)
@@ -301,7 +308,11 @@ impl FsmState for FsmAgentState {
                 None
             }
         };
-        #[allow(clippy::let_and_return)]
+
+        let _ = fsm_tx
+        .send((self.name.clone(), "next_state".into(), next_state.clone().unwrap_or("None".into())))
+        .await;
+
         next_state
     }
 
@@ -414,60 +425,56 @@ impl FsmAgentState {
         llm_req_settings: &llm_agent::LlmReqSetting,
         fsm_tx: &Sender<(String, String, String)>,
     ) -> Result<String, anyhow::Error> {
-        let llm_output = if !self.config.disable_llm_request.unwrap_or(false) {
-            let system_prompt = self.prompts.system.clone().unwrap_or("".into());
-            let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
+        let system_prompt = self.prompts.system.clone().unwrap_or("".into());
+        let chat_prompt = self.prompts.chat.as_ref().unwrap_or(&"".into()).clone();
 
-            if system_prompt.len() + chat_prompt.len() > 0 {
-                let mut tera_context = tera::Context::new();
-                tera_context.insert("context", &self.state_data.context);
-                tera_context.insert("summary", &self.state_data.summary);
-                tera_context.insert("task", &self.state_data.task);
-                tera_context.insert("tools", &self.state_data.tools);
+        let llm_output = if system_prompt.len() + chat_prompt.len() > 0 {
+            let mut tera_context = tera::Context::new();
+            tera_context.insert("context", &self.state_data.context);
+            tera_context.insert("summary", &self.state_data.summary);
+            tera_context.insert("task", &self.state_data.task);
+            tera_context.insert("tools", &self.state_data.tools);
 
-                self.state_data.memory.iter().for_each(|(slot_name, m)| {
-                    tera_context.insert(slot_name, m);
-                });
+            self.state_data.memory.iter().for_each(|(slot_name, m)| {
+                tera_context.insert(slot_name, m);
+            });
 
-                let full_prompt = [system_prompt, chat_prompt].join("\n");
-                let full_prompt = Tera::one_off(&full_prompt, &tera_context, false)?;
+            let full_prompt = [system_prompt, chat_prompt].join("\n");
+            let full_prompt = Tera::one_off(&full_prompt, &tera_context, false)?;
 
-                let model = llm_req_settings.model.clone();
-                let api_key = llm_req_settings.api_key.clone();
-                let temperature = llm_req_settings.temperature;
-                let ignore_llm_output = self.config.ignore_llm_output.unwrap_or(false);
-                let messages = if self.config.ignore_messages.unwrap_or(false) {
-                    vec![]
-                } else {
-                    self.state_data.messages.clone()
-                };
-                self.handle = Some(
-                    get_llm_req_process_handle(
-                        self.name.clone(),
-                        fsm_tx.clone(),
-                        messages,
-                        full_prompt,
-                        temperature,
-                        ignore_llm_output,
-                        (model, api_key),
-                    )
-                    .await,
-                );
-
-                if let Some(handle) = self.handle.take() {
-                    let llm_output = tokio::join!(handle);
-                    let llm_output = llm_output.0.unwrap();
-                    self.set_attribute("llm_output", llm_output.clone()).await;
-                    llm_output
-                } else {
-                    self.set_attribute("llm_output", "".into()).await;
-                    "".into()
-                }
+            let model = llm_req_settings.model.clone();
+            let api_key = llm_req_settings.api_key.clone();
+            let temperature = llm_req_settings.temperature;
+            let ignore_llm_output = self.config.ignore_llm_output.unwrap_or(false);
+            let messages = if self.config.ignore_messages.unwrap_or(false) {
+                vec![]
             } else {
-                String::new()
+                self.state_data.messages.clone()
+            };
+            self.handle = Some(
+                get_llm_req_process_handle(
+                    self.name.clone(),
+                    fsm_tx.clone(),
+                    messages,
+                    full_prompt,
+                    temperature,
+                    ignore_llm_output,
+                    (model, api_key),
+                )
+                .await,
+            );
+
+            if let Some(handle) = self.handle.take() {
+                let llm_output = tokio::join!(handle);
+                let llm_output = llm_output.0.unwrap();
+                self.set_attribute("llm_output", llm_output.clone()).await;
+                llm_output
+            } else {
+                self.set_attribute("llm_output", "".into()).await;
+                "".into()
             }
         } else {
-            "".into()
+            String::new()
         };
 
         if self.config.save_to_summary.unwrap_or(false) {
@@ -511,64 +518,36 @@ impl FsmAgentState {
             run: bool,
         }
 
-        if self.config.execute_code.unwrap_or(false) {
-            let code = if let Some(code) = self.config.code.clone() {
-                self.wrap_code(llm_req_settings, None, None, code)?
-            } else {
-                let code = llm_req_settings
-                    .memory
-                    .get("code")
-                    .cloned()
-                    .unwrap_or_default();
-                let code = code.last().cloned().unwrap_or_default();
-                serde_json::from_value::<String>(code).unwrap_or("".into())
-            };
+        let code = if let Some(code) = self.config.code.clone() {
+            self.wrap_code(llm_req_settings, None, None, code)?
+        } else {
+            let code = llm_req_settings
+                .memory
+                .get("code")
+                .cloned()
+                .unwrap_or_default();
+            let code = code.last().cloned().unwrap_or_default();
+            serde_json::from_value::<String>(code).unwrap_or("".into())
+        };
 
-            match self.config.wait_for_msg.unwrap_or(false) {
-                true => {
-                    // if wait for msg and let LLM infer if the user want to continue
-                    let llm_output = self
-                        .get_attribute("llm_output")
-                        .await
-                        .unwrap_or(String::new());
-                    let llm_output =
-                        serde_json::from_str(&llm_output).unwrap_or(ExecuteCode { run: false });
-                    if llm_output.run {
-                        // note: 'exec_output' is for UI message, this is different from execution_output which is for saving to the memory
-                        let _ = tx
-                            .send((
-                                self.name.clone(),
-                                "exec_output".into(),
-                                "\nconditionally, run code from the context:\n".into(),
-                            ))
-                            .await;
-                        let exec_mode = self
-                            .config
-                            .execute_mode
-                            .clone()
-                            .unwrap_or(ExecuteMode::Docker);
-                        let (stdout, stderr) = run_code(&code, exec_mode).await;
-                        let _ = tx
-                            .send((
-                                self.name.clone(),
-                                "exec_output".into(),
-                                format!("stdout:\n {}\nstderr\n {}\n", stdout, stderr),
-                            ))
-                            .await;
-                        Ok((stdout, stderr))
-                    } else {
-                        let _ = tx
-                            .send((
-                                self.name.clone(),
-                                "exec_output".into(),
-                                "code execution rejected\n".into(),
-                            ))
-                            .await;
-                        Ok(("".into(), "".into()))
-                    }
-                }
-                false => {
-                    // just execute the code without a user input
+        match self.config.wait_for_msg.unwrap_or(false) {
+            true => {
+                // if wait for msg and let LLM infer if the user want to continue
+                let llm_output = self
+                    .get_attribute("llm_output")
+                    .await
+                    .unwrap_or(String::new());
+                let llm_output =
+                    serde_json::from_str(&llm_output).unwrap_or(ExecuteCode { run: false });
+                if llm_output.run {
+                    // note: 'exec_output' is for UI message, this is different from execution_output which is for saving to the memory
+                    let _ = tx
+                        .send((
+                            self.name.clone(),
+                            "exec_output".into(),
+                            "\nconditionally, run code from the context:\n".into(),
+                        ))
+                        .await;
                     let exec_mode = self
                         .config
                         .execute_mode
@@ -583,10 +562,34 @@ impl FsmAgentState {
                         ))
                         .await;
                     Ok((stdout, stderr))
+                } else {
+                    let _ = tx
+                        .send((
+                            self.name.clone(),
+                            "exec_output".into(),
+                            "code execution rejected\n".into(),
+                        ))
+                        .await;
+                    Ok(("".into(), "".into()))
                 }
             }
-        } else {
-            Ok(("".into(), "".into()))
+            false => {
+                // just execute the code without a user input
+                let exec_mode = self
+                    .config
+                    .execute_mode
+                    .clone()
+                    .unwrap_or(ExecuteMode::Docker);
+                let (stdout, stderr) = run_code(&code, exec_mode).await;
+                let _ = tx
+                    .send((
+                        self.name.clone(),
+                        "exec_output".into(),
+                        format!("stdout:\n {}\nstderr\n {}\n", stdout, stderr),
+                    ))
+                    .await;
+                Ok((stdout, stderr))
+            }
         }
     }
 
