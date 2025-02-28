@@ -470,12 +470,25 @@ async def run():
 
     while True:
         # Get user input
-        print()
-        print()
-        user_input = input("Enter your task: ")
+        try:
+            # Get user input
+            print()
+            print()
+            user_input = input("Enter your question: ")
+
+            # Check if user wants to quit
+            if user_input.lower() == 'quit':
+                command_queue.put_nowait(("terminate", ""))
+                break
+            # Add a test command to the queue
+
+        except EOFError:
+            print("\nReceived EOF. Exiting...")
+            command_queue.put_nowait(("terminate", ""))
+            break
         
-        # Check if user wants to quit
-        if user_input.lower() == 'quit':
+        except KeyboardInterrupt:
+            print("\nReceived keyboard interrupt. Exiting...")
             command_queue.put_nowait(("terminate", ""))
             break
         

@@ -96,16 +96,28 @@ async def run(pdf_file):
 
     command_queue.put_nowait(("push_context", text))
     while True:
-        # Get user input
-        print()
-        print()
-        user_input = input("Enter your question: ")
+        try:
+            # Get user input
+            print()
+            print()
+            user_input = input("Enter your question: ")
 
-        # Check if user wants to quit
-        if user_input.lower() == 'quit':
+            # Check if user wants to quit
+            if user_input.lower() == 'quit':
+                command_queue.put_nowait(("terminate", ""))
+                break
+            # Add a test command to the queue
+
+        except EOFError:
+            print("\nReceived EOF. Exiting...")
             command_queue.put_nowait(("terminate", ""))
             break
-        # Add a test command to the queue
+        
+        except KeyboardInterrupt:
+            print("\nReceived keyboard interrupt. Exiting...")
+            command_queue.put_nowait(("terminate", ""))
+            break
+
         command_queue.put_nowait(("message", user_input))
         
         while True:
