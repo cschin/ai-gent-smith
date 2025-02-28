@@ -1,10 +1,10 @@
 import unittest
-from agent_config import (
+from ai_smith import (
     StateConfigBuilder,
     StatePromptsBuilder,
     ToolBuilder,
-    LlmFsmAgentConfigBuilder,
-    LlmFsmAgentConfig,
+    AgentConfigBuilder,
+    AgentConfig,
 )
 
 class TestCreateAgentConfig(unittest.TestCase):
@@ -55,7 +55,7 @@ class TestCreateAgentConfig(unittest.TestCase):
             "tool2": ToolBuilder().set_description("Tool 2").build(),
         }
         
-        config = LlmFsmAgentConfigBuilder()\
+        config = AgentConfigBuilder()\
             .set_states(["state1", "state2"])\
             .set_transitions([("state1", "state2"), ("state2", "state1")])\
             .set_initial_state("state1")\
@@ -76,7 +76,7 @@ class TestCreateAgentConfig(unittest.TestCase):
         self.assertEqual(config.tools, tools)
 
     def test_llm_fsm_agent_config_to_json(self):
-        config = LlmFsmAgentConfigBuilder()\
+        config = AgentConfigBuilder()\
             .set_states(["state1"])\
             .set_transitions([("state1", "state1")])\
             .set_initial_state("state1")\
@@ -93,7 +93,7 @@ class TestCreateAgentConfig(unittest.TestCase):
         self.assertIn("initial_state", json_str)
 
     def test_llm_fsm_agent_config_to_toml(self):
-        config = LlmFsmAgentConfigBuilder()\
+        config = AgentConfigBuilder()\
             .set_states(["state1"])\
             .set_transitions([("state1", "state1")])\
             .set_initial_state("state1")\
@@ -112,7 +112,7 @@ class TestCreateAgentConfig(unittest.TestCase):
 class TestLlmFsmAgentConfigBuilder(unittest.TestCase):
 
     def setUp(self):
-        self.builder = LlmFsmAgentConfigBuilder()
+        self.builder = AgentConfigBuilder()
 
     def test_empty_states_validation(self):
         with self.assertRaisesRegex(ValueError, "States cannot be empty"):
