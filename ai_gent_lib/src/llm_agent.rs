@@ -1,5 +1,7 @@
 use crate::{
-    fsm::{FiniteStateMachine, FsmState, TransitionResult}, fsm_chat_state::ExecuteMode, llm_service::LLMStreamOut
+    fsm::{FiniteStateMachine, FsmState, TransitionResult},
+    fsm_chat_state::ExecuteMode,
+    llm_service::LLMStreamOut,
 };
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -32,7 +34,7 @@ pub struct StateConfig {
     pub save_execution_output: Option<bool>,
     pub extract_code: Option<bool>,
     pub execute_code: Option<bool>,
-    pub execute_mode: Option<ExecuteMode>, 
+    pub execute_mode: Option<ExecuteMode>,
     pub code: Option<String>,
     pub fsm_code: Option<String>,
     pub wait_for_msg: Option<bool>,
@@ -489,6 +491,15 @@ impl LlmFsmAgent {
                     self.llm_req_settings.task = Some(msg);
                     continue;
                 }
+                "push_context" => {
+                    let e = self
+                        .llm_req_settings
+                        .memory
+                        .entry("context".into())
+                        .or_default();
+                    e.push(Value::String(msg));
+                    continue;
+                }
                 "clear_message" => {
                     self.llm_req_settings.messages.clear();
                     continue;
@@ -498,7 +509,7 @@ impl LlmFsmAgent {
                     continue;
                 }
                 "terminate" => break,
-                _ => break
+                _ => break,
             }
 
             // let current_state_name = self
