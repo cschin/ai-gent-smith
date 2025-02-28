@@ -54,21 +54,15 @@ disable_llm_request = true
 
 
 def agent_settings():
-    return PyAgentSettings(
+    return AgentSettings(
         model="gpt-3.5-turbo",
         api_key="test-api-key",
         total_state_transition_limit=10
     )
 
-def fsm_agent(agent_settings):
-    return PyLlmFsmAgent(SAMPLE_FSM_CONFIG, agent_settings())
-
-
-
 
 async def run(): 
-    config = PyLlmFsmAgentConfig.from_toml(SAMPLE_FSM_CONFIG)
-    agent_setting = PyAgentSettings(
+    agent_setting = AgentSettings(
             model="gpt-3.5-turbo",
             api_key=os.getenv("OPENAI_API_KEY"),
             total_state_transition_limit=10
@@ -77,11 +71,9 @@ async def run():
     # Create command and service queues
     command_queue = queue.Queue()
     service_queue = queue.Queue()
-    agent = Agent()
+    agent = Agent(SAMPLE_FSM_CONFIG, agent_setting)
 
     agent.agent_message_service(
-        SAMPLE_FSM_CONFIG,
-        agent_setting,
         command_queue,
         service_queue,
         temperature=0.7
@@ -102,8 +94,6 @@ async def run():
             break
     print("Done")
 
-    # Wait a short time for processing
-
-   # agent.stop_agent_message_service()
+    #agent.stop_agent_message_service()
 
 asyncio.run(run())

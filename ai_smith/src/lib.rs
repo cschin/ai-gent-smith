@@ -1,33 +1,32 @@
-use pyo3::prelude::*;
+use pyo3::{prelude::*, types::PyModule};
 // use pyo3::types::{PyDict, PyString};
-use pyo3_asyncio::tokio::get_runtime;
 use std::{collections::HashMap, time::Duration};
 
 use ai_gent_lib::{
     fsm_chat_state::FsmAgentState,
-    llm_agent::{
-        AgentSettings, LlmFsmAgent, LlmFsmAgentConfig, LlmFsmAgentConfigBuilder, LlmFsmBuilder,
-    },
+    llm_agent::{LlmFsmAgent, LlmFsmAgentConfigBuilder, LlmFsmBuilder},
 };
 
 use tokio::{
     sync::mpsc::{self, Receiver, Sender},
-    task::JoinHandle, time::sleep,
+    task::JoinHandle,
+    time::sleep,
 };
 
 #[pyclass]
 #[derive(Clone)]
-struct PyAgentSettings {
+struct AgentSettings {
     model: String,
     api_key: String,
     total_state_transition_limit: Option<u32>,
 }
 
 #[pymethods]
-impl PyAgentSettings {
+impl AgentSettings {
     #[new]
+    #[pyo3(signature = (model, api_key, total_state_transition_limit=None))]
     fn new(model: String, api_key: String, total_state_transition_limit: Option<u32>) -> Self {
-        PyAgentSettings {
+        AgentSettings {
             model,
             api_key,
             total_state_transition_limit,
@@ -52,24 +51,26 @@ impl PyAgentSettings {
 
 #[pyclass]
 struct Agent {
+    fsm_config: String,
+    agent_settings: AgentSettings,
     handle: Option<JoinHandle<Result<(), anyhow::Error>>>,
 }
 
 #[pymethods]
 impl Agent {
-
     #[new]
-    fn new() -> Self {
+    fn new(fsm_config: &str, agent_settings: AgentSettings) -> Self {
         Self {
-            handle: None
+            fsm_config: fsm_config.to_string(),
+            agent_settings,
+            handle: None,
         }
     }
 
+    #[pyo3(signature = (agent_command_rx, agent_service_tx, temperature=None))]
     fn agent_message_service(
         &mut self,
         _py: Python<'_>,
-        fsm_config: &str,
-        agent_settings: PyAgentSettings,
         agent_command_rx: PyObject,
         agent_service_tx: PyObject,
         temperature: Option<f32>,
@@ -78,7 +79,7 @@ impl Agent {
         let tx = send_to_py_queue(agent_service_tx)?;
 
         // Specify the correct type including Mutex
-        let config = LlmFsmAgentConfigBuilder::from_toml(fsm_config)
+        let config = LlmFsmAgentConfigBuilder::from_toml(&self.fsm_config)
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?
             .build()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
@@ -89,20 +90,20 @@ impl Agent {
             .build()
             .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
 
-        let settings = AgentSettings {
+        let settings = ai_gent_lib::llm_agent::AgentSettings {
             sys_prompt: config.system_prompt,
             fsm_prompt: config.fsm_prompt,
             summary_prompt: config.summary_prompt,
             fsm_initial_state: config.initial_state,
-            model: agent_settings.model,
-            api_key: agent_settings.api_key,
+            model: self.agent_settings.model.clone(),
+            api_key: self.agent_settings.api_key.clone(),
             tools: config.tools,
-            total_state_transition_limit: agent_settings.total_state_transition_limit,
+            total_state_transition_limit: self.agent_settings.total_state_transition_limit,
         };
 
         let mut agent = LlmFsmAgent::new(fsm, settings);
 
-        self.handle = Some(get_runtime().spawn(async move {
+        self.handle = Some(pyo3_async_runtimes::tokio::get_runtime().spawn(async move {
             // let mut agent_guard = agent.
             agent.agent_message_service(rx, tx, temperature).await
         }));
@@ -112,7 +113,17 @@ impl Agent {
     fn stop_agent_message_service(&mut self, _py: Python<'_>) {
         let handle = self.handle.take();
         if let Some(handle) = handle {
-            let _ = get_runtime().block_on(async move { tokio::join!(handle) });
+            let _ = pyo3_async_runtimes::tokio::get_runtime()
+                .block_on(async move { tokio::join!(handle) });
+        }
+    }
+
+    fn abort_agent_message_service(&mut self, _py: Python<'_>) {
+        let handle = self.handle.take();
+        if let Some(handle) = handle {
+            pyo3_async_runtimes::tokio::get_runtime().block_on(async move {
+                handle.abort();
+            });
         }
     }
 }
@@ -121,18 +132,19 @@ fn receive_from_py_queue(queue: PyObject) -> PyResult<Receiver<(String, String)>
     let (tx, rx) = mpsc::channel(1); // Create channel with buffer size 100
 
     // Spawn a task that continuously gets items from Python queue
-    let queue_clone = queue.clone();
-    let rt = get_runtime();
+    let rt = pyo3_async_runtimes::tokio::get_runtime();
     rt.spawn(async move {
         loop {
             let msg = Python::with_gil(|py| -> Option<(String, String)> {
+                let queue_clone = queue.clone_ref(py);
                 // Call get() method on Python queue
-                let item = queue_clone.call_method0(py, "get_nowait").unwrap();
-
-                // Convert PyObject to String
-                let msg = item.extract::<(String, String)>(py).unwrap();
-                Some(msg)
-                // Send through channel
+                if let Ok(item) = queue_clone.call_method0(py, "get_nowait") {
+                    // Convert PyObject to String
+                    let msg = item.extract::<(String, String)>(py).unwrap();
+                    Some(msg)
+                } else {
+                    None
+                }
             });
             match msg {
                 Some(msg) => {
@@ -154,11 +166,11 @@ fn send_to_py_queue(queue: PyObject) -> PyResult<Sender<(String, String, String)
     let (tx, mut rx) = mpsc::channel(1); // Create channel with buffer size 100
 
     // Spawn a task that sends items to Python queue
-    let queue_clone = queue.clone();
-    let rt = get_runtime();
+    let rt = pyo3_async_runtimes::tokio::get_runtime();
     rt.spawn(async move {
         while let Some(msg) = rx.recv().await {
             Python::with_gil(|py| {
+                let queue_clone = queue.clone_ref(py);
                 queue_clone.call_method1(py, "put", (msg,)).unwrap();
             })
         }
@@ -167,54 +179,9 @@ fn send_to_py_queue(queue: PyObject) -> PyResult<Sender<(String, String, String)
     Ok(tx)
 }
 
-#[pyclass]
-struct PyLlmFsmAgentConfig {
-    inner: LlmFsmAgentConfig,
-}
-
-#[pymethods]
-impl PyLlmFsmAgentConfig {
-    #[new]
-    fn new() -> Self {
-        PyLlmFsmAgentConfig {
-            inner: LlmFsmAgentConfig::default(),
-        }
-    }
-
-    #[staticmethod]
-    fn from_json(json_str: &str) -> PyResult<Self> {
-        let config = LlmFsmAgentConfig::from_json(json_str)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
-        Ok(PyLlmFsmAgentConfig { inner: config })
-    }
-
-    #[staticmethod]
-    fn from_toml(toml_str: &str) -> PyResult<Self> {
-        let config = LlmFsmAgentConfigBuilder::from_toml(toml_str)
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?
-            .build()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
-        Ok(PyLlmFsmAgentConfig { inner: config })
-    }
-
-    fn to_json(&self) -> PyResult<String> {
-        self.inner
-            .to_json()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
-    }
-
-    fn to_json_pretty(&self) -> PyResult<String> {
-        self.inner
-            .to_json_pretty()
-            .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))
-    }
-}
-
-/// Python module definition
 #[pymodule]
-fn ai_smith(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_class::<PyLlmFsmAgentConfig>()?;
-    m.add_class::<PyAgentSettings>()?;
+fn ai_smith(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<AgentSettings>()?;
     m.add_class::<Agent>()?;
     Ok(())
 }
