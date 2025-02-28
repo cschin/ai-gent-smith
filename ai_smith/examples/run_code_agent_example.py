@@ -484,14 +484,12 @@ async def run():
 
         except EOFError:
             print("\nReceived EOF. Exiting...")
-            command_queue.put_nowait(("terminate", ""))
             break
-        
-        except KeyboardInterrupt:
-            print("\nReceived keyboard interrupt. Exiting...")
-            command_queue.put_nowait(("terminate", ""))
+
+        except asyncio.CancelledError:
+            print("\nReceived cancel signal. Cleaning up...")
             break
-        
+
         # Add user's message to the queue
         command_queue.put_nowait(("task", user_input))
         command_queue.put_nowait(("message", user_input))
@@ -520,4 +518,7 @@ async def run():
     print("Done")
 
 if __name__ == "__main__":
-    asyncio.run(run())
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        print("\nReceived keyboard interrupt. Exiting...")

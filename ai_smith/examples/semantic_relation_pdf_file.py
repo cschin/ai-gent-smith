@@ -40,19 +40,56 @@ system = ""
 
 [state_prompts.IdentifyRelations]
 system = \"\"\"
-Given biological texts, extract meaningful semantic relationships between biological entities in the form of RDF-like triples. Each triple should be structured as (Subject, Predicate, Object), where:
+Analyze the provided domain-specific text or dataset and extract all semantic relationships between key entities. Each relationship should be expressed as a triple consisting of Subject, Predicate, and Object. Your output must be structured in JSON format.
 
-Subject represents a biological entity (e.g., gene, protein, organism, process, disease).
-Predicate defines the relationship between the subject and object (e.g., activates, inhibits, is_part_of, causes).
-Object represents another biological entity, concept, or attribute.
-Example Input:
-"The BRCA1 gene regulates DNA repair and mutations in BRCA1 can lead to breast cancer."
+Instructions:
 
-Example Output (Triples):
+- Entity Extraction:
 
-(BRCA1, regulates, DNA repair)
-(Mutation_in_BRCA1, causes, Breast Cancer)
-Extract and generate biologically relevant triples while ensuring the relationships maintain logical and hierarchical connections within the biological domain.
+    -- Identify the primary entities (concepts, objects, or classes) in the text.
+    -- These will serve as the subjects and objects in your triples.
+
+- Relationship Identification:
+    -- Determine the relationships (predicates) that connect these entities.
+    -- Use meaningful predicates that reflect the ontology’s semantics (e.g., isA, hasPart, treats, causes, etc.).
+
+- Ontology Standards:
+    -- Where applicable, utilize standardized relationships from common ontology frameworks (e.g., RDF Schema or OWL).
+
+- Disambiguation:
+    -- Provide context for entities with multiple meanings to ensure clear semantic interpretation.
+
+- JSON Output Format:
+
+    -- Format your output as a JSON object with a key "triples".
+    -- The value should be an array of objects, where each object represents a triple with three keys: "subject", "predicate", and "object".
+
+Example Output:
+{
+  "triples": [
+    {
+      "subject": "Diabetes",
+      "predicate": "isA",
+      "object": "Disease"
+    },
+    {
+      "subject": "Insulin",
+      "predicate": "treats",
+      "object": "Diabetes"
+    },
+    {
+      "subject": "Heart Disease",
+      "predicate": "riskFactor",
+      "object": "Smoking"
+    },
+    {
+      "subject": "Car",
+      "predicate": "hasPart",
+      "object": "Engine"
+    }
+  ]
+}
+
 \"\"\"
 
 [state_config.StandBy]

@@ -110,12 +110,10 @@ async def run(pdf_file):
 
         except EOFError:
             print("\nReceived EOF. Exiting...")
-            command_queue.put_nowait(("terminate", ""))
             break
-        
-        except KeyboardInterrupt:
-            print("\nReceived keyboard interrupt. Exiting...")
-            command_queue.put_nowait(("terminate", ""))
+
+        except asyncio.CancelledError:
+            print("\nReceived cancel signal. Cleaning up...")
             break
 
         command_queue.put_nowait(("message", user_input))
@@ -153,8 +151,10 @@ def main():
     if not pdf_file.lower().endswith('.pdf'):
         print(f"Error: File '{pdf_file}' is not a PDF file")
         sys.exit(1)
-        
-    asyncio.run(run(pdf_file))
+    try:
+        asyncio.run(run(pdf_file))
+    except KeyboardInterrupt:
+        print("\nReceived keyboard interrupt. Exiting...")
 
 if __name__ == '__main__':
     main()
