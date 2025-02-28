@@ -454,10 +454,10 @@ impl LlmFsmAgent {
     pub async fn set_current_state(
         &mut self,
         state: Option<String>,
-        exec_state_actions: bool,
+        exec_enter_actions: bool,
     ) -> Result<(), String> {
         if let Some(state) = state {
-            self.fsm.set_initial_state(state, exec_state_actions).await
+            self.fsm.set_initial_state(state, exec_enter_actions).await
         } else {
             Err("fms set_current_state fail".into())
         }
@@ -621,7 +621,7 @@ impl LlmFsmAgent {
         });
     }
 
-    pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
+    async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
         match self.fsm.make_transition_to(next_state.into()).await {
             (TransitionResult::Success, _) => {
                 // tracing::info!("Transitioned to state: {}", next_state);

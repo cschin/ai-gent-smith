@@ -1,0 +1,14 @@
+[package]
+name = "ai_smith" 
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+description.workspace = true
+
+[dependencies]
+pyo3 = {version="0.20.0",  features = ["extension-module"]}
+ai_gent_lib = {path = "../ai_gent_lib" }
+pyo3-asyncio = {version="0.20.0", features = ["tokio-runtime"]}
+tokio.workspace = true
+futures.workspace = true
+anyhow.workspace = true

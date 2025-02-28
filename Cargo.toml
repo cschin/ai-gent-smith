@@ -1,5 +1,5 @@
 [workspace]
-members = [ "ai_gent_lib", "ai_gent_tools" , "ai_gent_web"]
+members = [ "ai_gent_lib", "ai_smith", "ai_gent_tools" , "ai_gent_web"]
 resolver = "2"
 
 [workspace.package]
