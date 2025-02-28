@@ -498,7 +498,7 @@ impl LlmFsmAgent {
                     continue;
                 }
                 "terminate" => break,
-                _ => {}
+                _ => break
             }
 
             // let current_state_name = self
