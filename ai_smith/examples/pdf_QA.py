@@ -1,9 +1,9 @@
 """
-Summarize PDF File
+Q&A about a PDF File
 
 Usage:
-    summarize_pdf_file.py <pdf_file>
-    summarize_pdf_file.py (-h | --help)
+    pdf_QA.py <pdf_file>
+    pdf_QA.py (-h | --help)
 
 Options:
     -h --help     Show this help message and exit.
@@ -21,13 +21,13 @@ from docopt import docopt
 SUMMARY_FSM_CONFIG = """
 states = [
 "StandBy",
-"GenerateSummary", 
+"AnswerQuestion", 
 "Finish"]
 
 transitions = [
 ["StandBy",
-"GenerateSummary"],
-["GenerateSummary",
+"AnswerQuestion"],
+["AnswerQuestion",
 "Finish"]]
 
 initial_state = "StandBy"
@@ -38,28 +38,28 @@ summary_prompt = ""
 [state_prompts.StandBy]
 system = ""
 
-[state_prompts.GenerateSummary]
+[state_prompts.AnswerQuestion]
 system = \"\"\"
-Summarize the following research paper using the structured format below. Ensure the summary is clear, concise, and captures the core insights of the paper."
+You are an excellent scientific research assistant. You are helping 
+scientists to examine a research paper.
 
-(1) Summary:
-Provide a brief overview of the paper, including its main objective, problem statement, and the proposed approach or solution.
+You will be given a long context from a research paper. Here is the context
 
-(2) Key Contributions:
-List the major contributions of the paper. Focus on novel methodologies, frameworks, models, or findings introduced by the authors.
+BEGIN OF THE CONTEXT
 
-(3) Key Findings:
-Summarize the experimental results and insights. Highlight how the proposed approach performs compared to existing methods, including accuracy improvements or any significant trends.
+ {{ context }}
 
-(4) Conclusion:
-Summarize the overall impact of the paper, its implications, and potential future directions suggested by the authors.
+END OF THE CONTEXT
+
+Please answer the scientist's question accordingly
+
 \"\"\"
 
 [state_config.StandBy]
 # don't make chat request but making the fsm transition request
 disable_llm_request = true
 
-[state_config.GenerateSummary]
+[state_config.AnswerQuestion]
 save_to_summary = true
 
 [state_config.Finish]
@@ -94,27 +94,38 @@ async def run(pdf_file):
         temperature=0.7
     )
 
-    # Add a test command to the queue
-    command_queue.put_nowait(("message", text))
-    
+    command_queue.put_nowait(("push_context", text))
     while True:
-        try:
-            (state, tag, msg) = service_queue.get()
-            if tag == "state":
-                print()
-                print()
-                print("--- current state: ", state)
-                print()
-            elif tag == "token":
-                print(msg, end="")
-            elif tag == "exec_output":
-                print()
-                print(msg)
-                print()
-        except queue.Empty:
+        # Get user input
+        print()
+        print()
+        user_input = input("Enter your question: ")
+
+        # Check if user wants to quit
+        if user_input.lower() == 'quit':
+            command_queue.put_nowait(("terminate", ""))
             break
-        if tag == "message_processed":
-            break
+        # Add a test command to the queue
+        command_queue.put_nowait(("message", user_input))
+        
+        while True:
+            try:
+                (state, tag, msg) = service_queue.get()
+                if tag == "state":
+                    print()
+                    print()
+                    print("--- current state: ", state)
+                    print()
+                elif tag == "token":
+                    print(msg, end="")
+                elif tag == "exec_output":
+                    print()
+                    print(msg)
+                    print()
+            except queue.Empty:
+                break
+            if tag == "message_processed":
+                break
 
     command_queue.put_nowait(("terminate", ""))
     agent.abort_agent_message_service()
