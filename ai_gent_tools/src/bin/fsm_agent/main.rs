@@ -174,7 +174,6 @@ async fn process_fsm_messages(fsm_rx: &mut mpsc::Receiver<(String, String, Strin
             }
 
             (_, "next_state") => {
-                state_service_count += 1;
                 println!(
                     "\n\n-------Next State: {}\n",
                     message.2
