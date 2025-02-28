@@ -1,12 +1,27 @@
+"""
+Summarize PDF File
+
+Usage:
+    summarize_pdf_file.py <pdf_file>
+    summarize_pdf_file.py (-h | --help)
+
+Options:
+    -h --help     Show this help message and exit.
+
+Arguments:
+    pdf_file    Path to the PDF file to summarize
+"""
 import queue
 import asyncio
 from ai_smith import *
-import os
+import os, sys
+import openparse
+from docopt import docopt
 
-SAMPLE_FSM_CONFIG = """
+SUMMARY_FSM_CONFIG = """
 states = [
 "StandBy",
-"GenerateSummary",
+"GenerateSummary", 
 "Finish"]
 
 transitions = [
@@ -52,16 +67,15 @@ save_to_summary = true
 disable_llm_request = true
 """
 
+async def run(pdf_file):
+    parser = openparse.DocumentParser()
+    parsed_doc = parser.parse(pdf_file)
+    parsed_dict = parsed_doc.model_dump()
+    text = []
+    for node in parsed_dict["nodes"]:
+        text.append(node["text"])
+    text = " ".join(text)
 
-def agent_settings():
-    return AgentSettings(
-        model="gpt-3.5-turbo",
-        api_key="test-api-key",
-        total_state_transition_limit=10
-    )
-
-
-async def run(): 
     agent_setting = AgentSettings(
             model="gpt-3.5-turbo",
             api_key=os.getenv("OPENAI_API_KEY"),
@@ -71,7 +85,7 @@ async def run():
     # Create command and service queues
     command_queue = queue.Queue()
     service_queue = queue.Queue()
-    agent = Agent(SAMPLE_FSM_CONFIG, agent_setting)
+    agent = Agent(SUMMARY_FSM_CONFIG, agent_setting)
 
     agent.agent_message_service(
         command_queue,
@@ -79,21 +93,44 @@ async def run():
         temperature=0.7
     )
 
-
     # Add a test command to the queue
-    command_queue.put_nowait(("message", "test_payload1"))
-    command_queue.put_nowait(("terminate", ""))
+    command_queue.put_nowait(("message", text))
     
     while True:
         try:
-            out = service_queue.get()
-            print(out)
+            (state, tag, msg) = service_queue.get()
+            if tag == "state":
+                print()
+                print()
+                print("--- current state: ", state)
+                print()
+            elif tag == "token":
+                print(msg, end="")
+            elif tag == "exec_output":
+                print()
+                print(msg)
+                print()
         except queue.Empty:
             break
-        if out[1] == "message_processed":
+        if tag == "message_processed":
             break
-    print("Done")
 
-    #agent.stop_agent_message_service()
+    command_queue.put_nowait(("terminate", ""))
+    agent.abort_agent_message_service()
 
-asyncio.run(run())
+def main():
+    args = docopt(__doc__)
+    pdf_file = args['<pdf_file>']
+    
+    if not os.path.exists(pdf_file):
+        print(f"Error: PDF file '{pdf_file}' does not exist")
+        sys.exit(1)
+        
+    if not pdf_file.lower().endswith('.pdf'):
+        print(f"Error: File '{pdf_file}' is not a PDF file")
+        sys.exit(1)
+        
+    asyncio.run(run(pdf_file))
+
+if __name__ == '__main__':
+    main()

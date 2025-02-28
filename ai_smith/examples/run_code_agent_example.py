@@ -450,7 +450,6 @@ def agent_settings():
     )
 
 
-
 async def run(): 
     agent_setting = AgentSettings(
             model="gpt-3.5-turbo",
@@ -468,7 +467,6 @@ async def run():
         service_queue,
         temperature=0.7
     )
-
 
     while True:
         # Get user input
@@ -505,13 +503,8 @@ async def run():
             if tag == "message_processed":
                 break
 
+    agent.abort_agent_message_service()
     print("Done")
 
 if __name__ == "__main__":
     asyncio.run(run())
-    #code_agent_config = create_code_agent_config()
-    #print(code_agent_config.to_toml())
-
-    # Optionally, save the configuration to a file
-    # with open("ai_gent_tools/dev_config/code_agent_test.toml", "w") as f:
-    #     f.write(code_agent_config.to_toml())
