@@ -2,7 +2,7 @@
 /target
 **/target
 **/Cargo.lock
-**/.env
+**/.env*
 **/env
 **/self_signed_certs/**
 csv_output/**
