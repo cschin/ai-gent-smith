@@ -19,7 +19,11 @@ pub async fn genai_stream_service(
     temperature: f32,
 ) -> LLMStreamOut {
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
-
+    
+    if msgs.is_empty() {
+        messages.push(ChatMessage::user("continue...".to_string()));
+    };
+    
     msgs.iter().for_each(|(role, msg)| match role.as_str() {
         "user" => {
             messages.push(ChatMessage::user(msg.clone()));
@@ -98,6 +102,10 @@ pub async fn genai_service(
     temperature: f32,
 ) -> Result<String, anyhow::Error> {
     let mut messages: Vec<ChatMessage> = vec![ChatMessage::system(prompt.to_string())];
+        
+    if msgs.is_empty() {
+        messages.push(ChatMessage::user("continue...".to_string()));
+    };
 
     msgs.iter().for_each(|(role, msg)| match role.as_str() {
         "user" => {
