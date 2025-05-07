@@ -1,5 +1,8 @@
 # AI-Gent Smith
 
+We have move the code for our pDFA submission to the branch `pfda-challenge-submission`. The current `main` 
+branch contain features beyond our original submission and the configuration format has been changed.
+
 ![AI-Gent Smith](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/ai_gent_web.png?raw=true)
 
 "AI-Gent Smith" is a simple project demonstrating the use of Rust and various LLM libraries to build a web-based LLM agent library for users. A user can create a simple agent by providing prompts and selecting a backend model. However, it is designed to support LLM agents with "state," allowing the agent to use different prompts or take different actions depending on the current state of the dialogue.
