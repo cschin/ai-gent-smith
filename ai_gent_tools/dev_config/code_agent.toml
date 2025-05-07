@@ -170,21 +170,27 @@ system = """
   In the end you have to return a final answer using the `final_answer` tool. The final_answer tool should always output a 
   string starting with ""Here is my final answer:"
 
-The code should be enclosed in <code>...</code>
+The code should be enclosed in 
+```py
+
+```
+blocks. 
+
+
 
 
 This is an example output:
 
 I think this code will address your question
 
-<code>
+```py
 import math
 
 # Compute the value of pi using the math library
 pi_value = math.pi
 
 print(f"The value of pi is: {pi_value}")
-</code>
+```
 ----
 
  you have the following tools to use along with the standard Python library
@@ -202,7 +208,7 @@ print(f"The value of pi is: {pi_value}")
   You can also use the previous results in the messages as input, if those steps have been performed before. 
 
    Here are the rules you should always follow to solve your task:
-  1. ** ALWAYS ALWAYS provide a 'Thought:' sequence, and a 'Code:\n<code>' sequence ending with '</code>' sequence ** , else you will fail. You CANNOT MISS THIS.
+  1. ** ALWAYS ALWAYS provide a 'Thought:' sequence, and a 'Code:\n```py' sequence ending with '```' sequence ** , else you will fail. You CANNOT MISS THIS.
   2. Use only variables that you have defined!
   3. Always use the right arguments for the tools. DO NOT pass the arguments as a dict as in 'answer = wiki({'query': "What is the place where James Bond lives?"})', but use the arguments directly as in 'answer = wiki(query="What is the place where James Bond lives?")'.
   4. Take care to not chain too many sequential tool calls in the same code block, especially when the output format is unpredictable. For instance, a call to search has an unpredictable return format, so do not have another tool call that depends on its output in the same block: rather output results with print() to use them in the next block.
@@ -220,7 +226,7 @@ print(f"The value of pi is: {pi_value}")
     <FACTS> {{ facts }} </FACTS>
 
   Here is my thought: ...
-  Here is my code: <code> ... </code> ... this will print the results performing the task like this: "print('Here is my solution to the task: ...')" 
+  Here is my code: ```py ... ``` ... this will print the results performing the task like this: "print('Here is my solution to the task: ...')" 
   Here is my observation: ...
 """
 
@@ -297,6 +303,7 @@ ignore_messages = true
 
 [state_config.CodeExecution]
 execute_code = true
+execute_mode = "Docker"
 disable_llm_request  = true
 save_to = ["output_for_evaluation"]
 
@@ -327,7 +334,7 @@ disable_llm_request = true
 description = """webserarch: search web for information.
 in order to generate the proper code, you need to use the following code snippet and change according to the task. 
 Usage:
-<code>
+```py
 import duckduckgo_search
 from duckduckgo_search import DDGS
 
@@ -357,7 +364,7 @@ query_result = webserarch(query)
 
 ... we can use other tool to take query_result as input
 print(query_result)
-</code>
+```
 """
 arguments = "name: query, type: string, description: the query string"
 output_type = "string"
@@ -390,13 +397,13 @@ output_type = "a path to the fetched content, ready for other tools to use"
 [tools.final_answer]
 description = """print out the final answer
 Usage:
-<code>
+```py
 ## other useful code to get the final_answer_string
 these_are_the_facts_I_know = "..."
 final_answer_string = "..."
 print("I think this information you need for the task:", these_are_the_facts_I_know)
 print("Here is my final answer:", final_answer_string)
-</code>
+```
 
 """
 arguments = "the tool does not need any input argument"
@@ -408,11 +415,11 @@ output_type = "string"
 description = """print out the fact
 
 Usage:
-<code>
+```py
 ## other useful code to get the final_answer_string
 these_are_the_facts_I_know = "..."
 print("I think this information you need for the task:", these_are_the_facts_I_know)
-</code>
+```
 """
 
 
@@ -425,7 +432,7 @@ output_type = "string"
 [tools.pdf_file_2_text]
 description = """pdf_file_2_text: convert a pdf file to text
 Usage:
-<code>
+```py
 import openparse
 
 basic_doc_path = "./sample-docs/mobile-home-manual.pdf" // the path to the pdf file from other tools
@@ -435,7 +442,7 @@ parsed_dict = parsed_basic_doc.model_dump()
 
 for node in parsed_dict["nodes"]:
     print(node["text"])
-</code>
+```
 """
 arguments = "path: the path to the pdf file"
 output_type = "string"

@@ -1,29 +1,14 @@
 from typing import Optional, List, Dict, Tuple
 from pydantic import BaseModel
 import toml
-from agent_config import *
+from ai_smith import *
+import queue
+import asyncio
+import os
 
+### prompt for each state
 
-def create_code_agent_config() -> LlmFsmAgentConfig:
-
-    stand_by = (StateBuilder()
-                .set_name("StandBy")
-                .set_prompts(
-                    StatePromptsBuilder()
-                    .set_system("")
-                    .set_fsm(r"""JUST output a json string {"next_state": "GatherFact"}""")
-                    .build())
-                .set_config(
-                    StateConfigBuilder()
-                    .set_disable_llm_request(True)
-                    .build())
-                .build())
-    
-    gather_fact = (StateBuilder()
-                   .set_name("GatherFact")
-                   .set_prompts(
-                        StatePromptsBuilder()
-                        .set_system(r""" 
+gather_fact_system_prompt = r"""
 Below I will present you a task.
 
     You will now build a comprehensive preparatory survey of which facts we have at our disposal and which ones we still need.
@@ -46,21 +31,9 @@ Below I will present you a task.
     ### 2. Facts to look up
     ### 3. Facts to derive
     Do not add anything else.
-""")
-                        .set_fsm(r"""JUST output a json string {"next_state": "Planning"}""")
-                        .build())
-                     .set_config(
-                        StateConfigBuilder()
-                        .set_save_to_context(True)
-                        .set_save_to(["facts"])
-                        .build())
-                     .build())
+"""
 
-    update_fact = (StateBuilder()
-                   .set_name("UpdateFact")
-                   .set_prompts(
-                        StatePromptsBuilder()
-                        .set_system(r"""
+update_fact_system_prompt = r"""
     You are trying to perform this task: <TASK> {{ task }} </TASK>
    
     Earlier we've built an update list of facts.
@@ -78,21 +51,8 @@ Below I will present you a task.
     ### 2. Facts that we have learned
     ### 3. Facts still to look up
     ### 4. Facts still to derive
-                                    """)
-                        .set_fsm(r"""JUST output a json string {"next_state": "Replanning"}""")
-                        .build())
-                     .set_config(
-                        StateConfigBuilder()
-                        .set_use_memory([("facts", 1), ("output_for_evaluation", 1)])
-                        .set_save_to(["facts"])
-                        .build())
-                     .build())
-    
-    planning = (StateBuilder()
-                .set_name("Planning")
-                .set_prompts(
-                    StatePromptsBuilder()
-                    .set_system(r"""
+"""
+planning_system_prompt = r"""
  You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
 
     Now for the given task, develop a step-by-step high-level plan taking into account the above inputs and list of facts.
@@ -115,22 +75,9 @@ Below I will present you a task.
     <TOOLS> 
     {{ tools }} 
     </TOOLS>
-""")
-                    .set_fsm(r"""JUST output a json string {"next_state": "GenerateCode"}""")
-                    .build())
-                .set_config(
-                    StateConfigBuilder()
-                    .set_use_memory([("facts", 1)])
-                    .set_save_to(["plan"])
-                    .set_ignore_messages(True)
-                    .build())
-                .build())
+"""
 
-    replanning = (StateBuilder()
-                  .set_name("Replanning")
-                  .set_prompts(
-                    StatePromptsBuilder()
-                    .set_system(r"""
+replanning_system_prompt = r"""
  You are a world expert at making efficient plans to solve any task using a set of carefully crafted tools.
 
     Here is your task:
@@ -159,27 +106,16 @@ Below I will present you a task.
     </FACTS>
 
     First, think, if the facts are good enough to address some of the steps, do not use the tools but
-    just the fact. You only need to use the tools if the facts are not enough to address the task. """)
-                    .set_fsm(r"""
+    just the fact. You only need to use the tools if the facts are not enough to address the task. """
+
+replanning_fsm_prompt = r"""
 This is the previous response:
 <RESPONSE> {{ response }} </RESPONSE>
 and the task: <TASK> {{ task }} </TASK>
 Given the previous response, you can generate some code to solve task, if so just output {"next_state": "GenerateCode"}
-If not, and you think you need some summary of the current fact, just output {"next_state": "SummaryFact"}""")
-                    .build())
-                  .set_config(
-                    StateConfigBuilder()
-                    .set_use_memory([("facts", 1)])
-                    .set_save_to(["plan"])
-                    .set_ignore_messages(True)
-                    .build())
-                  .build())
+If not, and you think you need some summary of the current fact, just output {"next_state": "SummaryFact"}"""
 
-    generate_code = (StateBuilder()
-                     .set_name("GenerateCode")
-                     .set_prompts(
-                        StatePromptsBuilder()
-                        .set_system(r"""
+generate_code_system_prompt = r"""
  You are an expert assistant who can solve any task using code blobs. You will be given a task to solve as best you can.
   To do so, you have been given access to a list of python tools: these tools are basically Python functions which you can call with code.
   To solve the task, you must plan forward to proceed in a series of steps, in a cycle of 'Thought:', 'Code:', and 'Observation:' sequences.
@@ -193,21 +129,21 @@ If not, and you think you need some summary of the current fact, just output {"n
   In the end you have to return a final answer using the `final_answer` tool. The final_answer tool should always output a 
   string starting with ""Here is my final answer:"
 
-The code should be enclosed in <code>...</code>
+The code should be enclosed in ```py ... ```
 
 
 This is an example output:
 
 I think this code will address your question
 
-<code>
+```py
 import math
 
 # Compute the value of pi using the math library
 pi_value = math.pi
 
 print(f"The value of pi is: {pi_value}")
-</code>
+```
 ----
 
  you have the following tools to use along with the standard Python library
@@ -225,7 +161,7 @@ print(f"The value of pi is: {pi_value}")
   You can also use the previous results in the messages as input, if those steps have been performed before. 
 
    Here are the rules you should always follow to solve your task:
-  1. ** ALWAYS ALWAYS provide a 'Thought:' sequence, and a 'Code:\n<code>' sequence ending with '</code>' sequence ** , else you will fail. You CANNOT MISS THIS.
+  1. ** ALWAYS ALWAYS provide a 'Thought:' sequence, and a 'Code:\n```py' sequence ending with '```' sequence ** , else you will fail. You CANNOT MISS THIS.
   2. Use only variables that you have defined!
   3. Always use the right arguments for the tools. DO NOT pass the arguments as a dict as in 'answer = wiki({'query': "What is the place where James Bond lives?"})', but use the arguments directly as in 'answer = wiki(query="What is the place where James Bond lives?")'.
   4. Take care to not chain too many sequential tool calls in the same code block, especially when the output format is unpredictable. For instance, a call to search has an unpredictable return format, so do not have another tool call that depends on its output in the same block: rather output results with print() to use them in the next block.
@@ -243,15 +179,134 @@ print(f"The value of pi is: {pi_value}")
     <FACTS> {{ facts }} </FACTS>
 
   Here is my thought: ...
-  Here is my code: <code> ... </code> ... this will print the results performing the task like this: "print('Here is my solution to the task: ...')" 
+  Here is my code: ```py ... ``` ... this will print the results performing the task like this: "print('Here is my solution to the task: ...')" 
   Here is my observation: ...
-""")
-                        .set_fsm(r"""
+"""
+
+generate_code_fsm_prompt = r"""
 This is the previous response:
 <RESPONSE> {{ response }} </RESPONSE>
 
 Does the previous response have a code block? If so, just output {"next_state": "CodeExecution"}
-If not, we need to generate the code again {"next_state": "Replanning"}""")
+If not, we need to generate the code again {"next_state": "Replanning"}"""
+
+
+summary_fact_system_prompt = r""" 
+Given the facts  <FACTS> {{ facts }} </FACTS> and the task <TASK> {{ task }} </TASK>,
+try to summarize the facts and see if the summary already address the task. 
+"""
+
+
+evaluation_system_prompt = r"""
+You were asked to solve, answer, or perform this task  
+<TASK> {{ task }} </TASK>
+
+First, check if the previous output below a good result addressing the task, if so, just say the output is 
+a good final answer or the task is solved and we can finish the session.
+
+This is the previous output:
+<OUTPUT> {{ output_for_evaluation }} </OUTPUT>
+
+If the output does not satisfy the task, just tell the user one sentence explanation for an improvement plan. We
+are moving into UpdateFact step. Don't need more response than that.
+
+
+Only if the output is empty, then you ask to generated code again. 
+
+Make sure you always output the suggestion for the next step, generate code, update fact, or finish the task.
+""" 
+
+evaluation_fsm_prompt = r"""
+This is the response:
+
+<RESPONSE> {{ response }} </RESPONSE>
+
+If the response is telling you to generate code, JUST output {"next_state":"GenerateCode"} 
+
+If the response is a plan or suggest future action: JUST output {"next_state":"UpdateFact"} 
+
+If the task is solved or you get the final answer in the response, JUST output {"next_state":"Finish"}.
+"""
+
+def create_code_agent_config() -> AgentConfig:
+
+    stand_by = (StateBuilder()
+                .set_name("StandBy")
+                .set_prompts(
+                    StatePromptsBuilder()
+                    .set_system("")
+                    .set_fsm(r"""JUST output a json string {"next_state": "GatherFact"}""")
+                    .build())
+                .set_config(
+                    StateConfigBuilder()
+                    .set_disable_llm_request(True)
+                    .build())
+                .build())
+    
+    gather_fact = (StateBuilder()
+                   .set_name("GatherFact")
+                   .set_prompts(
+                        StatePromptsBuilder()
+                        .set_system(gather_fact_system_prompt)
+                        .set_fsm(r"""JUST output a json string {"next_state": "Planning"}""")
+                        .build())
+                     .set_config(
+                        StateConfigBuilder()
+                        .set_save_to_context(True)
+                        .set_save_to(["facts"])
+                        .build())
+                     .build())
+
+    update_fact = (StateBuilder()
+                   .set_name("UpdateFact")
+                   .set_prompts(
+                        StatePromptsBuilder()
+                        .set_system(update_fact_system_prompt)
+                        .set_fsm(r"""JUST output a json string {"next_state": "Replanning"}""")
+                        .build())
+                     .set_config(
+                        StateConfigBuilder()
+                        .set_use_memory([("facts", 1), ("output_for_evaluation", 1)])
+                        .set_save_to(["facts"])
+                        .build())
+                     .build())
+    
+    planning = (StateBuilder()
+                .set_name("Planning")
+                .set_prompts(
+                    StatePromptsBuilder()
+                    .set_system(planning_system_prompt)
+                    .set_fsm(r"""JUST output a json string {"next_state": "GenerateCode"}""")
+                    .build())
+                .set_config(
+                    StateConfigBuilder()
+                    .set_use_memory([("facts", 1)])
+                    .set_save_to(["plan"])
+                    .set_ignore_messages(True)
+                    .build())
+                .build())
+
+    replanning = (StateBuilder()
+                  .set_name("Replanning")
+                  .set_prompts(
+                    StatePromptsBuilder()
+                    .set_system(replanning_system_prompt)
+                    .set_fsm(replanning_fsm_prompt)
+                    .build())
+                  .set_config(
+                    StateConfigBuilder()
+                    .set_use_memory([("facts", 1)])
+                    .set_save_to(["plan"])
+                    .set_ignore_messages(True)
+                    .build())
+                  .build())
+
+    generate_code = (StateBuilder()
+                     .set_name("GenerateCode")
+                     .set_prompts(
+                        StatePromptsBuilder()
+                        .set_system(generate_code_system_prompt)
+                        .set_fsm(generate_code_fsm_prompt)
                         .build())
                      .set_config(   
                         StateConfigBuilder()
@@ -264,10 +319,7 @@ If not, we need to generate the code again {"next_state": "Replanning"}""")
     summary_fact = (StateBuilder()
                     .set_name("SummaryFact")
                     .set_prompts(StatePromptsBuilder()
-                                 .set_system(r""" 
-Given the facts  <FACTS> {{ facts }} </FACTS> and the task <TASK> {{ task }} </TASK>,
-try to summarize the facts and see if the summary already address the task. 
-""")
+                                 .set_system(summary_fact_system_prompt)
                                     .set_fsm(r"""JUST output {"next_state": "Evaluation"}""")
                                     .build())
                     .set_config(StateConfigBuilder()
@@ -285,41 +337,15 @@ try to summarize the facts and see if the summary already address the task.
                                   .set_execute_code(True)
                                   .set_disable_llm_request(True)
                                   .set_save_to(["output_for_evaluation"])
+                                  .set_execute_mode("Docker")
                                   .build())
                       .build())
 
     evaluation = (StateBuilder()
                   .set_name("Evaluation")
                   .set_prompts(StatePromptsBuilder()
-                               .set_system(r"""
-You were asked to solve, answer, or perform this task  
-<TASK> {{ task }} </TASK>
-
-First, check if the previous output below a good result addressing the task, if so, just say the output is 
-a good final answer or the task is solved and we can finish the session.
-
-This is the previous output:
-<OUTPUT> {{ output_for_evaluation }} </OUTPUT>
-
-If the output does not satisfy the task, just tell the user one sentence explanation for an improvement plan. We
-are moving into UpdateFact step. Don't need more response than that.
-
-
-Only if the output is empty, then you ask to generated code again. 
-
-Make sure you always output the suggestion for the next step, generate code, update fact, or finish the task.
-                              """)
-                                .set_fsm(r"""
-This is the response:
-
-<RESPONSE> {{ response }} </RESPONSE>
-
-If the response is telling you to generate code, JUST output {"next_state":"GenerateCode"} 
-
-If the response is a plan or suggest future action: JUST output {"next_state":"UpdateFact"} 
-
-If the task is solved or you get the final answer in the response, JUST output {"next_state":"Finish"}.
-                                         """)
+                               .set_system(evaluation_system_prompt)
+                                .set_fsm(evaluation_fsm_prompt)
                                 .build())
                     .set_config(StateConfigBuilder()
                                 .set_use_memory([("output_for_evaluation", 1)])
@@ -360,7 +386,7 @@ If the task is solved or you get the final answer in the response, JUST output {
         .set_description("""webserarch: search web for information.
 in order to generate the proper code, you need to use the following code snippet and change according to the task. 
 Usage:
-<code>
+```py
 import duckduckgo_search
 from duckduckgo_search import DDGS
 
@@ -390,7 +416,7 @@ query_result = webserarch(query)
 
 ... we can use other tool to take query_result as input
 print(query_result)
-</code>
+```
 """)
         .set_arguments("name: query, type: string, description: the query string")
         .set_output_type("string")
@@ -401,7 +427,7 @@ print(query_result)
 
     # Create LlmFsmAgentConfig
     config = (
-        LlmFsmAgentConfigBuilder()
+        AgentConfigBuilder()
         .set_states(states)
         .set_transitions(transitions)
         .set_initial_state("StandBy")
@@ -416,10 +442,83 @@ print(query_result)
 
     return config
 
-if __name__ == "__main__":
-    code_agent_config = create_code_agent_config()
-    print(code_agent_config.to_toml())
+def agent_settings():
+    return AgentSettings(
+        model="gpt-3.5-turbo",
+        api_key="test-api-key",
+        total_state_transition_limit=10
+    )
 
-    # Optionally, save the configuration to a file
-    # with open("ai_gent_tools/dev_config/code_agent_test.toml", "w") as f:
-    #     f.write(code_agent_config.to_toml())
+
+async def run(): 
+    agent_setting = AgentSettings(
+            model="gpt-3.5-turbo",
+            api_key=os.getenv("OPENAI_API_KEY"),
+            total_state_transition_limit=10
+        )
+    code_agent_config = create_code_agent_config()
+    # Create command and service queues
+    command_queue = queue.Queue()
+    service_queue = queue.Queue()
+    agent = Agent(code_agent_config.to_toml(), agent_setting)
+
+    agent.agent_message_service(
+        command_queue,
+        service_queue,
+        temperature=0.7
+    )
+
+    while True:
+        # Get user input
+        try:
+            # Get user input
+            print()
+            print()
+            user_input = input("Enter your question: ")
+
+            # Check if user wants to quit
+            if user_input.lower() == 'quit':
+                command_queue.put_nowait(("terminate", ""))
+                break
+            # Add a test command to the queue
+
+        except EOFError:
+            print("\nReceived EOF. Exiting...")
+            break
+
+        except asyncio.CancelledError:
+            print("\nReceived cancel signal. Cleaning up...")
+            break
+
+        # Add user's message to the queue
+        command_queue.put_nowait(("task", user_input))
+        command_queue.put_nowait(("message", user_input))
+        
+        # Wait for and print the response
+        while True:
+            try:
+                (state, tag, msg) = service_queue.get()
+                if tag == "state":
+                    print()
+                    print()
+                    print("--- current state: ", state)
+                    print()
+                elif tag == "token":
+                    print(msg, end="")
+                elif tag == "exec_output":
+                    print()
+                    print(msg)
+                    print()
+            except queue.Empty:
+                break
+            if tag == "message_processed":
+                break
+
+    agent.abort_agent_message_service()
+    print("Done")
+
+if __name__ == "__main__":
+    try:
+        asyncio.run(run())
+    except KeyboardInterrupt:
+        print("\nReceived keyboard interrupt. Exiting...")

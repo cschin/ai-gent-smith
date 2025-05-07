@@ -14,6 +14,7 @@ class StateConfig(BaseModel):
     save_execution_output: Optional[bool] = None
     extract_code: Optional[bool] = None
     execute_code: Optional[bool] = None
+    execute_mode: Optional[str] = None
     code: Optional[str] = None
     fsm_code: Optional[str] = None
     wait_for_msg: Optional[bool] = None
@@ -63,7 +64,13 @@ class StateConfigBuilder:
     def set_execute_code(self, value: bool):
         self._config.execute_code = value
         return self
-    
+
+    def set_execute_mode(self, value: str):
+        if value not in ["Docker", "Local"]:
+            raise ValueError("Invalid execute mode. Must be one of 'Docker' or 'Local'")
+        self._config.execute_mode = value
+        return self
+
     def set_code(self, value: str):
         self._config.code = value
         return self
@@ -141,7 +148,7 @@ class ToolBuilder:
             output_type=self.output_type
         )
 
-class LlmFsmAgentConfig(BaseModel):
+class AgentConfig(BaseModel):
     states: List[str]
     transitions: List[Tuple[str, str]]
     initial_state: str
@@ -176,7 +183,7 @@ class LlmFsmAgentConfig(BaseModel):
 
 
 
-class LlmFsmAgentConfigBuilder:
+class AgentConfigBuilder:
     def __init__(self):
         self._states = []
         self._transitions = []
@@ -240,7 +247,7 @@ class LlmFsmAgentConfigBuilder:
             if state2 not in self._states:
                 raise ValueError(f"Invalid transition: {transition}. '{state2}' is not in the defined states: {self._states}")
             
-        return LlmFsmAgentConfig(
+        return AgentConfig(
             states=self._states,
             transitions=self._transitions,
             initial_state=self._initial_state,
@@ -372,7 +379,7 @@ def create_example_llm_fsm_agent_config() -> None:
 
     # Create LlmFsmAgentConfig using the builder
     llm_fsm_agent_config = (
-        LlmFsmAgentConfigBuilder()
+        AgentConfigBuilder()
         .set_states([state.name for state in states])
         .set_transitions([("Initial", "Processing"), ("Processing", "Finalizing")])
         .set_initial_state("Initial")
@@ -386,10 +393,3 @@ def create_example_llm_fsm_agent_config() -> None:
     )
     
     print(llm_fsm_agent_config.to_toml())
-    
-
-if __name__ == "__main__":
-    create_example_llm_fsm_agent_config()
-    test = LlmFsmAgentConfig.from_toml("../dev_config/code_agent.toml")
-    #print(test.to_json())
-    print(test.to_toml())

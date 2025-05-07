@@ -1,5 +1,6 @@
 use crate::{
     fsm::{FiniteStateMachine, FsmState, TransitionResult},
+    fsm_chat_state::ExecuteMode,
     llm_service::LLMStreamOut,
 };
 use async_trait::async_trait;
@@ -33,6 +34,7 @@ pub struct StateConfig {
     pub save_execution_output: Option<bool>,
     pub extract_code: Option<bool>,
     pub execute_code: Option<bool>,
+    pub execute_mode: Option<ExecuteMode>,
     pub code: Option<String>,
     pub fsm_code: Option<String>,
     pub wait_for_msg: Option<bool>,
@@ -47,7 +49,7 @@ pub struct Tool {
     pub output_type: String,
 }
 
-pub trait LlmFsmStateInit {
+pub trait FsmAgentStateInit {
     fn new(name: &str, prompts: StatePrompts, config: StateConfig) -> Self;
 }
 
@@ -65,16 +67,16 @@ pub struct LlmReqSetting {
 }
 
 #[derive(Clone, Default)]
-pub struct DefaultLlmChatState {
+pub struct DefaultFsmAgentState {
     name: String,
     attributes: HashMap<String, String>,
     _prompts: StatePrompts,
     _config: StateConfig,
 }
 
-impl LlmFsmStateInit for DefaultLlmChatState {
+impl FsmAgentStateInit for DefaultFsmAgentState {
     fn new(name: &str, _prompts: StatePrompts, _config: StateConfig) -> Self {
-        DefaultLlmChatState {
+        DefaultFsmAgentState {
             name: name.to_string(),
             _prompts,
             _config,
@@ -84,7 +86,7 @@ impl LlmFsmStateInit for DefaultLlmChatState {
 }
 
 #[async_trait]
-impl FsmState for DefaultLlmChatState {
+impl FsmState for DefaultFsmAgentState {
     async fn set_attribute(&mut self, k: &str, v: String) {
         self.attributes.insert(k.to_string(), v);
     }
@@ -138,7 +140,7 @@ impl LlmFsmBuilder {
         self
     }
 
-    pub fn from_config<S: LlmFsmStateInit + FsmState + 'static>(
+    pub fn from_config<S: FsmAgentStateInit + FsmState + 'static>(
         config: &LlmFsmAgentConfig,
         mut state_map: HashMap<String, S>,
     ) -> Result<Self, anyhow::Error> {
@@ -424,7 +426,7 @@ impl LlmFsmAgent {
     pub fn new(fsm: FiniteStateMachine, agent_settings: AgentSettings) -> Self {
         let total_state_transition_limit = agent_settings
             .total_state_transition_limit
-            .unwrap_or(32_u32);
+            .unwrap_or(24_u32);
         let llm_req_setting = LlmReqSetting {
             messages: Vec::default(),
             temperature: None,
@@ -454,10 +456,10 @@ impl LlmFsmAgent {
     pub async fn set_current_state(
         &mut self,
         state: Option<String>,
-        exec_state_actions: bool,
+        exec_enter_actions: bool,
     ) -> Result<(), String> {
         if let Some(state) = state {
-            self.fsm.set_initial_state(state, exec_state_actions).await
+            self.fsm.set_initial_state(state, exec_enter_actions).await
         } else {
             Err("fms set_current_state fail".into())
         }
@@ -467,16 +469,16 @@ impl LlmFsmAgent {
         self.fsm.get_current_state_name()
     }
 
-    pub async fn fsm_message_service(
+    pub async fn agent_message_service(
         &mut self,
-        mut user_input: Receiver<(String, String)>,
-        tx: Sender<(String, String, String)>,
+        mut agent_command_rx: Receiver<(String, String)>,
+        agent_service_tx: Sender<(String, String, String)>,
         temperature: Option<f32>,
     ) -> Result<(), anyhow::Error> {
         self.llm_req_settings.temperature = temperature;
         let total_state_transition_limit = self.total_state_transition_limit;
 
-        while let Some((msg_type, msg)) = user_input.recv().await {
+        while let Some((msg_type, msg)) = agent_command_rx.recv().await {
             match msg_type.as_str() {
                 // once a message is sent, we will start to process the message
                 "message" => {
@@ -489,6 +491,15 @@ impl LlmFsmAgent {
                     self.llm_req_settings.task = Some(msg);
                     continue;
                 }
+                "push_context" => {
+                    let e = self
+                        .llm_req_settings
+                        .memory
+                        .entry("context".into())
+                        .or_default();
+                    e.push(Value::String(msg));
+                    continue;
+                }
                 "clear_message" => {
                     self.llm_req_settings.messages.clear();
                     continue;
@@ -498,7 +509,7 @@ impl LlmFsmAgent {
                     continue;
                 }
                 "terminate" => break,
-                _ => {}
+                _ => break,
             }
 
             // let current_state_name = self
@@ -513,7 +524,7 @@ impl LlmFsmAgent {
                     .set_initial_state(self.llm_req_settings.fsm_initial_state.clone(), true)
                     .await;
             };
-            let tx2 = tx.clone();
+            let agent_service_tx2 = agent_service_tx.clone();
             let mut state_transition_count = 0;
             loop {
                 let current_state_name = self
@@ -540,15 +551,16 @@ impl LlmFsmAgent {
                     .await;
 
                 let (fsm_tx, fsm_rx) = mpsc::channel::<(String, String, String)>(16);
-                let tx = tx.clone();
-                let handle = get_fsm_state_communication_handle(tx, fsm_rx);
+                let agent_service_tx = agent_service_tx.clone();
+                let handle = get_fsm_state_communication_handle(agent_service_tx, fsm_rx);
                 self.llm_req_settings
                     .state_history
                     .push(current_state_name.clone());
                 if let Some(next_state_name) =
                     current_state.start_service(fsm_tx, None, next_states).await
                 {
-                    let (llm_output, new_memory) = tokio::join!(handle).0.unwrap();
+                    let j = tokio::join!(handle).0;
+                    let (llm_output, new_memory) = j.unwrap();
                     self.update_message_and_memory(llm_output, new_memory);
                     match self.transition_state(&next_state_name).await {
                         Ok(()) => {
@@ -564,7 +576,7 @@ impl LlmFsmAgent {
                             }
                         }
                         Err(e) => {
-                            let _ = tx2
+                            let _ = agent_service_tx2
                                 .send((
                                     current_state_name,
                                     "error".into(),
@@ -586,20 +598,20 @@ impl LlmFsmAgent {
                 }
                 state_transition_count += 1;
                 if state_transition_count >= total_state_transition_limit {
-                    let _ = tx2
+                    let _res = agent_service_tx2
                         .send((
                             "".into(),
+                            "max_total_states reached".into(),
                             format!(
-                                "max_total_states({}), reached",
-                                total_state_transition_limit
+                                "number of transitions: {}/{}",
+                                state_transition_count, total_state_transition_limit
                             ),
-                            "".into(),
                         ))
                         .await;
                     break;
                 }
             }
-            let _ = tx
+            let _res = agent_service_tx
                 .send(("".into(), "message_processed".into(), "".into()))
                 .await;
         }
@@ -620,7 +632,7 @@ impl LlmFsmAgent {
         });
     }
 
-    pub async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
+    async fn transition_state(&mut self, next_state: &str) -> Result<(), anyhow::Error> {
         match self.fsm.make_transition_to(next_state.into()).await {
             (TransitionResult::Success, _) => {
                 // tracing::info!("Transitioned to state: {}", next_state);
@@ -643,9 +655,8 @@ impl LlmFsmAgent {
 type AgentResult = (Option<String>, HashMap<String, Vec<Value>>);
 type AgentTask = tokio::task::JoinHandle<AgentResult>;
 
-
 fn get_fsm_state_communication_handle(
-    tx: Sender<(String, String, String)>,
+    agent_service_tx: Sender<(String, String, String)>,
     mut fsm_rx: Receiver<(String, String, String)>,
 ) -> AgentTask {
     tokio::spawn(async move {
@@ -671,15 +682,26 @@ fn get_fsm_state_communication_handle(
                         e.push(value);
                     }
                     "execution_output" => {
-                        let value: Value = serde_json::from_str(&r).unwrap();
+                        let value: Value = Value::String(r.clone());
                         let e = memory.entry(t.clone()).or_default();
                         e.push(value);
                     }
                     _ => {}
                 }
-                let _ = tx.send((a, t, r)).await;
+                if !agent_service_tx.is_closed() {
+                    let res = agent_service_tx.send((a, t, r)).await;
+                    if let Err(e) = res {
+                        // Handle send error (e.g., log it)
+                        eprintln!("Failed to send: {}", e);
+                    }
+                } else {
+                    eprintln!("Receiver is closed, cannot send");
+                    break;
+                    // Handle case where receiver is closed
+                }
             }
         }
+        fsm_rx.close();
         (llm_output, memory)
     })
 }
@@ -771,7 +793,7 @@ mod tests {
             .unwrap();
 
         let fsm =
-            LlmFsmBuilder::from_config::<DefaultLlmChatState>(&fsm_config, HashMap::default())
+            LlmFsmBuilder::from_config::<DefaultFsmAgentState>(&fsm_config, HashMap::default())
                 .unwrap()
                 .build()
                 .unwrap();

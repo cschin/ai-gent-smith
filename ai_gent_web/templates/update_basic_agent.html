@@ -51,19 +51,11 @@
             </div>
             <div class="form-control mb-4">
                 <label for="prompt" class="label">
-                    <span class="label-text">Initial Prompt:</span>
+                    <span class="label-text">Prompt:</span>
                 </label>
 
                 <textarea name="prompt" id="prompt" class="textarea textarea-bordered" rows="5" required
-                    placeholder="Enter the initial system prompt for your AI agent">{{ prompt }}</textarea>
-            </div>
-
-            <div class="form-control mb-4">
-                <label for="follow_up_prompt" class="label">
-                    <span class="label-text">Follow Up Prompt (Optional):</span>
-                </label>
-                <textarea name="follow_up_prompt" id="follow_up_prompt" class="textarea textarea-bordered" rows="5"
-                    placeholder="Enter the follow up prompt for your AI agent">{{ follow_up_prompt }}</textarea>
+                    placeholder="Enter the system prompt for your AI agent">{{ prompt }}</textarea>
             </div>
 
             <button type="submit" class="btn btn-primary w-full">Update Agent</button>

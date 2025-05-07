@@ -8,7 +8,6 @@ mod embedding_service;
 mod services;
 mod session_cards;
 mod show_single_asset;
-mod fsm_chat_agent;
 
 use agent_cards::{LibraryCards, LibraryCardsBuilder};
 use agent_workspace::*;
@@ -954,12 +953,6 @@ use uuid::{timestamp::context, Uuid};
 #[template(path = "simple_agent_config.toml.template", escape = "none")] // using the template in this path, relative                                    // to the `templates` dir in the crate root
 struct SimpleAgentConfigTemplate {
     system_prompt: String,
-    follow_up: String,
-}
-
-#[derive(Serialize)]
-struct SysPromptInConfig {
-    sys_prompt: String,
 }
 
 #[allow(non_snake_case)]
@@ -968,28 +961,16 @@ struct FollowUpPromptInConfig {
     FollowUp: String,
 }
 
-fn get_basic_fsm_agent_config_toml_string(sys_prompt: String, follow_up: Option<String>) -> String {
-    let system_prompt = toml::to_string(&SysPromptInConfig { sys_prompt }).unwrap();
-    //toml::ser::ValueSerializer::new(&mut prompt);
-    tracing::info!(target: TRON_APP, "debug toml string: {}", system_prompt);
-    let follow_up = if let Some(follow_up) = follow_up {
-        toml::to_string(&FollowUpPromptInConfig {
-            FollowUp: follow_up,
-        })
-        .unwrap()
-    } else {
-        let follow_up_prompt = r#"
-        Your goal to see if you have enough information to address the user's question,
-        if not, please ask more questions for the information you need."#
-            .to_string();
-        toml::to_string(&FollowUpPromptInConfig {
-            FollowUp: follow_up_prompt,
-        })
-        .unwrap()
-    };
+fn get_basic_fsm_agent_config_toml_string(sys_prompt: String) -> String {
+    let mut value = String::new();
+    serde::Serialize::serialize(
+        &sys_prompt,
+    toml::ser::ValueSerializer::new(&mut value)).unwrap();
+    // tracing::info!(target: TRON_APP, "debug toml string: {}", sys_prompt);
+    // tracing::info!(target: TRON_APP, "debug toml string: {}", value);
+   
     let simple_agent_config = SimpleAgentConfigTemplate {
-        system_prompt,
-        follow_up,
+        system_prompt: value.trim_matches('"').into()
     }
     .render()
     .unwrap();
@@ -1017,8 +998,7 @@ async fn create_basic_agent(
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
     let prompt = agent_setting_form.prompt;
-    let follow_up = agent_setting_form.follow_up_prompt;
-    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up);
+    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt);
 
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {
@@ -1199,8 +1179,7 @@ async fn update_basic_agent(
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
     let prompt = agent_setting_form.prompt;
-    let follow_up = agent_setting_form.follow_up_prompt;
-    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt, follow_up);
+    let simple_agent_config = get_basic_fsm_agent_config_toml_string(prompt);
 
     let asset_id = agent_setting_form.asset_id.parse::<i32>();
     let asset_id = if let Ok(asset_id) = asset_id {
@@ -1300,28 +1279,30 @@ async fn update_adv_agent(
         None
     };
 
-    if toml::from_str::<LlmFsmAgentConfig>(&agent_setting_form.fsm_agent_config).is_err() {
+    
+    if let Err(e) = toml::from_str::<LlmFsmAgentConfig>(&agent_setting_form.fsm_agent_config) {
+        tracing::info!(target: TRON_APP, "toml parsing error: {}", e);
         let html = Html::from(
-            r##"
-        <div id="update_agent_notification_msg">
-            <div>
-                <p class="py-4">FSM Agent Config Parsing Failure, check the format!!</p>
-            </div>
-            <div class="modal-action">
-                <form method="dialog">
-                    <!-- if there is a button in form, it will close the modal -->
-                    <button class="btn btn-sm">Close</button>
-                </form>
-            </div>
-        </div>"##
-                .to_string(),
-        );
+                r##"
+    <div id="update_agent_notification_msg">
+        <div>
+            <p class="py-4">FSM Agent Config Parsing Failure, check the format!!</p>
+        </div>
+        <div class="modal-action">
+            <form method="dialog">
+                <!-- if there is a button in form, it will close the modal -->
+                <button class="btn btn-sm">Close</button>
+            </form>
+        </div>
+    </div>"##
+                    .to_string(),
+            );
         return (
-            StatusCode::OK,
-            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
-            html,
-        )
-            .into_response();
+                StatusCode::OK,
+                [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+                html,
+            )
+                .into_response();
     }
 
     let agent_setting = AgentSetting {
@@ -1492,7 +1473,7 @@ async fn show_chat(
     let agent_name;
     let user_data;
     let configuration;
-    let last_fsm_state;
+    let _last_fsm_state;
     {
         let ctx_guard = ctx.read().await;
         user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
@@ -1524,7 +1505,7 @@ async fn show_chat(
         } else {
             0_u32
         };
-        last_fsm_state = row.last_fsm_state;
+        _last_fsm_state = row.last_fsm_state;
     }
     {
         let ctx_guard = ctx.read().await;
@@ -1534,11 +1515,11 @@ async fn show_chat(
         assets_guard.insert("agent_id".into(), TnAsset::U32(agent_id as u32));
         assets_guard.insert("chat_id".into(), TnAsset::U32(chat_id as u32));
         assets_guard.insert("asset_id".into(), TnAsset::U32(asset_id));
-        if let Some(last_fsm_state) = last_fsm_state {
-            assets_guard.insert("fsm_state".into(), TnAsset::String(last_fsm_state));
-        } else {
-            assets_guard.remove("fsm_state");
-        };
+        // if let Some(last_fsm_state) = last_fsm_state {
+        //     assets_guard.insert("fsm_state".into(), TnAsset::String(last_fsm_state));
+        // } else {
+        //     assets_guard.remove("fsm_state");
+        // };
         assets_guard.insert("agent_configuration".into(), TnAsset::String(configuration));
     }
     let mut h = HeaderMap::new();
@@ -1718,7 +1699,7 @@ async fn get_chat_message_markdown_blocks(messages: &[SingleChatMessage]) -> Vec
 
             let when: String = if let Ok(utc_dt) = time_stamp {
                 let local_dt = utc_dt.with_timezone(&chrono::Local); // Convert to local timezone
-                let formatted_time = local_dt.format("%m-%d-%y %H-%M-%S %Z").to_string();
+                let formatted_time = local_dt.format("%m-%d-%y %H:%M:%S %Z").to_string();
                 formatted_time
             } else {
                 "".into()
