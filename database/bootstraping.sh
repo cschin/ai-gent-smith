@@ -4,4 +4,5 @@
 # psql -c 'drop database ai_gent;'
 psql -c 'create database ai_gent;'
 psql -d ai_gent -f bootstraping.sql
+sqlx migrate run
 

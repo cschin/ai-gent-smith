@@ -578,7 +578,7 @@ pub async fn get_all_points(asset_id: i32) -> Vec<ChunkPoint> {
     let db_pool = DB_POOL.clone();
 
     let results = sqlx::query(
-        r#"SELECT filename, title, text, span, embedding_vector, 
+        r#"SELECT filename, title, text, embedding_vector, 
                        COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding, 
                        CAST(0.0 AS FLOAT8) AS similarity 
                FROM text_embedding
@@ -607,7 +607,6 @@ fn pgrow_to_point(r: sqlx::postgres::PgRow) -> ChunkPoint {
     let chunk = DocumentChunk {
         embedding_vec: Some(embedding_vec),
         filename: r.get::<String, &str>("filename"),
-        // span,
         token_ids: None,
         two_d_embedding: Some((two_d_embedding[0], two_d_embedding[1])),
         text: r.get::<String, &str>("text"),
