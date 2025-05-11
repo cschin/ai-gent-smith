@@ -1975,10 +1975,7 @@ async fn create_asset(
         .unwrap();
 
         for c in document_chunks.chunks.into_iter() {
-            let span = PgRange {
-                start: Bound::Included(c.span.0 as i32),
-                end: Bound::Excluded(c.span.1 as i32),
-            };
+          
             let embedding_vector = if let Some(v) = c.embedding_vec {
                 Vector::from(v)
             } else {
@@ -1989,17 +1986,23 @@ async fn create_asset(
             } else {
                 Vector::from(vec![])
             };
+            let meta_data: Value = if let Some(s) = c.meta_data {
+                serde_json::from_str(&s).unwrap()
+            } else {
+                serde_json::from_str("{}").unwrap()
+            }; 
+            
             let _res = sqlx::query(
-             r#"INSERT INTO text_embedding (asset_id, text, span, embedding_vector, two_d_embedding, filename, title)
+             r#"INSERT INTO text_embedding (asset_id, text, embedding_vector, two_d_embedding, filename, title, meta_data)
              VALUES ($1, $2, $3, $4, $5, $6, $7)
              RETURNING id"#   
             ).bind(query_result.asset_id)
             .bind(&c.text)
-            .bind(span)
             .bind(embedding_vector)
             .bind(two_d_embedding)
             .bind(&c.filename)
-            .bind(&c.title).fetch_one(&db_pool).await;
+            .bind(&c.title)
+            .bind(&meta_data).fetch_one(&db_pool).await;
             // tracing::info!(target: TRON_APP, "insert embedding {:?}", _res);
         }
 

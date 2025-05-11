@@ -62,7 +62,6 @@ struct QueryServiceResponse {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DocumentChunkJson {
     pub text: String,
-    pub span: (usize, usize),
     pub filename: String,
     pub title: String,
 }
@@ -94,7 +93,6 @@ pub async fn query_for_chunks(
                     similarity: 1.0 - c.d.to_f64() as f32,
                     chunk: DocumentChunkJson {
                         text: c.chunk.text,
-                        span: c.chunk.span,
                         filename: c.chunk.filename,
                         title: c.chunk.title
                     }

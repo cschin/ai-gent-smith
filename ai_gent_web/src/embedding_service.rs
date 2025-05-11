@@ -1,3 +1,4 @@
+use candle_core::op::Op;
 use candle_transformers::models::jina_bert::{BertModel, Config};
 
 use anyhow::Error as E;
@@ -282,12 +283,12 @@ pub fn normalize_l2(v: &Tensor) -> candle_core::Result<Tensor> {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct DocumentChunk {
     pub text: String,
-    pub span: (usize, usize),
     pub token_ids: Option<Vec<u32>>,
     pub two_d_embedding: Option<(f32, f32)>,
     pub embedding_vec: Option<Vec<f32>>,
     pub filename: String,
     pub title: String,
+    pub meta_data: Option<String>,
 }
 
 pub struct DocumentChunks {
@@ -475,7 +476,7 @@ pub async fn vector_query_and_sort_points(
     let results = if let Some(top_k) = top_k {
         sqlx::query(
             r#"WITH similarity_cte AS (
-                   SELECT filename, title, text, span, embedding_vector, 
+                   SELECT filename, title, text, embedding_vector, 
                           COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding,
                           1.0 - (embedding_vector <=> $1) AS similarity
                    FROM text_embedding
@@ -496,7 +497,7 @@ pub async fn vector_query_and_sort_points(
     } else {
         sqlx::query(
             r#"WITH similarity_cte AS (
-                   SELECT filename, title, text, span, embedding_vector, 
+                   SELECT filename, title, text, embedding_vector, 
                           COALESCE(two_d_embedding, '[0.0, 0.0]'::vector) AS two_d_embedding,
                           1.0 - (embedding_vector <=> $1) AS similarity
                    FROM text_embedding
@@ -600,21 +601,18 @@ pub async fn get_all_points(asset_id: i32) -> Vec<ChunkPoint> {
 }
 
 fn pgrow_to_point(r: sqlx::postgres::PgRow) -> ChunkPoint {
-    let span = r.get::<PgRange<i32>, &str>("span");
-    let span = (
-        bound_to_usize(span.start).unwrap(),
-        bound_to_usize(span.end).unwrap(),
-    );
+ 
     let embedding_vec = r.get::<Vector, &str>("embedding_vector").to_vec();
     let two_d_embedding = r.get::<Vector, &str>("two_d_embedding").to_vec();
     let chunk = DocumentChunk {
         embedding_vec: Some(embedding_vec),
         filename: r.get::<String, &str>("filename"),
-        span,
+        // span,
         token_ids: None,
         two_d_embedding: Some((two_d_embedding[0], two_d_embedding[1])),
         text: r.get::<String, &str>("text"),
         title: r.get::<String, &str>("title"),
+        meta_data: None,
     };
     let d = OrderedFloat::from(1.0 - r.get::<f64, &str>("similarity"));
     let point = chunk.two_d_embedding.unwrap();
