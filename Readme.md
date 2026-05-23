@@ -1,6 +1,6 @@
 # AI-Gent Smith
 
-We have move the code for our pDFA submission to the branch `pfda-challenge-submission`. The current `main` 
+We have move the code for our pFDA submission to the branch `pfda-challenge-submission`. The current `main` 
 branch contain features beyond our original submission and the configuration format has been changed.
 
 ![AI-Gent Smith](https://github.com/cschin/ai-gent-smith/blob/main/misc/images/ai_gent_web.png?raw=true)
