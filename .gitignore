@@ -8,3 +8,43 @@
 csv_output/**
 **/.DS_Store
 **/.sqlx/*
+
+# Python build artifacts / caches (ai_smith pyo3 extension)
+**/__pycache__/**
+*.pyc
+**/.venv/**
+**/.pytest_cache/**
+*.so
+
+# Editor swap/backup files
+*.un~
+*.swp
+
+# Shell/readline history dumps
+.*_history
+
+# Generated scratch output
+ai_gent_tools/output
+ai_gent_tools/examples/tmp/**
+ai_smith/examples/tmp.py
+ai_smith/examples/tmp[0-9].py
+ai_smith/examples/tmp.html
+ai_smith/examples/out.txt
+ai_smith/examples/output.pdf
+supporting_scripts/pdf_to_embedding/tmp/**
+supporting_scripts/pdf_to_embedding/*.jsonl
+supporting_scripts/pdf_to_embedding/pfda/**
+supporting_scripts/pdf_to_embedding/test_pdf/**
+ai_gent_web/data/**
+ai_gent_web/tmp
+ai_gent_web/tmp.json
+ai_gent_web/tmp.py
+
+# Ad hoc DB dumps/backups (canonical schema lives in database/migrations/)
+/dump_012725.sql
+/mocked_agent*.sql
+/mocked_agent.tsv
+database/backups/**
+database/db_dump_*.sql
+database/db_setting_without_conversation.sql
+database/schema.sql

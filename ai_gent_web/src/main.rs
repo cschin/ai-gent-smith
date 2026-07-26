@@ -645,7 +645,12 @@ async fn show_agent_setting(
 ) -> impl IntoResponse {
     // tracing::info!(target: "tron_app", "in show_agent: agent_id {}", agent_id);
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let Some(session_id) = session.id() else {
+        return (HeaderMap::new(), Html::from("Not Authorized".to_string()));
+    };
+    let Some(ctx) = ctx_store_guard.get(&session_id) else {
+        return (HeaderMap::new(), Html::from("Session Expired".to_string()));
+    };
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -833,7 +838,12 @@ async fn use_agent(
     session: Session,
 ) -> impl IntoResponse {
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let Some(session_id) = session.id() else {
+        return (HeaderMap::new(), Html::from("Not Authorized".to_string()));
+    };
+    let Some(ctx) = ctx_store_guard.get(&session_id) else {
+        return (HeaderMap::new(), Html::from("Session Expired".to_string()));
+    };
     let name;
     let user_id;
     let user_data;
@@ -989,11 +999,18 @@ async fn create_basic_agent(
 ) -> impl IntoResponse {
     let _agent_configuration = payload.to_string();
 
-    let agent_setting_form: SimpleAgentSettingForm =
-        serde_json::from_value::<SimpleAgentSettingForm>(payload.clone()).unwrap();
+    let Ok(agent_setting_form) = serde_json::from_value::<SimpleAgentSettingForm>(payload.clone())
+    else {
+        return Html::from("Invalid agent settings".to_string());
+    };
 
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let Some(session_id) = session.id() else {
+        return Html::from("Not Authorized".to_string());
+    };
+    let Some(ctx) = ctx_store_guard.get(&session_id) else {
+        return Html::from("Session Expired".to_string());
+    };
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -1021,7 +1038,6 @@ async fn create_basic_agent(
     let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
 
     let db_pool = DB_POOL.clone();
-    // TODO: make sure the string is proper avoiding SQL injection
     let _query = sqlx::query!(
         r#"INSERT INTO agents (user_id, name, description, status, configuration, class, asset_id)
         SELECT user_id, $2, $3, $4, $5, $6, $7
@@ -1066,11 +1082,18 @@ async fn create_adv_agent(
 ) -> impl IntoResponse {
     let _agent_configuration = payload.to_string();
 
-    let agent_setting_form: AdvAgentSettingForm =
-        serde_json::from_value::<AdvAgentSettingForm>(payload.clone()).unwrap();
+    let Ok(agent_setting_form) = serde_json::from_value::<AdvAgentSettingForm>(payload.clone())
+    else {
+        return Html::from("Invalid agent settings".to_string());
+    };
 
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let Some(session_id) = session.id() else {
+        return Html::from("Not Authorized".to_string());
+    };
+    let Some(ctx) = ctx_store_guard.get(&session_id) else {
+        return Html::from("Session Expired".to_string());
+    };
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -1113,7 +1136,6 @@ async fn create_adv_agent(
     let agent_setting_value = serde_json::to_value(&agent_setting).unwrap();
 
     let db_pool = DB_POOL.clone();
-    // TODO: make sure the string is proper avoiding SQL injection
     let _query = sqlx::query!(
         r#"INSERT INTO agents (user_id, name, description, status, configuration, class, asset_id)
         SELECT user_id, $2, $3, $4, $5, $6, $7
@@ -1160,8 +1182,15 @@ async fn update_basic_agent(
 ) -> impl IntoResponse {
     let _agent_configuration = payload.to_string();
 
-    let agent_setting_form: SimpleAgentSettingForm =
-        serde_json::from_value::<SimpleAgentSettingForm>(payload.clone()).unwrap();
+    let Ok(agent_setting_form) = serde_json::from_value::<SimpleAgentSettingForm>(payload.clone())
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Invalid agent settings",
+        )
+            .into_response();
+    };
 
     let ctx_store_guard = appdata.context_store.read().await;
     let session_id = if let Some(session_id) = session.id() {
@@ -1174,7 +1203,14 @@ async fn update_basic_agent(
         )
             .into_response();
     };
-    let ctx = ctx_store_guard.get(&session_id).unwrap();
+    let Some(ctx) = ctx_store_guard.get(&session_id) else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Session Expired",
+        )
+            .into_response();
+    };
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -1250,8 +1286,15 @@ async fn update_adv_agent(
 ) -> impl IntoResponse {
     let _agent_configuration = payload.to_string();
 
-    let agent_setting_form: AdvAgentSettingForm =
-        serde_json::from_value::<AdvAgentSettingForm>(payload.clone()).unwrap();
+    let Ok(agent_setting_form) = serde_json::from_value::<AdvAgentSettingForm>(payload.clone())
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Invalid agent settings",
+        )
+            .into_response();
+    };
 
     let ctx_store_guard = appdata.context_store.read().await;
     let session_id = if let Some(session_id) = session.id() {
@@ -1264,7 +1307,14 @@ async fn update_adv_agent(
         )
             .into_response();
     };
-    let ctx = ctx_store_guard.get(&session_id).unwrap();
+    let Some(ctx) = ctx_store_guard.get(&session_id) else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Session Expired",
+        )
+            .into_response();
+    };
     let ctx_guard = ctx.read().await;
     let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
@@ -1466,7 +1516,12 @@ async fn show_chat(
     session: Session,
 ) -> impl IntoResponse {
     let ctx_store_guard = appdata.context_store.read().await;
-    let ctx = ctx_store_guard.get(&session.id().unwrap()).unwrap();
+    let Some(session_id) = session.id() else {
+        return (HeaderMap::new(), Html::from("Not Authorized".to_string()));
+    };
+    let Some(ctx) = ctx_store_guard.get(&session_id) else {
+        return (HeaderMap::new(), Html::from("Session Expired".to_string()));
+    };
     let user_id;
     let agent_id;
     let asset_id;
@@ -1899,8 +1954,15 @@ async fn create_asset(
 ) -> impl IntoResponse {
     // tracing::info!(target: "app_tron", "payload create_asset {:?}", payload);
 
-    let asset_setting_form: AssetSettingForm =
-        serde_json::from_value::<AssetSettingForm>(payload.clone()).unwrap();
+    let Ok(asset_setting_form) = serde_json::from_value::<AssetSettingForm>(payload.clone())
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Invalid asset settings",
+        )
+            .into_response();
+    };
 
     let ctx_store_guard = appdata.context_store.read().await;
     let session_id = if let Some(session_id) = session.id() {
@@ -1913,7 +1975,14 @@ async fn create_asset(
         )
             .into_response();
     };
-    let ctx = ctx_store_guard.get(&session_id).unwrap();
+    let Some(ctx) = ctx_store_guard.get(&session_id) else {
+        return (
+            StatusCode::UNAUTHORIZED,
+            [(header::CONTENT_TYPE, "text/html")],
+            "Session Expired",
+        )
+            .into_response();
+    };
 
     let document_chunks = {
         let asset_ref = ctx.get_asset_ref().await;
@@ -1958,7 +2027,6 @@ async fn create_asset(
         let user_data = ctx_guard.get_user_data().await.unwrap_or(MOCK_USER.clone());
 
         let db_pool = DB_POOL.clone();
-        // TODO: make sure the string is proper avoiding SQL injection
         let query_result = sqlx::query!(
             r#"INSERT INTO assets (user_id, name, description, status)
         SELECT user_id, $2, $3, $4
