@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+  DATABASE_URL: postgres://postgres:postgres@localhost:5432/ai_gent
+  SQLX_OFFLINE: "false"
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ai_gent
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout ai-gent
+        uses: actions/checkout@v4
+
+      # ai_gent_web/Cargo.toml depends on `tron_app` via a local path
+      # (`../../tron/tron_app`), pointing at the sibling `cschin/tron` repo
+      # rather than crates.io or a git dependency. Check it out one level
+      # above this repo's workspace so that relative path resolves in CI.
+      - name: Checkout sibling tron repo (path dependency of ai_gent_web)
+        uses: actions/checkout@v4
+        with:
+          repository: cschin/tron
+          ref: main
+          path: ../tron
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Set up Python (required by ai_smith's pyo3 extension build)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache cargo registry and build artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install sqlx-cli
+        run: cargo install sqlx-cli --no-default-features --features postgres,rustls --locked
+
+      - name: Run database migrations
+        working-directory: database
+        run: sqlx migrate run
+
+      # ai_smith is a pyo3 "extension-module" crate: it's normally built via
+      # `maturin` (see ai_smith/build.sh), which supplies the linker flags
+      # needed to produce a Python-loadable cdylib. A plain `cargo build`/
+      # `cargo test` tries to fully link it as a standalone binary and fails
+      # ("symbol(s) not found ... _Py_InitializeEx"), so it's excluded here.
+      # `cargo clippy` doesn't need to link, so it still covers ai_smith.
+      - name: Build workspace (excluding ai_smith, see note above)
+        run: cargo build --workspace --exclude ai_smith
+
+      - name: Run tests (excluding ai_smith, see note above)
+        run: cargo test --workspace --exclude ai_smith
+
+      # clippy doesn't perform the final link step, so it can check ai_smith
+      # (including its test targets) without hitting the link error above.
+      - name: Clippy (all crates)
+        run: cargo clippy --workspace --all-targets -- -D warnings
